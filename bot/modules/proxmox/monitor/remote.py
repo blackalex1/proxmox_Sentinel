@@ -417,6 +417,10 @@ async def handle_remote_traffic_line(line, server=None):
         dpt = event['dpt']
         direction = event['direction']
         
+        # Игнорируем петлевой интерфейс (loopback) и локальный трафик удаленного VPS на самого себя
+        if dst in ['127.0.0.1', '::1', 'localhost'] or src in ['127.0.0.1', '::1', 'localhost'] or dst == src:
+            return
+            
         is_sensitive = dpt in [22, 3389, 3306, 5432, 27017, 8006]
         
         now = asyncio.get_event_loop().time()
