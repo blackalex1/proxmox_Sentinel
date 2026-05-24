@@ -5,7 +5,7 @@ from modules.proxmox.monitor.utils import LogTailer
 from .ssh import get_ssh_base_cmd
 from .hysteria import handle_remote_hysteria_line
 from .auth import handle_remote_ssh_auth_line
-from .traffic import handle_remote_traffic_line
+from .traffic import handle_remote_traffic_line, cleanup_remote_blocks_on_startup
 
 async def monitor_remote_task(server, service_name, command_args, callback):
     """Фоновый воркер с автоматическим переподключением для отслеживания логов по SSH на конкретном сервере."""
@@ -37,6 +37,9 @@ async def monitor_remote_server():
     
     for server in REMOTE_SERVERS:
         logging.info(f"[Remote Monitor] Запуск фоновых задач для VPS {server['ip']}...")
+        
+        # Очищаем временные блокировки iptables от прошлых запусков бота
+        asyncio.create_task(cleanup_remote_blocks_on_startup(server))
         
         # 1. Отслеживание VPN Hysteria 2
         hysteria_args = ["journalctl", "-u", "hysteria-server.service", "-f", "-n", "0"]

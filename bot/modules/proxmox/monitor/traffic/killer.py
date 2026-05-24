@@ -1,6 +1,7 @@
 import asyncio
 import re
 import logging
+from core.config import IPS_PROCESS_WHITELIST
 
 async def get_and_kill_local_or_lxc_process(vmid, spt):
     """
@@ -25,6 +26,10 @@ async def get_and_kill_local_or_lxc_process(vmid, spt):
                     match = re.search(r'users:\(\("([^"]+)",(?:pid=)?(\d+)', line)
                     if match:
                         proc_name, pid = match.groups()
+                        if proc_name.lower().strip() in IPS_PROCESS_WHITELIST:
+                            logging.info(f"[Local IPS] Процесс {proc_name} (PID: {pid}) на Хосте в белом списке. Завершение отменено.")
+                            return proc_name, "WHITELISTED"
+                        
                         kill_proc = await asyncio.create_subprocess_exec(
                             "kill", "-9", pid,
                             stdout=asyncio.subprocess.DEVNULL,
@@ -48,6 +53,10 @@ async def get_and_kill_local_or_lxc_process(vmid, spt):
                     match = re.search(r'users:\(\("([^"]+)",(?:pid=)?(\d+)', line)
                     if match:
                         proc_name, pid = match.groups()
+                        if proc_name.lower().strip() in IPS_PROCESS_WHITELIST:
+                            logging.info(f"[LXC IPS] Процесс {proc_name} (PID: {pid}) в LXC {vmid} в белом списке. Завершение отменено.")
+                            return proc_name, "WHITELISTED"
+                        
                         kill_cmd = ["pct", "exec", str(vmid), "--", "kill", "-9", pid]
                         kill_proc = await asyncio.create_subprocess_exec(
                             *kill_cmd,
