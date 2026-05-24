@@ -5,7 +5,8 @@ from core.config import REMOTE_MONITOR_ENABLE
 from .resources import monitor_lxc_resources
 from .auth import monitor_lxc_auth
 from .traffic import monitor_lxc_traffic
-from .xui import monitor_xui_connections, monitor_xui_panel_logins
+from .xui_connections import monitor_xui_connections
+from .xui_panel import monitor_xui_panel_logins
 from .remote import monitor_remote_server
 
 async def start_all_lxc_monitors():

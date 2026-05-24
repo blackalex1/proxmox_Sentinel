@@ -35,7 +35,7 @@ from .traffic import (
     monitor_lxc_traffic
 )
 from .runner import start_all_lxc_monitors
-from .xui import monitor_xui_connections
+from .xui_connections import monitor_xui_connections
 from .remote import monitor_remote_server
 
 __all__ = [
