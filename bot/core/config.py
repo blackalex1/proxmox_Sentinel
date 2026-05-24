@@ -61,6 +61,10 @@ ALERT_VPN_CLIENT_UNUSUAL_PORTS = os.getenv('ALERT_VPN_CLIENT_UNUSUAL_PORTS', 'Fa
 # Мониторинг удаленного сервера (Target VPS)
 REMOTE_MONITOR_ENABLE = os.getenv('REMOTE_MONITOR_ENABLE', 'False').lower() in ('true', '1', 'y', 'yes')
 
+# Белый список процессов IPS, которые запрещено принудительно завершать (kill -9)
+IPS_PROCESS_WHITELIST_STR = os.getenv('IPS_PROCESS_WHITELIST', 'hysteria,xray,sshd,caddy,nginx,mongod,python,python3,systemd,cron,fail2ban-server')
+IPS_PROCESS_WHITELIST = [p.strip().lower() for p in IPS_PROCESS_WHITELIST_STR.split(',') if p.strip()]
+
 REMOTE_IPS_STR = os.getenv('REMOTE_SERVER_IP', '')
 REMOTE_USERS_STR = os.getenv('REMOTE_SERVER_USER', 'root')
 REMOTE_KEYS_STR = os.getenv('REMOTE_SERVER_SSH_KEY', 'config/id_rsa_remote')
