@@ -34,6 +34,7 @@ from modules.ansible.handlers import router as ansible_router
 async def main():
     logging.info("Бот запускается...")
 
+
     # Настройка прокси
     if PROXY_URL:
         try:

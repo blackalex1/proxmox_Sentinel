@@ -78,7 +78,20 @@ while len(REMOTE_KEYS) < len(REMOTE_IPS):
 REMOTE_SERVERS = []
 for ip, user, key_path in zip(REMOTE_IPS, REMOTE_USERS, REMOTE_KEYS):
     if key_path and not os.path.isabs(key_path):
-        key_path = os.path.abspath(os.path.join(base_dir, key_path))
+        candidate = os.path.abspath(os.path.join(base_dir, key_path))
+        if not os.path.exists(candidate):
+            config_candidate = os.path.abspath(os.path.join(base_dir, 'config', key_path))
+            if os.path.exists(config_candidate):
+                candidate = config_candidate
+        key_path = candidate
+    
+    # Автоматически устанавливаем безопасные права (600) для SSH-ключа на Linux
+    if key_path and os.name != 'nt' and os.path.exists(key_path):
+        try:
+            os.chmod(key_path, 0o600)
+        except Exception:
+            pass
+            
     REMOTE_SERVERS.append({
         'ip': ip,
         'user': user,
