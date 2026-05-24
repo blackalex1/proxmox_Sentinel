@@ -1,0 +1,32 @@
+# Python virtual environment
+bot/venv/
+venv/
+ENV/
+env/
+
+# PyCharm / IDE files
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.swp
+
+# Python cache and temporary files
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+**/*.pyd
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Sensitive Configuration & Secrets (EXCEPT the .env.example template)
+bot/config/*
+!bot/config/.env.example
+
+# Backup and OS junk
+*.bak
+*.log
+.DS_Store
+Thumbs.db

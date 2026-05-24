@@ -1,0 +1,8 @@
+aiogram
+proxmoxer
+requests
+python-dotenv
+aiohttp-socks
+aiohttp
+pproxy
+pycryptodome

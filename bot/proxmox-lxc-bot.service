@@ -1,0 +1,18 @@
+[Unit]
+Description=Proxmox LXC Monitor Telegram Bot Service
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/proxmox-lxc-bot/bot
+ExecStartPre=/bin/sleep 20
+ExecStart=/opt/proxmox-lxc-bot/bot/venv/bin/python main.py
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=proxmox-lxc-bot
+
+[Install]
+WantedBy=multi-user.target
