@@ -63,6 +63,9 @@ class Settings(BaseSettings):
     # Белый список процессов IPS
     ips_process_whitelist: List[str] | str = Field(default_factory=list, validation_alias='IPS_PROCESS_WHITELIST')
 
+    # Белый список LXC контейнеров для IPS (им разрешены любые исходящие соединения)
+    ips_lxc_whitelist: List[int] | str = Field(default_factory=list, validation_alias='IPS_LXC_WHITELIST')
+
     # Параметры удаленных серверов
     remote_server_ip: str = Field(default='', validation_alias='REMOTE_SERVER_IP')
     remote_server_user: str = Field(default='root', validation_alias='REMOTE_SERVER_USER')
@@ -80,7 +83,7 @@ class Settings(BaseSettings):
         return v
 
     @field_validator(
-        'admin_ids', 'monitor_lxc_ports_whitelist', 'monitor_lxc_ports_sensitive', 'monitor_lxc_vpn_ports',
+        'admin_ids', 'monitor_lxc_ports_whitelist', 'monitor_lxc_ports_sensitive', 'monitor_lxc_vpn_ports', 'ips_lxc_whitelist',
         mode='before'
     )
     @classmethod

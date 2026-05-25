@@ -18,6 +18,67 @@ recent_remote_traffic_alerts = {}
 # Активные карточки хронологии сессий: (server_ip, username) -> dict
 active_activity_cards = {}
 
+from core.db import get_state, set_state
+
+async def load_alerts_state():
+    """Загружает состояния Hysteria алертов из SQLite при старте бота."""
+    global recent_hysteria_violations, recent_remote_traffic_alerts, active_activity_cards
+    
+    # 1. Загружаем recent_hysteria_violations
+    violations = await get_state("recent_hysteria_violations", {})
+    recent_hysteria_violations.clear()
+    recent_hysteria_violations.update(violations)
+    
+    # 2. Загружаем recent_remote_traffic_alerts
+    alerts = await get_state("recent_remote_traffic_alerts", {})
+    recent_remote_traffic_alerts.clear()
+    recent_remote_traffic_alerts.update(alerts)
+    
+    # 3. Загружаем active_activity_cards
+    cards = await get_state("active_activity_cards", {})
+    active_activity_cards.clear()
+    for k, card in cards.items():
+        if ":" in k:
+            server_ip, username = k.split(":", 1)
+            # Десериализуем connections (переводим ISO-строки дат обратно в datetime)
+            connections = {}
+            for ip, dates in card.get('connections', {}).items():
+                connections[ip] = []
+                for d_str in dates:
+                    try:
+                        connections[ip].append(datetime.datetime.fromisoformat(d_str))
+                    except Exception:
+                        pass
+            card['connections'] = connections
+            active_activity_cards[(server_ip, username)] = card
+            
+    logging.info(f"[Hysteria State] Успешно восстановлено сессий: {len(active_activity_cards)}, нарушений: {len(recent_hysteria_violations)}")
+
+async def save_violations_state():
+    """Сохраняет recent_hysteria_violations в SQLite."""
+    await set_state("recent_hysteria_violations", recent_hysteria_violations)
+
+async def save_traffic_alerts_state():
+    """Сохраняет recent_remote_traffic_alerts в SQLite."""
+    await set_state("recent_remote_traffic_alerts", recent_remote_traffic_alerts)
+
+async def save_active_cards_state():
+    """Сохраняет active_activity_cards в SQLite."""
+    serializable_cards = {}
+    for (server_ip, username), card in active_activity_cards.items():
+        key_str = f"{server_ip}:{username}"
+        # Сериализуем connections datetime объекты в ISO-строки
+        connections_str = {}
+        for ip, dates in card.get('connections', {}).items():
+            connections_str[ip] = [d.isoformat() if isinstance(d, datetime.datetime) else d for d in dates]
+            
+        serializable_card = dict(card)
+        serializable_card['connections'] = connections_str
+        serializable_cards[key_str] = serializable_card
+        
+    await set_state("active_activity_cards", serializable_cards)
+
+
 def format_card_msg(server_ip, username, lines):
     # Показываем последние 15 строк хронологии событий
     displayed_lines = lines[-15:]
@@ -63,7 +124,7 @@ async def handle_hysteria_connect(server, username, client_ip):
             msg += f"\n\n📋 <b>Предыдущие подключения (для сравнения):</b>\n" + "\n".join(history_lines)
             
         sent_messages = []
-        for admin_id in ADMIN_IDS:
+        for admin_id in settings.admin_ids:
             try:
                 m = await bot.send_message(admin_id, msg, parse_mode="HTML")
                 sent_messages.append({
@@ -83,6 +144,7 @@ async def handle_hysteria_connect(server, username, client_ip):
                 'lines': lines,
                 'connections': connections
             }
+            await save_active_cards_state()
         return
 
     # ОБЫЧНЫЙ СЦЕНАРИЙ (Стабильный IP): Добавляем к хронологической карте
@@ -95,6 +157,7 @@ async def handle_hysteria_connect(server, username, client_ip):
         if client_ip not in card['connections']:
             card['connections'][client_ip] = []
         card['connections'][client_ip].append(datetime.datetime.now())
+        await save_active_cards_state()
         
         msg = format_card_msg(server_ip, username, card['lines'])
         for s in card['admin_messages']:
@@ -127,7 +190,7 @@ async def handle_hysteria_connect(server, username, client_ip):
             
         msg = format_card_msg(server_ip, username, lines)
         sent_messages = []
-        for admin_id in ADMIN_IDS:
+        for admin_id in settings.admin_ids:
             try:
                 m = await bot.send_message(admin_id, msg, parse_mode="HTML")
                 sent_messages.append({
@@ -144,6 +207,7 @@ async def handle_hysteria_connect(server, username, client_ip):
                 'lines': lines,
                 'connections': connections
             }
+            await save_active_cards_state()
 
 async def handle_hysteria_disconnect(server, username, client_ip):
     """Добавляет событие отключения и длительность к хронологической карточке активности."""
@@ -175,6 +239,7 @@ async def handle_hysteria_disconnect(server, username, client_ip):
                 
         event_line = f"🔴 <code>[{timestamp}]</code> Отключение <code>{client_ip}</code> — {duration_str}"
         card['lines'].append(event_line)
+        await save_active_cards_state()
         
         msg = format_card_msg(server_ip, username, card['lines'])
         for s in card['admin_messages']:

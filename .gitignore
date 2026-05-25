@@ -30,3 +30,9 @@ bot/config/*
 *.log
 .DS_Store
 Thumbs.db
+
+# Ansible sensitive files
+bot/ansible/hosts.ini
+bot/ansible/id_ed25519_ansible
+bot/ansible/id_ed25519_ansible.pub
+

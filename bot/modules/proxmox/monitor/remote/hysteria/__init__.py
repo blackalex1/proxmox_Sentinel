@@ -10,7 +10,9 @@ from .alerts import (
     handle_hysteria_connect, 
     handle_hysteria_disconnect, 
     recent_hysteria_violations, 
-    recent_remote_traffic_alerts
+    recent_remote_traffic_alerts,
+    save_violations_state,
+    save_traffic_alerts_state
 )
 from .ips import block_remote_hysteria_user, unblock_remote_hysteria_user
 
@@ -78,6 +80,7 @@ async def handle_remote_hysteria_line(line, server=None):
                     recent_hysteria_violations[username].append(curr_time)
                     
                     recent_hysteria_violations[username] = [t for t in recent_hysteria_violations[username] if curr_time - t <= 600]
+                    await save_violations_state()
                     
                     last_alert = recent_remote_traffic_alerts.get(throttle_key, 0)
                     is_throttled = now - last_alert < 30
@@ -86,6 +89,7 @@ async def handle_remote_hysteria_line(line, server=None):
                     
                     if len(recent_hysteria_violations[username]) >= 3:
                         recent_hysteria_violations[username] = []
+                        await save_violations_state()
                         block_success = await block_remote_hysteria_user(server, username)
                         
                         if block_success:
@@ -104,6 +108,7 @@ async def handle_remote_hysteria_line(line, server=None):
                     
                     if not is_throttled:
                         recent_remote_traffic_alerts[throttle_key] = now
+                        await save_traffic_alerts_state()
                         msg = (f"🚨 <b>[VPS Hysteria Security: {server['ip']}] Попытка доступа к чувствительному порту!</b>\n\n"
                                f"👤 Пользователь: <code>{username}</code>\n"
                                f"🌐 IP-адрес: <code>{client_ip}</code>\n"
@@ -116,6 +121,7 @@ async def handle_remote_hysteria_line(line, server=None):
                     if now - last_alert < 60:
                         return
                     recent_remote_traffic_alerts[throttle_key] = now
+                    await save_traffic_alerts_state()
                     
                     timestamp = datetime.datetime.now().strftime("%H:%M:%S")
                     msg = (f"⚠️ <b>[VPS Hysteria Warning: {server['ip']}] Нетипичный исходящий порт VPN-клиента</b>\n\n"

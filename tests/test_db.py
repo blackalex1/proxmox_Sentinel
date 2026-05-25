@@ -67,6 +67,35 @@ async def test_hysteria_history_sqlite():
     assert recent_prev2[0]['ip'] == '1.1.1.1'
     assert recent_prev2[0]['duration'] == '5 сек'
 
+@pytest.mark.asyncio
+async def test_bot_state_and_temp_bans():
+    from core.db import get_state, set_state, execute_write, execute_read_one
+    
+    # 1. Тестируем get_state / set_state
+    test_dict = {"a": 1, "b": [2, 3], "c": {"d": "test"}}
+    save_success = await set_state("test_state_key", test_dict)
+    assert save_success is True
+    
+    loaded_dict = await get_state("test_state_key")
+    assert loaded_dict == test_dict
+    
+    # Несуществующий ключ возвращает default
+    non_existent = await get_state("non_existent_key", default="fallback")
+    assert non_existent == "fallback"
+    
+    # 2. Тестируем таблицу temp_bans
+    await execute_write("DELETE FROM temp_bans")
+    await execute_write(
+        "INSERT INTO temp_bans (server_ip, dst_ip, expire_time) VALUES (?, ?, ?)",
+        ("local", "192.168.1.50", "2026-05-25T12:00:00")
+    )
+    
+    row = await execute_read_one("SELECT * FROM temp_bans WHERE dst_ip = ?", ("192.168.1.50",))
+    assert row is not None
+    assert row['server_ip'] == 'local'
+    assert row['expire_time'] == '2026-05-25T12:00:00'
+
+
 # Чистим временные файлы после тестов
 def teardown_module(module):
     try:

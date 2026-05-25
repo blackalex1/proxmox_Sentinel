@@ -125,12 +125,9 @@ async def handle_remote_traffic_line(line, server=None):
             
             if proc_name and killed_pid:
                 if killed_pid == "WHITELISTED":
-                    blocked = await block_remote_ip(server, dst, delay=3600)
-                    block_status = "целевой IP временно заблокирован на 1 час" if blocked else "не удалось заблокировать целевой IP"
-                    
-                    msg = (f"⚠️ <b>[VPS Traffic Warning: {server['ip']}] Исходящее соединение на sensitive порт!</b>\n\n"
-                           f"ℹ️ <b>Процесс защищен от завершения (Белый список IPS), {block_status}!</b>\n\n"
-                           f"📁 Процесс: <code>{proc_name}</code> (Системная служба)\n"
+                    msg = (f"ℹ️ <b>[VPS Traffic: {server['ip']}] Разрешенное соединение</b>\n\n"
+                           f"ℹ️ <b>Соединение разрешено, так как процесс находится в белом списке IPS. Блокировка не применялась.</b>\n\n"
+                           f"📁 Процесс: <code>{proc_name}</code>\n"
                            f"🌐 Протокол: <code>{proto}</code>\n"
                            f"👤 Источник: <code>{src}:{spt}</code>\n"
                            f"🎯 Назначение: <code>{dst}:{dpt}</code>\n"

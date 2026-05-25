@@ -18,11 +18,15 @@ async def cleanup_remote_blocks_on_startup(server):
         ]
         success, stdout, stderr = await run_remote_ssh_cmd(server, cleanup_cmd)
         if success:
+            # Очищаем также записи в БД для этого сервера
+            from core.db import execute_write
+            await execute_write("DELETE FROM temp_bans WHERE server_ip = ?", (server['ip'],))
             logging.info(f"[Remote IPS {server['ip']}] Успешно очищены старые временные блокировки iptables на старте.")
         else:
             logging.error(f"[Remote IPS {server['ip']}] Ошибка при очистке старых блокировок: {stderr}")
     except Exception as e:
         logging.error(f"[Remote IPS {server['ip']}] Ошибка при попытке очистить блокировки на старте: {e}")
+
 
 async def block_remote_ip(server, dst_ip, delay=3600):
     """
@@ -41,6 +45,15 @@ async def block_remote_ip(server, dst_ip, delay=3600):
     if success:
         logging.info(f"[Remote IPS {server['ip']}] Временно заблокирован целевой IP {dst_ip} на {delay} секунд.")
         
+        # Сохраняем информацию о блокировке в SQLite
+        import datetime
+        from core.db import execute_write
+        expire_time = (datetime.datetime.now() + datetime.timedelta(seconds=delay)).isoformat()
+        await execute_write(
+            "INSERT OR REPLACE INTO temp_bans (server_ip, dst_ip, expire_time) VALUES (?, ?, ?)",
+            (server['ip'], dst_ip, expire_time)
+        )
+        
         async def unblock_task():
             try:
                 await asyncio.sleep(delay)
@@ -50,6 +63,12 @@ async def block_remote_ip(server, dst_ip, delay=3600):
                     logging.info(f"[Remote IPS {server['ip']}] Временная блокировка {dst_ip} успешно снята.")
                 else:
                     logging.error(f"[Remote IPS {server['ip']}] Не удалось снять блокировку с {dst_ip}: {unblock_err}")
+                
+                # Удаляем информацию о блокировке из SQLite
+                await execute_write(
+                    "DELETE FROM temp_bans WHERE server_ip = ? AND dst_ip = ?",
+                    (server['ip'], dst_ip)
+                )
             except asyncio.CancelledError:
                 pass
             finally:
@@ -61,3 +80,4 @@ async def block_remote_ip(server, dst_ip, delay=3600):
     else:
         logging.error(f"[Remote IPS {server['ip']}] Ошибка при блокировке {dst_ip} через iptables: {stderr}")
         return False
+

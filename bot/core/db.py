@@ -42,6 +42,20 @@ def init_db():
             """)
             conn.execute("CREATE INDEX IF NOT EXISTS idx_sessions_username ON vpn_sessions (username);")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_sessions_ip ON vpn_sessions (ip);")
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS bot_state (
+                    key TEXT PRIMARY KEY,
+                    value TEXT
+                );
+            """)
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS temp_bans (
+                    server_ip TEXT,
+                    dst_ip TEXT,
+                    expire_time TEXT,
+                    PRIMARY KEY (server_ip, dst_ip)
+                );
+            """)
             
         logging.info("[Database] Таблицы базы данных успешно проверены/созданы.")
         
@@ -138,3 +152,29 @@ async def execute_read_one(query: str, params: tuple = ()) -> Optional[dict]:
         finally:
             conn.close()
     return await asyncio.to_thread(_read)
+
+
+async def get_state(key: str, default=None):
+    """Считывает сериализованный JSON-объект состояния из БД по ключу."""
+    row = await execute_read_one("SELECT value FROM bot_state WHERE key = ?", (key,))
+    if not row:
+        return default
+    try:
+        return json.loads(row['value'])
+    except Exception as e:
+        logging.error(f"[Database] Ошибка десериализации состояния для '{key}': {e}")
+        return default
+
+
+async def set_state(key: str, value) -> bool:
+    """Записывает сериализованный JSON-объект состояния в БД по ключу."""
+    try:
+        val_str = json.dumps(value, ensure_ascii=False)
+        return await execute_write(
+            "INSERT OR REPLACE INTO bot_state (key, value) VALUES (?, ?)",
+            (key, val_str)
+        )
+    except Exception as e:
+        logging.error(f"[Database] Ошибка сериализации состояния для '{key}': {e}")
+        return False
+
