@@ -2,7 +2,7 @@ import asyncio
 import logging
 import os
 from core.bot import bot
-from core.config import ADMIN_IDS
+from core.config import settings
 
 class LogTailer:
     """Асинхронный watcher для tail-мониторинга файлов логов или вывода команд (например, journalctl)."""
@@ -107,9 +107,9 @@ class LogTailer:
 
 async def send_alert_to_admins(text, parse_mode="HTML", reply_markup=None):
     """Отправка алертов всем администраторам."""
-    if not ADMIN_IDS:
+    if not settings.admin_ids:
         return
-    for admin_id in ADMIN_IDS:
+    for admin_id in settings.admin_ids:
         try:
             await bot.send_message(admin_id, text, parse_mode=parse_mode, reply_markup=reply_markup)
         except Exception as e:

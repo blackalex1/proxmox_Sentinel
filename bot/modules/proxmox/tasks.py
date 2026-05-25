@@ -1,7 +1,7 @@
 import asyncio
 import logging
 from core.bot import bot
-from core.config import ADMIN_IDS
+from core.config import settings
 from modules.proxmox.api import proxmox
 
 # Кэш для мониторинга
@@ -11,7 +11,7 @@ async def monitor_nodes():
     """Фоновая задача для алерта о падении нод"""
     while True:
         try:
-            if ADMIN_IDS:
+            if settings.admin_ids:
                 nodes = proxmox.get_nodes()
                 
                 for node in nodes:
@@ -21,7 +21,7 @@ async def monitor_nodes():
                     if is_offline:
                         if node_name not in offline_nodes_cache:
                             offline_nodes_cache.add(node_name)
-                            for admin_id in ADMIN_IDS:
+                            for admin_id in settings.admin_ids:
                                 try:
                                     await bot.send_message(
                                         admin_id, 
@@ -33,7 +33,7 @@ async def monitor_nodes():
                     else:
                         if node_name in offline_nodes_cache:
                             offline_nodes_cache.remove(node_name)
-                            for admin_id in ADMIN_IDS:
+                            for admin_id in settings.admin_ids:
                                 try:
                                     await bot.send_message(
                                         admin_id, 
@@ -46,3 +46,4 @@ async def monitor_nodes():
             logging.error(f"Ошибка в фоновом мониторинге Proxmox: {e}")
             
         await asyncio.sleep(60)
+

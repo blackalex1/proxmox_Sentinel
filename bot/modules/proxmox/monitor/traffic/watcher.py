@@ -3,7 +3,7 @@ import logging
 import time
 import datetime
 
-from core.config import VPN_VMID, MONITOR_LXC_PORTS_SENSITIVE
+from core.config import settings
 from modules.proxmox.monitor.state import lxc_name_cache, lxc_traffic_history, recent_local_conns, lxc_alert_throttle
 from modules.proxmox.monitor.utils import LogTailer, send_alert_to_admins
 from modules.proxmox.monitor.firewall import setup_iptables
@@ -12,80 +12,7 @@ from modules.proxmox.monitor.firewall import setup_iptables
 from .parser import find_kernel_log_path, parse_iptables_line, classify_connection
 from .vpn import find_real_vpn_client_ip, find_xray_client_email
 from .killer import get_and_kill_local_or_lxc_process
-
-# Память для локальных временных блокировок на хосте Proxmox: dst_ip -> asyncio.Task
-active_local_blocks = {}
-
-async def block_local_ip(dst_ip, delay=3600):
-    """
-    Временно блокирует целевой IP на хосте Proxmox (как для самого хоста, так и для всех LXC контейнеров) через iptables.
-    """
-    key = dst_ip
-    if key in active_local_blocks:
-        active_local_blocks[key].cancel()
-        
-    cmd_output_del = f"iptables -D OUTPUT -d {dst_ip} -m comment --comment \"AEGIS-TEMP-BLOCK\" -j DROP 2>/dev/null || true"
-    cmd_output_add = f"iptables -I OUTPUT -d {dst_ip} -m comment --comment \"AEGIS-TEMP-BLOCK\" -j DROP"
-    cmd_forward_del = f"iptables -D FORWARD -d {dst_ip} -m comment --comment \"AEGIS-TEMP-BLOCK\" -j DROP 2>/dev/null || true"
-    cmd_forward_add = f"iptables -I FORWARD -d {dst_ip} -m comment --comment \"AEGIS-TEMP-BLOCK\" -j DROP"
-    
-    try:
-        for c in [cmd_output_del, cmd_output_add, cmd_forward_del, cmd_forward_add]:
-            proc = await asyncio.create_subprocess_shell(
-                c,
-                stdout=asyncio.subprocess.DEVNULL,
-                stderr=asyncio.subprocess.DEVNULL
-            )
-            await proc.wait()
-            
-        logging.info(f"[Local IPS] Временно заблокирован целевой IP {dst_ip} на хосте Proxmox (OUTPUT + FORWARD) на {delay} секунд.")
-        
-        async def unblock_task():
-            try:
-                await asyncio.sleep(delay)
-                for c in [
-                    f"iptables -D OUTPUT -d {dst_ip} -m comment --comment \"AEGIS-TEMP-BLOCK\" -j DROP",
-                    f"iptables -D FORWARD -d {dst_ip} -m comment --comment \"AEGIS-TEMP-BLOCK\" -j DROP"
-                ]:
-                    unblock_proc = await asyncio.create_subprocess_shell(
-                        c,
-                        stdout=asyncio.subprocess.DEVNULL,
-                        stderr=asyncio.subprocess.DEVNULL
-                    )
-                    await unblock_proc.wait()
-                logging.info(f"[Local IPS] Временная блокировка {dst_ip} на хосте Proxmox успешно снята.")
-            except asyncio.CancelledError:
-                pass
-            finally:
-                active_local_blocks.pop(key, None)
-                
-        task = asyncio.create_task(unblock_task())
-        active_local_blocks[key] = task
-        return True
-    except Exception as e:
-        logging.error(f"[Local IPS] Ошибка при блокировке {dst_ip} на хосте Proxmox: {e}")
-        return False
-
-async def cleanup_local_blocks_on_startup():
-    """
-    Очищает любые забытые временные блокировки Aegis IPS на локальном хосте Proxmox при старте бота.
-    """
-    try:
-        cleanup_cmd = (
-            "iptables-save | grep 'AEGIS-TEMP-BLOCK' | while read -r line; do "
-            "rule=$(echo \"$line\" | sed 's/-A /iptables -D /'); "
-            "eval \"$rule\"; "
-            "done"
-        )
-        proc = await asyncio.create_subprocess_shell(
-            cleanup_cmd,
-            stdout=asyncio.subprocess.DEVNULL,
-            stderr=asyncio.subprocess.DEVNULL
-        )
-        await proc.wait()
-        logging.info("[Local IPS] Успешно очищены старые временные блокировки iptables на хосте Proxmox.")
-    except Exception as e:
-        logging.error(f"[Local IPS] Ошибка при очистке локальных блокировок на старте: {e}")
+from .firewall import block_local_ip, cleanup_local_blocks_on_startup
 
 async def handle_traffic_log_line(line):
     """Обработка распарсенных сетевых соединений и отправка мгновенных алертов."""
@@ -107,7 +34,7 @@ async def handle_traffic_log_line(line):
         if is_local:
             conn_key = (proto, dst, spt, dpt)
             recent_local_conns.append(conn_key)
-        elif vmid == VPN_VMID and direction == 'OUT':
+        elif vmid == settings.vpn_vmid and direction == 'OUT':
             conn_key = (proto, dst, spt, dpt)
             if conn_key in recent_local_conns:
                 return
@@ -136,9 +63,9 @@ async def handle_traffic_log_line(line):
         
         # 2. Отправляем уведомления только для WARNING и CRITICAL угроз
         if risk_level in ['WARNING', 'CRITICAL']:
-            is_transit_vpn = (vmid == VPN_VMID and not is_local)
+            is_transit_vpn = (vmid == settings.vpn_vmid and not is_local)
             proc_name, killed_pid = None, None
-            if direction == 'OUT' and dpt in MONITOR_LXC_PORTS_SENSITIVE and not is_transit_vpn:
+            if direction == 'OUT' and dpt in settings.monitor_lxc_ports_sensitive and not is_transit_vpn:
                 proc_name, killed_pid = await get_and_kill_local_or_lxc_process(vmid, spt)
 
             # Троттлинг одинаковых алертов (в пределах 15 секунд)
@@ -152,7 +79,7 @@ async def handle_traffic_log_line(line):
             # Реальный IP клиента
             real_client_ip = None
             xray_client_email = None
-            if vmid == VPN_VMID and not is_local and direction == 'OUT':
+            if vmid == settings.vpn_vmid and not is_local and direction == 'OUT':
                 # Пауза 1.2 секунды, чтобы conntrack обновился и Xray успел сбросить буфер в access.log
                 await asyncio.sleep(1.2)
                 real_client_ip = find_real_vpn_client_ip(proto, src, dst, spt, dpt)

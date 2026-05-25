@@ -129,15 +129,15 @@ async def process_unblock_hysteria(callback: CallbackQuery):
         
         await callback.answer(f"⏳ Разблокирую {username}...", show_alert=False)
         
-        from core.config import REMOTE_SERVERS
+        from core.config import settings
         server = None
         if server_ip:
-            for s in REMOTE_SERVERS:
+            for s in settings.remote_servers:
                 if s['ip'] == server_ip:
                     server = s
                     break
-        if not server and REMOTE_SERVERS:
-            server = REMOTE_SERVERS[0]
+        if not server and settings.remote_servers:
+            server = settings.remote_servers[0]
             
         if not server:
             await callback.answer("❌ Сервер для разблокировки не найден.", show_alert=True)

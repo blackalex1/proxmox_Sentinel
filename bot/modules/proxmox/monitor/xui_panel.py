@@ -3,7 +3,7 @@ import logging
 import datetime
 import re
 
-from core.config import VPN_VMID
+from core.config import settings
 from .utils import LogTailer, send_alert_to_admins, detect_xui_service
 
 # Память для предотвращения дублирования входов в панель 3X-UI: (username, ip) -> last_notification_time
@@ -67,10 +67,11 @@ async def monitor_xui_panel_logins():
         
     logging.info("Запуск системы отслеживания входов в веб-панель 3X-UI...")
     try:
-        service_name = detect_xui_service(VPN_VMID)
-        cmd = ["pct", "exec", str(VPN_VMID), "--", "stdbuf", "-oL", "journalctl", "-u", service_name, "-f", "-n", "0"]
+        service_name = detect_xui_service(settings.vpn_vmid)
+        cmd = ["pct", "exec", str(settings.vpn_vmid), "--", "stdbuf", "-oL", "journalctl", "-u", service_name, "-f", "-n", "0"]
         tailer = LogTailer(cmd, handle_xui_panel_log_line)
         await tailer.start()
-        logging.info(f"Запущен мониторинг входов 3X-UI Panel через journalctl для LXC {VPN_VMID}.")
+        logging.info(f"Запущен мониторинг входов 3X-UI Panel через journalctl для LXC {settings.vpn_vmid}.")
     except Exception as e:
         logging.error(f"Ошибка при запуске мониторинга входов 3X-UI Panel: {e}")
+

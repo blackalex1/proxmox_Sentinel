@@ -3,7 +3,8 @@ import platform
 import subprocess
 import logging
 
-from core.config import VPN_VMID
+from core.config import settings
+VPN_VMID = settings.vpn_vmid
 
 def setup_vpn_container_rules():
     """Установка logging-правил iptables внутри VPN-контейнера для контроля локальных процессов."""

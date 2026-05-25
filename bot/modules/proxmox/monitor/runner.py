@@ -1,7 +1,7 @@
 import asyncio
 import logging
 
-from core.config import REMOTE_MONITOR_ENABLE
+from core.config import settings
 from .resources import monitor_lxc_resources
 from .auth import monitor_lxc_auth
 from .traffic import monitor_lxc_traffic
@@ -27,9 +27,10 @@ async def start_all_lxc_monitors():
     asyncio.create_task(monitor_xui_panel_logins())
     
     # 5. Запускаем мониторинг удаленного сервера, если включен в конфиге
-    if REMOTE_MONITOR_ENABLE:
+    if settings.remote_monitor_enable:
         asyncio.create_task(monitor_remote_server())
         logging.info("Мониторинг удаленного сервера запущен!")
         
     logging.info("Все службы LXC мониторинга успешно запущены в фоне!")
+
 

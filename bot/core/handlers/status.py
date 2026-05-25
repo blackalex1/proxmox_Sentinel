@@ -1,61 +1,13 @@
-import asyncio
 import logging
+import html
 from aiogram import Router, types, F
 from aiogram.filters.command import Command
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
+from core.config import settings
 
-router = Router(name="core_router")
+router = Router(name="core_status_router")
 
-def get_main_menu_keyboard() -> InlineKeyboardMarkup:
-    buttons = [
-        [InlineKeyboardButton(text="🖥 Управление Proxmox", callback_data="proxmox_main")],
-        [InlineKeyboardButton(text="🌍 Управление 3X-UI", callback_data="xui_main")],
-        [InlineKeyboardButton(text="🛠 Управление Ansible", callback_data="ansible_main")]
-    ]
-    return InlineKeyboardMarkup(inline_keyboard=buttons)
-
-@router.message(Command("start"))
-async def cmd_start(message: types.Message):
-    await message.answer(
-        "👋 <b>Главное меню:</b>\nВыберите сервис для управления:", 
-        parse_mode="HTML", 
-        reply_markup=get_main_menu_keyboard()
-    )
-
-@router.callback_query(F.data == "main_menu")
-async def process_main_menu(callback: CallbackQuery):
-    await callback.message.edit_text(
-        "👋 <b>Главное меню:</b>\nВыберите сервис для управления:", 
-        parse_mode="HTML", 
-        reply_markup=get_main_menu_keyboard()
-    )
-
-@router.message(Command("id"))
-async def cmd_id(message: types.Message):
-    user_id = message.from_user.id
-    chat_id = message.chat.id
-    await message.answer(
-        f"👤 <b>Ваш Telegram ID:</b> <code>{user_id}</code>\n"
-        f"💬 <b>ID этого чата:</b> <code>{chat_id}</code>",
-        parse_mode="HTML"
-    )
-
-@router.message(Command("help"))
-async def cmd_help(message: types.Message):
-    text = (
-        "ℹ️ <b>Справка по командам PVE Aegis:</b>\n\n"
-        "• /start — Показать интерактивную панель управления (Главное меню)\n"
-        "• /status — Быстрый аудит и статус всех систем (Proxmox, 3X-UI, фоновые службы)\n"
-        "• /help — Показать это справочное сообщение\n"
-        "• /id — Показать ваш Telegram ID / ID чата\n\n"
-        "🛡️ <i>Бот автоматически отслеживает попытки авторизации (SSH Auth Monitor) и несанкционированную сетевую активность (Active IPS Engine) в реальном времени. Все алерты приходят напрямую в этот чат.</i>"
-    )
-    await message.answer(text, parse_mode="HTML")
-
-@router.message(Command("status"))
-async def cmd_status(message: types.Message):
-    status_msg = await message.answer("⏳ <i>Сбор информации о состоянии систем...</i>", parse_mode="HTML")
-    
+async def get_system_status_text() -> str:
     # 1. Статус Proxmox VE
     pve_status = "🔴 <b>Нет связи с Proxmox VE</b>"
     try:
@@ -80,7 +32,6 @@ async def cmd_status(message: types.Message):
         else:
             pve_status = "⚪ <b>Proxmox VE:</b> Не настроен"
     except Exception as e:
-        import html
         pve_status = f"🔴 <b>Proxmox VE:</b> Ошибка: <code>{html.escape(str(e)[:200])}</code>"
 
     # 2. Статус 3X-UI
@@ -111,11 +62,9 @@ async def cmd_status(message: types.Message):
         else:
             xui_status = "⚪ <b>3X-UI:</b> Не настроен"
     except Exception as e:
-        import html
         xui_status = f"🔴 <b>3X-UI:</b> Ошибка: <code>{html.escape(str(e)[:200])}</code>"
 
     # 3. Фоновые службы
-    from core.config import REMOTE_MONITOR_ENABLE
     services_status = (
         f"🛡 <b>Фоновые службы безопасности:</b>\n"
         f"   ├─ 🟢 LXC Resource Monitor — Активен\n"
@@ -123,7 +72,7 @@ async def cmd_status(message: types.Message):
         f"   ├─ 🟢 Active IPS Engine (iptables) — Защита включена\n"
         f"   ├─ 🟢 3X-UI Connections & Logins — Активен\n"
     )
-    if REMOTE_MONITOR_ENABLE:
+    if settings.remote_monitor_enable:
         services_status += "   └─ 🟢 Remote VPS Monitor — Активен"
     else:
         services_status += "   └─ ⚪ Remote VPS Monitor — Выключен в .env"
@@ -134,6 +83,29 @@ async def cmd_status(message: types.Message):
         f"{xui_status}\n\n"
         f"{services_status}"
     )
-    
+    return response_text
+
+@router.message(Command("status"))
+async def cmd_status(message: types.Message):
+    status_msg = await message.answer("⏳ <i>Сбор информации о состоянии систем...</i>", parse_mode="HTML")
+    response_text = await get_system_status_text()
     await status_msg.edit_text(response_text, parse_mode="HTML")
 
+@router.callback_query(F.data == "status_check")
+async def callback_status_check(callback: CallbackQuery):
+    try:
+        await callback.message.edit_text("⏳ <i>Сбор информации о состоянии систем...</i>", parse_mode="HTML")
+    except Exception:
+        pass
+        
+    response_text = await get_system_status_text()
+    
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🔄 Обновить статус", callback_data="status_check")],
+        [InlineKeyboardButton(text="🔙 В главное меню", callback_data="main_menu")]
+    ])
+    
+    try:
+        await callback.message.edit_text(response_text, parse_mode="HTML", reply_markup=kb)
+    except Exception as e:
+        logging.error(f"Ошибка при показе статуса систем: {e}")

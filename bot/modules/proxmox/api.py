@@ -1,24 +1,21 @@
 import logging
 from proxmoxer import ProxmoxAPI
-from core.config import (
-    PROXMOX_HOST, PROXMOX_USER, PROXMOX_TOKEN_ID, 
-    PROXMOX_TOKEN_SECRET, PROXMOX_VERIFY_SSL
-)
+from core.config import settings
 
 class ProxmoxClient:
     def __init__(self):
-        if not PROXMOX_HOST:
+        if not settings.proxmox_host:
             logging.warning("PROXMOX_HOST не задан! Работа с Proxmox будет недоступна.")
             return
             
-        if PROXMOX_TOKEN_ID and PROXMOX_TOKEN_SECRET:
-            token_name = PROXMOX_TOKEN_ID.split('!')[1] if '!' in PROXMOX_TOKEN_ID else PROXMOX_TOKEN_ID
+        if settings.proxmox_token_id and settings.proxmox_token_secret:
+            token_name = settings.proxmox_token_id.split('!')[1] if '!' in settings.proxmox_token_id else settings.proxmox_token_id
             self.proxmox = ProxmoxAPI(
-                PROXMOX_HOST, 
-                user=PROXMOX_USER, 
+                settings.proxmox_host, 
+                user=settings.proxmox_user, 
                 token_name=token_name,
-                token_value=PROXMOX_TOKEN_SECRET, 
-                verify_ssl=PROXMOX_VERIFY_SSL
+                token_value=settings.proxmox_token_secret, 
+                verify_ssl=settings.proxmox_verify_ssl
             )
         else:
             logging.error("Не заданы PROXMOX_TOKEN_ID или PROXMOX_TOKEN_SECRET!")
