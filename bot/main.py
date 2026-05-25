@@ -34,6 +34,14 @@ from modules.ansible.handlers import router as ansible_router
 async def main():
     logging.info("Бот запускается...")
 
+    # Автоматическая проверка и генерация SSH-ключей ED25519 для Ansible
+    try:
+        from modules.ansible.keyboards import ANSIBLE_PLAYBOOKS_DIR, check_and_generate_ansible_keys
+        check_and_generate_ansible_keys(ANSIBLE_PLAYBOOKS_DIR)
+    except Exception as e:
+        logging.error(f"Не удалось проверить/сгенерировать SSH ключи Ansible при старте: {e}")
+
+
 
     # Настройка прокси
     if settings.proxy_url:

@@ -1,0 +1,46 @@
+---
+- name: Update servers
+  hosts: all
+  become: yes
+
+  tasks:
+
+    - name: Update apt cache
+      shell: |
+        DEBIAN_FRONTEND=noninteractive apt-get update
+      changed_when: false
+
+    - name: Full upgrade
+      shell: |
+        DEBIAN_FRONTEND=noninteractive \
+        apt-get -y \
+        -o Dpkg::Options::="--force-confdef" \
+        -o Dpkg::Options::="--force-confold" \
+        dist-upgrade
+      register: upgrade_result
+
+    - name: Autoremove unused packages
+      shell: |
+        DEBIAN_FRONTEND=noninteractive apt-get -y autoremove --purge
+
+    - name: Autoclean apt cache
+      shell: |
+        apt-get autoclean
+
+    - name: Check if reboot required
+      stat:
+        path: /var/run/reboot-required
+      register: reboot_required
+
+    - name: Show reboot requirement
+      debug:
+        msg: "Reboot required on {{ inventory_hostname }}"
+      when: reboot_required.stat.exists
+
+    - name: Reboot server if required
+      reboot:
+        msg: "Reboot after updates"
+        reboot_timeout: 600
+      when:
+        - reboot_required.stat.exists
+        - inventory_hostname not in ['master', 'proxmox']

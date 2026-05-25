@@ -87,10 +87,8 @@ async def handle_traffic_log_line(line):
 
             if killed_pid:
                 if killed_pid == "WHITELISTED":
-                    blocked = await block_local_ip(dst, delay=3600)
-                    block_status = "целевой IP временно заблокирован на 1 час" if blocked else "не удалось заблокировать целевой IP"
-                    title = "⚠️ <b>[Local Traffic IPS] Зафиксирована подозрительная активность!</b>"
-                    desc_with_client = f"ℹ️ <b>Процесс защищен от завершения (Белый список IPS), {block_status}!</b>\n\n📁 Процесс: <code>{proc_name}</code> (Системная служба)\n\n" + desc
+                    title = "ℹ️ <b>[Local Traffic IPS] Разрешенное соединение</b>"
+                    desc_with_client = f"ℹ️ <b>Соединение разрешено, так как процесс находится в белом списке IPS. Блокировка не применялась.</b>\n\n📁 Процесс: <code>{proc_name}</code>\n\n" + desc
                 else:
                     title = "🚨 <b>[Local Traffic IPS] Атака заблокирована!</b>"
                     desc_with_client = f"🔥 <b>Процесс автоматически уничтожен (kill -9)!</b>\n\n📁 Процесс: <code>{proc_name}</code> (PID: <code>{killed_pid}</code>)\n\n" + desc

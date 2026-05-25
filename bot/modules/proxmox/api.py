@@ -34,6 +34,39 @@ class ProxmoxClient:
             logging.error(f"Ошибка получения списка машин: {e}")
             return []
 
+    def get_lxc_ip(self, node_name, vm_id):
+        if not self.proxmox: return None
+        try:
+            # Сначала пробуем получить через interfaces (для запущенных контейнеров)
+            try:
+                interfaces = self.proxmox.nodes(node_name).lxc(vm_id).interfaces.get()
+                for iface in interfaces:
+                    if iface.get('name') != 'lo':
+                        inet = iface.get('inet')
+                        if inet:
+                            ip = inet.split('/')[0]
+                            if ip and ip != '0.0.0.0':
+                                return ip
+            except Exception:
+                pass
+
+            # Если не получилось (например, контейнер выключен или нет прав на interfaces),
+            # пробуем прочитать из конфига net0
+            config = self.proxmox.nodes(node_name).lxc(vm_id).config.get()
+            for k, v in config.items():
+                if k.startswith('net'):
+                    # name=eth0,bridge=vmbr0,firewall=1,hwaddr=...,ip=192.168.1.101/24,gw=...
+                    for part in v.split(','):
+                        if part.startswith('ip='):
+                            ip_val = part.split('=')[1]
+                            if '/' in ip_val:
+                                ip = ip_val.split('/')[0]
+                                if ip and ip != 'dhcp' and ip != 'manual':
+                                    return ip
+        except Exception as e:
+            logging.error(f"Ошибка получения IP для LXC {vm_id}: {e}")
+        return None
+
     def start_vm(self, node_name, vm_id, is_lxc=False):
         vm_type = 'lxc' if is_lxc else 'qemu'
         return getattr(self.proxmox.nodes(node_name), vm_type)(vm_id).status.start.post()
