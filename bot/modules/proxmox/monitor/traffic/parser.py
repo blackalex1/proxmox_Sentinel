@@ -94,8 +94,8 @@ def classify_connection(event):
                     if is_private_ip(dst):
                         return ('INFO', 'VPN-транзит (Локальный OUT)', f'Локальный запрос VPN-клиента на порт {dpt} внутри подсети')
                     
-                    risk_lvl = 'WARNING' if ALERT_VPN_CLIENT_UNUSUAL_PORTS else 'INFO'
-                    prefix = '⚠️ ' if ALERT_VPN_CLIENT_UNUSUAL_PORTS else ''
+                    risk_lvl = 'WARNING' if settings.alert_vpn_client_unusual_ports else 'INFO'
+                    prefix = '⚠️ ' if settings.alert_vpn_client_unusual_ports else ''
                     return (risk_lvl, f'{prefix}VPN-клиент: нетипичный исходящий порт :{dpt}', f'Внимание: Подключенный VPN-клиент обратился к нетипичному внешнему порту {dpt} ({dst})')
 
     # 2. Общие правила для всех остальных контейнеров
@@ -117,6 +117,9 @@ def classify_connection(event):
         return ('INFO', 'Обычное входящее соединение', f'Входящее соединение на порт {dpt}')
         
     elif direction == 'OUT':
+        if vmid in settings.ips_lxc_whitelist:
+            return ('INFO', 'Доверенный исходящий трафик LXC', f'Легитимная исходящая активность доверенного контейнера {vmid} на порт {dpt}')
+
         if is_sensitive:
             return ('WARNING', f'⚠️ Исходящий SSH/DB запрос на :{dpt}', f'Внимание: Контейнер инициировал исходящее соединение на чувствительный порт {dpt}')
             
