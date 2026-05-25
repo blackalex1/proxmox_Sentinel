@@ -1,18 +1,16 @@
 import aiohttp
 import logging
-import json
-import base64
-from urllib.parse import urlparse, quote
-from core.config import XUI_HOST, XUI_USERNAME, XUI_PASSWORD, XUI_API_TOKEN
+from core.config import settings
 
-class XuiClient:
+class XuiClientBase:
     def __init__(self):
-        self.host = XUI_HOST.rstrip('/') if XUI_HOST else ""
-        self.username = XUI_USERNAME
-        self.password = XUI_PASSWORD
-        self.token = XUI_API_TOKEN
+        self.host = settings.xui_host.rstrip('/') if settings.xui_host else ""
+        self.username = settings.xui_username
+        self.password = settings.xui_password
+        self.token = settings.xui_api_token
         self.session = None
         self.last_login_attempt = 0
+
         self.login_cooldown = 10  # секунд ожидания перед повторной попыткой входа после неудачи
         self.csrf_token = ""
 
@@ -174,89 +172,7 @@ class XuiClient:
                     return res.get('obj', {})
         return {}
 
-    async def get_online_clients(self):
-        paths = [
-            "/panel/api/clients/onlines",
-            "/panel/api/inbounds/onlines", 
-            "/api/inbounds/onlines", 
-            "/xui/API/inbounds/onlines"
-        ]
-        for path in paths:
-            res = await self._request("POST", path, headers={"Accept": "application/json"})
-            if isinstance(res, dict) and res.get('success'):
-                obj = res.get('obj')
-                return obj if obj is not None else []
-        return None
-
-    async def get_inbounds(self):
-        paths = ["/panel/api/inbounds/list", "/panel/inbound/list", "/xui/API/inbounds", "/api/inbounds/list"]
-        for method in ("GET", "POST"):
-            for path in paths:
-                res = await self._request(method, path, headers={"Accept": "application/json"})
-                if isinstance(res, dict) and res.get('success'):
-                    return res.get('obj', [])
-        return []
-
-    async def add_client(self, inbound_id: int, client_id: str, email: str, total_gb: int = 0, expiry_time: int = 0, limit_ip: int = 0, enable: bool = True):
-        import json
-        payload = {
-            "id": inbound_id,
-            "settings": json.dumps({
-                "clients": [{
-                    "id": client_id,
-                    "email": email,
-                    "enable": enable,
-                    "limitIp": limit_ip,
-                    "totalGB": total_gb,
-                    "expiryTime": expiry_time,
-                    "tgId": "",
-                    "subId": ""
-                }]
-            })
-        }
-        res = await self._request("POST", "/panel/api/inbounds/addClient", json=payload, headers={"Accept": "application/json"})
-        return isinstance(res, dict) and res.get('success', False)
-
-    async def update_client(self, inbound_id: int, client_id: str, email: str, total_gb: int = 0, expiry_time: int = 0, limit_ip: int = 0, enable: bool = True):
-        import json
-        payload = {
-            "id": inbound_id,
-            "settings": json.dumps({
-                "clients": [{
-                    "id": client_id,
-                    "email": email,
-                    "enable": enable,
-                    "limitIp": limit_ip,
-                    "totalGB": total_gb,
-                    "expiryTime": expiry_time,
-                    "tgId": "",
-                    "subId": ""
-                }]
-            })
-        }
-        res = await self._request("POST", f"/panel/api/inbounds/updateClient/{client_id}", json=payload, headers={"Accept": "application/json"})
-        return isinstance(res, dict) and res.get('success', False)
-
-    async def delete_client(self, inbound_id: int, client_id: str):
-        res = await self._request("POST", f"/panel/api/inbounds/{inbound_id}/delClient/{client_id}", headers={"Accept": "application/json"})
-        return isinstance(res, dict) and res.get('success', False)
-
     def get_base_host(self):
         """Извлекает IP или домен из XUI_HOST"""
         from modules.xui.links import get_base_host as _get_base_host
         return _get_base_host(self.host)
-
-    def get_client_links(self, inbound: dict, client: dict):
-        """Генерирует ссылки для подключения (VLESS, VMess, Trojan, Shadowsocks)"""
-        from modules.xui.links import get_client_links as _get_client_links
-        return _get_client_links(inbound, client, self.host)
-
-    async def get_client_links_api(self, inbound_id: int, email: str):
-        """Получает готовые ссылки для клиента напрямую через встроенное API панели 3X-UI"""
-        res = await self._request("GET", f"/panel/api/inbounds/getClientLinks/{inbound_id}/{email}", headers={"Accept": "application/json"})
-        if isinstance(res, dict) and res.get('success'):
-            return res.get('obj', [])
-        return []
-
-
-xui = XuiClient()

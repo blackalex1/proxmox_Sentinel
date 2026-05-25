@@ -4,7 +4,7 @@ import datetime
 import os
 import re
 
-from core.config import VPN_VMID, VPN_OFFLINE_TIMEOUT, VPN_IGNORE_USERS
+from core.config import settings
 from .utils import LogTailer, send_alert_to_admins, detect_xui_service
 
 # Активные сессии клиентов: email -> {"last_seen": timestamp, "ip": client_ip}
@@ -44,7 +44,7 @@ async def handle_xray_log_line(line):
             client_ip = ip_match.group(1).replace("[", "").replace("]", "")
 
         # Если пользователь в списке игнорируемых
-        if email in VPN_IGNORE_USERS:
+        if email in settings.vpn_ignore_users:
             active_clients[email] = {"last_seen": now, "ip": client_ip}
             return
             
@@ -76,13 +76,13 @@ async def monitor_xui_offline_check():
                 last_seen = data["last_seen"] if isinstance(data, dict) else data
                 client_ip = data["ip"] if isinstance(data, dict) else "Неизвестный"
                 
-                if now - last_seen > VPN_OFFLINE_TIMEOUT:
+                if now - last_seen > settings.vpn_offline_timeout:
                     offline_users.append((email, client_ip))
                     
             for email, client_ip in offline_users:
                 active_clients.pop(email, None)
                 
-                if email in VPN_IGNORE_USERS:
+                if email in settings.vpn_ignore_users:
                     logging.info(f"Клиент {email} отключился по таймауту (тихий режим, активных сессий: {len(active_clients)})")
                     continue
                     
@@ -122,7 +122,7 @@ async def monitor_xui_connections():
     """Инициализация tailer-а логов Xray на хосте для мониторинга входов/выходов."""
     logging.info("Запуск системы отслеживания подключений 3X-UI через access.log...")
     
-    log_path = find_xray_access_log_path(VPN_VMID)
+    log_path = find_xray_access_log_path(settings.vpn_vmid)
     asyncio.create_task(monitor_xui_offline_check())
     
     if log_path:
@@ -130,15 +130,15 @@ async def monitor_xui_connections():
         await tailer.start()
         logging.info(f"Запущен прямой мониторинг файла логов доступа Xray: {log_path}")
     else:
-        container_log_path = find_xray_access_log_path_inside_container(VPN_VMID)
+        container_log_path = find_xray_access_log_path_inside_container(settings.vpn_vmid)
         if container_log_path:
-            cmd = ["pct", "exec", str(VPN_VMID), "--", "tail", "-f", "-n", "0", container_log_path]
+            cmd = ["pct", "exec", str(settings.vpn_vmid), "--", "tail", "-f", "-n", "0", container_log_path]
             tailer = LogTailer(cmd, handle_xray_log_line)
             await tailer.start()
-            logging.info(f"Запущен мониторинг access.log через pct exec tail ({container_log_path}) для LXC {VPN_VMID}.")
+            logging.info(f"Запущен мониторинг access.log через pct exec tail ({container_log_path}) для LXC {settings.vpn_vmid}.")
         else:
-            service_name = detect_xui_service(VPN_VMID)
-            cmd = ["pct", "exec", str(VPN_VMID), "--", "stdbuf", "-oL", "journalctl", "-u", service_name, "-f", "-n", "0"]
+            service_name = detect_xui_service(settings.vpn_vmid)
+            cmd = ["pct", "exec", str(settings.vpn_vmid), "--", "stdbuf", "-oL", "journalctl", "-u", service_name, "-f", "-n", "0"]
             tailer = LogTailer(cmd, handle_xray_log_line)
             await tailer.start()
-            logging.info(f"Файл access.log не найден. Запущено резервное отслеживание через pct exec journalctl ({service_name}) для LXC {VPN_VMID}.")
+            logging.info(f"Файл access.log не найден. Запущено резервное отслеживание через pct exec journalctl ({service_name}) для LXC {settings.vpn_vmid}.")

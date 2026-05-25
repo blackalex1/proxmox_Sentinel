@@ -22,7 +22,7 @@ def _patched_create_task(*args, **kwargs):
 asyncio.ensure_future = _patched_ensure_future
 asyncio.create_task = _patched_create_task
 from core.bot import bot, dp
-from core.config import ADMIN_IDS, PROXY_URL
+from core.config import settings
 from core.middlewares import AdminFilter
 
 from core.handlers import router as core_router
@@ -36,23 +36,23 @@ async def main():
 
 
     # Настройка прокси
-    if PROXY_URL:
+    if settings.proxy_url:
         try:
             from aiogram.client.session.aiohttp import AiohttpSession
             
-            safe_url = PROXY_URL
-            if '@' in PROXY_URL:
-                proto = PROXY_URL.split('://')[0]
-                host_port = PROXY_URL.split('@')[1]
+            safe_url = settings.proxy_url
+            if '@' in settings.proxy_url:
+                proto = settings.proxy_url.split('://')[0]
+                host_port = settings.proxy_url.split('@')[1]
                 safe_url = f"{proto}://***:***@{host_port}"
                 
-            if PROXY_URL.startswith('ss://'):
+            if settings.proxy_url.startswith('ss://'):
                 import pproxy
                 import urllib.parse
                 local_socks_url = "socks5://127.0.0.1:10808"
                 
                 # Очищаем URL от лишних параметров для pproxy и исправляем padding base64
-                parsed = urllib.parse.urlparse(PROXY_URL)
+                parsed = urllib.parse.urlparse(settings.proxy_url)
                 netloc = parsed.netloc or parsed.path
                 if '@' in netloc:
                     creds, host_port = netloc.rsplit('@', 1)
@@ -76,8 +76,8 @@ async def main():
                 session = AiohttpSession(proxy=local_socks_url)
                 logging.info(f"Используется Shadowsocks прокси для Telegram через встроенный туннель: {safe_url}")
             else:
-                session = AiohttpSession(proxy=PROXY_URL)
-                if PROXY_URL.startswith(('socks5://', 'socks4://')):
+                session = AiohttpSession(proxy=settings.proxy_url)
+                if settings.proxy_url.startswith(('socks5://', 'socks4://')):
                     logging.info(f"Используется SOCKS прокси для Telegram: {safe_url}")
                 else:
                     logging.info(f"Используется HTTP прокси для Telegram: {safe_url}")
@@ -97,7 +97,7 @@ async def main():
     dp.include_router(ansible_router)
     
     # Запускаем фоновые задачи (Proxmox Alert System)
-    if ADMIN_IDS:
+    if settings.admin_ids:
         asyncio.create_task(proxmox_monitor())
         try:
             from modules.proxmox.monitor import start_all_lxc_monitors
@@ -141,5 +141,6 @@ async def main():
 
 
 if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO)
+    from core.logging_setup import setup_logging
+    setup_logging()
     asyncio.run(main())

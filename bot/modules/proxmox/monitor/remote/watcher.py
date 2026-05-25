@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from core.config import REMOTE_SERVERS
+from core.config import settings
 from modules.proxmox.monitor.utils import LogTailer
 from .ssh import get_ssh_base_cmd
 from .hysteria import handle_remote_hysteria_line
@@ -29,13 +29,13 @@ async def monitor_remote_task(server, service_name, command_args, callback):
 
 async def monitor_remote_server():
     """Запуск всех задач отслеживания для всех удаленных VPS в фоновом режиме."""
-    if not REMOTE_SERVERS:
+    if not settings.remote_servers:
         logging.warning("[Remote Monitor] Список удаленных серверов REMOTE_SERVERS пуст.")
         return
         
-    logging.info(f"[Remote Monitor] Инициализация мониторинга для {len(REMOTE_SERVERS)} удаленных серверов...")
+    logging.info(f"[Remote Monitor] Инициализация мониторинга для {len(settings.remote_servers)} удаленных серверов...")
     
-    for server in REMOTE_SERVERS:
+    for server in settings.remote_servers:
         logging.info(f"[Remote Monitor] Запуск фоновых задач для VPS {server['ip']}...")
         
         # Очищаем временные блокировки iptables от прошлых запусков бота

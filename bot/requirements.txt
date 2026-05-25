@@ -6,3 +6,8 @@ aiohttp-socks
 aiohttp
 pproxy
 pycryptodome
+pydantic
+pydantic-settings
+asyncssh
+pytest
+pytest-asyncio

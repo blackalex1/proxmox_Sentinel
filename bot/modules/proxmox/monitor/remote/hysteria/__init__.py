@@ -1,61 +1,18 @@
 import asyncio
 import logging
-import json
 import datetime
+import json
 import re
-from core.config import VPN_IGNORE_USERS, ALERT_VPN_CLIENT_UNUSUAL_PORTS
+from core.config import settings
 from modules.proxmox.monitor.utils import send_alert_to_admins
-from .ssh import run_remote_ssh_cmd, get_ssh_base_cmd
 
-# Нарушения пользователей Hysteria: username -> list of timestamps
-recent_hysteria_violations = {}
-
-# Память для троттлинга алертов трафика удаленного VPS (IP -> timestamp)
-recent_remote_traffic_alerts = {}
-
-async def block_remote_hysteria_user(server, username):
-    """Блокирует пользователя Hysteria на конкретном удаленном VPS через MongoDB и сбрасывает сессию."""
-    eval_str = f"db.users.updateOne({{_id: '{username}'}}, {{\\$set: {{blocked: true}}}})"
-    db_cmd = [f"mongosh blitz_panel --quiet --eval \"{eval_str}\""]
-    success, stdout, stderr = await run_remote_ssh_cmd(server, db_cmd)
-    if success:
-        logging.info(f"[Hysteria IPS {server['ip']}] Пользователь {username} успешно заблокирован в MongoDB.")
-        
-        kick_script = (
-            'import json, urllib.request; '
-            'cfg = json.load(open("/etc/hysteria/config.json")); '
-            'ts = cfg.get("trafficStats", {}); '
-            'secret = ts.get("secret", ""); '
-            'port = ts.get("listen", "").split(":")[-1]; '
-            'req = urllib.request.Request(f"http://127.0.0.1:{port}/kick", '
-            f'data=json.dumps(["{username}"]).encode(), '
-            'headers={"Authorization": secret, "Content-Type": "application/json"}, method="POST"); '
-            'urllib.request.urlopen(req)'
-        )
-        kick_cmd = [f"python3 -c '{kick_script}'"]
-        kick_success, _, kick_err = await run_remote_ssh_cmd(server, kick_cmd)
-        if kick_success:
-            logging.info(f"[Hysteria IPS {server['ip']}] Активные сессии пользователя {username} успешно сброшены.")
-        else:
-            logging.warning(f"[Hysteria IPS {server['ip']}] Не удалось сбросить активные сессии {username}: {kick_err}")
-    else:
-        logging.error(f"[Hysteria IPS {server['ip']}] Не удалось заблокировать {username} на VPS: {stderr}")
-    return success
-
-async def unblock_remote_hysteria_user(server, username):
-    """Разблокирует пользователя Hysteria на конкретном удаленном VPS через MongoDB."""
-    if not server:
-        logging.error(f"[Hysteria IPS] Разблокировка невозможна: сервер не передан.")
-        return False
-        
-    eval_str = f"db.users.updateOne({{_id: '{username}'}}, {{\\$set: {{blocked: false}}}})"
-    cmd = [f"mongosh blitz_panel --quiet --eval \"{eval_str}\""]
-    success, stdout, stderr = await run_remote_ssh_cmd(server, cmd)
-    if success:
-        logging.info(f"[Hysteria IPS {server['ip']}] Пользователь {username} успешно разблокирован в MongoDB.")
-    else:
-        logging.error(f"[Hysteria IPS {server['ip']}] Не удалось разблокировать {username}: {stderr}")
-    return success
+from .alerts import (
+    handle_hysteria_connect, 
+    handle_hysteria_disconnect, 
+    recent_hysteria_violations, 
+    recent_remote_traffic_alerts
+)
+from .ips import block_remote_hysteria_user, unblock_remote_hysteria_user
 
 async def handle_remote_hysteria_line(line, server=None):
     """Парсинг JSON логов подключений и TCP-ошибок Hysteria 2."""
@@ -69,15 +26,10 @@ async def handle_remote_hysteria_line(line, server=None):
                 username = data.get("id", "Unknown")
                 client_ip = data.get("addr", "").split(":")[0]
                 
-                if username in VPN_IGNORE_USERS:
+                if username in settings.vpn_ignore_users:
                     return
                     
-                timestamp = datetime.datetime.now().strftime("%H:%M:%S")
-                msg = (f"🟢 <b>[VPS Hysteria: {server['ip']}] Клиент подключился!</b>\n\n"
-                       f"👤 Пользователь: <code>{username}</code>\n"
-                       f"🌐 IP-адрес: <code>{client_ip}</code>\n"
-                       f"🕒 Время: <code>{timestamp}</code>")
-                await send_alert_to_admins(msg)
+                await handle_hysteria_connect(server, username, client_ip)
                 logging.info(f"[Remote Hysteria {server['ip']}] Client {username} connected from {client_ip}")
 
         elif "client disconnected" in line:
@@ -87,15 +39,10 @@ async def handle_remote_hysteria_line(line, server=None):
                 username = data.get("id", "Unknown")
                 client_ip = data.get("addr", "").split(":")[0]
                 
-                if username in VPN_IGNORE_USERS:
+                if username in settings.vpn_ignore_users:
                     return
                     
-                timestamp = datetime.datetime.now().strftime("%H:%M:%S")
-                msg = (f"🔴 <b>[VPS Hysteria: {server['ip']}] Клиент отключился</b>\n\n"
-                       f"👤 Пользователь: <code>{username}</code>\n"
-                       f"🌐 IP-адрес: <code>{client_ip}</code>\n"
-                       f"🕒 Время: <code>{timestamp}</code>")
-                await send_alert_to_admins(msg)
+                await handle_hysteria_disconnect(server, username, client_ip)
                 logging.info(f"[Remote Hysteria {server['ip']}] Client {username} disconnected")
 
         elif "TCP error" in line:
@@ -107,7 +54,7 @@ async def handle_remote_hysteria_line(line, server=None):
                 req_addr = data.get("reqAddr", "")
                 err_msg = data.get("error", "")
                 
-                if not req_addr or username in VPN_IGNORE_USERS:
+                if not req_addr or username in settings.vpn_ignore_users:
                     return
                     
                 if ":" in req_addr:
@@ -164,7 +111,7 @@ async def handle_remote_hysteria_line(line, server=None):
                                f"ℹ️ Ошибка: <i>{err_msg}</i>\n"
                                f"🕒 Время: <code>{timestamp}</code>")
                         await send_alert_to_admins(msg)
-                elif not is_whitelisted and ALERT_VPN_CLIENT_UNUSUAL_PORTS:
+                elif not is_whitelisted and settings.alert_vpn_client_unusual_ports:
                     last_alert = recent_remote_traffic_alerts.get(throttle_key, 0)
                     if now - last_alert < 60:
                         return

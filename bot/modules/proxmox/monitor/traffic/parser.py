@@ -1,10 +1,6 @@
 import os
 import re
-from core.config import (
-    TRUSTED_ADMIN_IPS, VPN_VMID, MONITOR_LXC_VPN_PORTS,
-    MONITOR_LXC_PORTS_SENSITIVE, MONITOR_LXC_PORTS_WHITELIST,
-    ALERT_VPN_CLIENT_UNUSUAL_PORTS
-)
+from core.config import settings
 from modules.proxmox.monitor.utils import is_private_ip
 
 def find_kernel_log_path():
@@ -33,23 +29,21 @@ def classify_connection(event):
     if vmid == 0:
         if direction == 'IN':
             if dpt in [22, 8006]:
-                if src in TRUSTED_ADMIN_IPS or src == dst or src in ['127.0.0.1', '::1', 'localhost']:
+                if src in settings.trusted_admin_ips or src == dst or src in ['127.0.0.1', '::1', 'localhost']:
                     return ('INFO', f'🟢 Локальный вход на Хост (порт :{dpt})', f'Информационное: Доверенное подключение к панели управления Хоста с IP {src}')
                 elif not is_private_ip(src):
                     return ('CRITICAL', f'🚨 Вход на Хост (порт :{dpt}) из Интернета', f'КРИТИЧЕСКИЙ РИСК: Попытка подключения к управлению Хостом со внешнего IP {src}!')
                 else:
                     return ('WARNING', f'⚠️ Подозрительный локальный вход на Хост (порт :{dpt})', f'Внимание: Неавторизованный локальный IP {src} подключился к порту управления {dpt}!')
         elif direction == 'OUT':
-            if dpt in MONITOR_LXC_PORTS_SENSITIVE:
-                from core.config import REMOTE_SERVERS, PROXMOX_HOST
-                
+            if dpt in settings.monitor_lxc_ports_sensitive:
                 proxmox_ip = "127.0.0.1"
-                if PROXMOX_HOST:
-                    p_ip = PROXMOX_HOST.split(':')[0]
+                if settings.proxmox_host:
+                    p_ip = settings.proxmox_host.split(':')[0]
                     if p_ip:
                         proxmox_ip = p_ip
                 
-                vps_ips = [s['ip'] for s in REMOTE_SERVERS]
+                vps_ips = [s['ip'] for s in settings.remote_servers]
                 if dst in vps_ips and dpt == 22:
                     return ('INFO', 'Служебный SSH Хоста к VPS', 'Легитимный служебный трафик мониторинга VPS')
                 
@@ -60,11 +54,11 @@ def classify_connection(event):
         return ('INFO', 'Трафик Хоста', f'Соединение с Хостом на порт {dpt}')
 
     # 1. Проверяем, является ли это контейнером с VPN
-    if vmid == VPN_VMID:
+    if vmid == settings.vpn_vmid:
         is_local = event.get('is_local_process', False)
         
         if direction == 'IN':
-            if dpt in MONITOR_LXC_VPN_PORTS:
+            if dpt in settings.monitor_lxc_vpn_ports:
                 return ('INFO', 'VPN-вход (Клиент)', 'Легитимное подключение клиента к VPN-серверу')
                 
             if dpt == 22:
@@ -73,7 +67,7 @@ def classify_connection(event):
                 else:
                     return ('WARNING', '⚠️ Локальный SSH на VPN-сервер', 'Подозрительно: Попытка локального SSH входа на VPN-сервер')
                     
-            if dpt in MONITOR_LXC_PORTS_SENSITIVE:
+            if dpt in settings.monitor_lxc_ports_sensitive:
                 if not is_private_ip(src):
                     return ('CRITICAL', f'🚨 Доступ к sensitive порту :{dpt} из Сети', f'КРИТИЧЕСКИЙ РИСК: Внешний доступ к порту {dpt} на VPN-сервере')
                 else:
@@ -81,8 +75,8 @@ def classify_connection(event):
             return ('INFO', 'Входящий трафик VPN-сервера', f'Входящий запрос к VPN-серверу на порт {dpt}')
             
         elif direction == 'OUT':
-            is_sensitive = dpt in MONITOR_LXC_PORTS_SENSITIVE
-            is_whitelisted = dpt in MONITOR_LXC_PORTS_WHITELIST or dpt in [80, 443, 53, 123]
+            is_sensitive = dpt in settings.monitor_lxc_ports_sensitive
+            is_whitelisted = dpt in settings.monitor_lxc_ports_whitelist or dpt in [80, 443, 53, 123]
             
             if is_local:
                 if is_whitelisted:
@@ -108,8 +102,8 @@ def classify_connection(event):
     is_src_private = is_private_ip(src)
     is_dst_private = is_private_ip(dst)
     
-    is_sensitive = dpt in MONITOR_LXC_PORTS_SENSITIVE
-    is_whitelisted = dpt in MONITOR_LXC_PORTS_WHITELIST
+    is_sensitive = dpt in settings.monitor_lxc_ports_sensitive
+    is_whitelisted = dpt in settings.monitor_lxc_ports_whitelist
     
     if direction == 'IN':
         if is_sensitive:
@@ -157,7 +151,7 @@ def parse_iptables_line(line):
     vmid = 0
     if "HOST_CONN:" not in line and "HOST_CONN_OUT:" not in line:
         if "LXC_VPN_LOCAL_OUT:" in line:
-            vmid = VPN_VMID
+            vmid = settings.vpn_vmid
         else:
             vmid_found = None
             for interface in [data.get('PHYSIN', ''), data.get('PHYSOUT', ''), data.get('IN', ''), data.get('OUT', '')]:

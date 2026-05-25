@@ -2,9 +2,7 @@ import asyncio
 import logging
 import time
 
-from core.config import (
-    MONITOR_LXC_CPU, MONITOR_LXC_RAM, MONITOR_LXC_DISK, VPN_VMID
-)
+from core.config import settings
 from modules.proxmox.api import proxmox
 
 from .state import lxc_name_cache, lxc_state_cache, lxc_alert_throttle
@@ -57,7 +55,7 @@ async def monitor_lxc_resources():
                         await send_alert_to_admins(msg)
                         
                         # Если это запуск VPN-контейнера, заново инициализируем внутренние правила
-                        if vmid == VPN_VMID and state == "running":
+                        if vmid == settings.vpn_vmid and state == "running":
                             setup_vpn_container_rules()
                     elif prev_state is None:
                         # Первичная инициализация кэша
@@ -81,38 +79,38 @@ async def monitor_lxc_resources():
                             now = time.time()
                             
                             # Проверка CPU
-                            if cpu > MONITOR_LXC_CPU:
+                            if cpu > settings.monitor_lxc_cpu:
                                 last_alert = lxc_alert_throttle.get((vmid, 'cpu'), 0)
                                 if now - last_alert > ALERT_THROTTLE_INTERVAL:
                                     lxc_alert_throttle[(vmid, 'cpu')] = now
                                     msg = (f"⚠️ <b>Внимание: Высокая нагрузка CPU!</b>\n\n"
                                            f"📦 LXC: <b>{vmid} ({name})</b>\n"
-                                           f"🔴 CPU: <b>{cpu:.1f}%</b> (Порог: {MONITOR_LXC_CPU}%)")
+                                           f"🔴 CPU: <b>{cpu:.1f}%</b> (Порог: {settings.monitor_lxc_cpu}%)")
                                     await send_alert_to_admins(msg)
                             else:
                                 # Сбрасываем троттлинг, если показатель пришел в норму
                                 lxc_alert_throttle.pop((vmid, 'cpu'), None)
                                 
                             # Проверка RAM
-                            if mem_pct > MONITOR_LXC_RAM:
+                            if mem_pct > settings.monitor_lxc_ram:
                                 last_alert = lxc_alert_throttle.get((vmid, 'ram'), 0)
                                 if now - last_alert > ALERT_THROTTLE_INTERVAL:
                                     lxc_alert_throttle[(vmid, 'ram')] = now
                                     msg = (f"⚠️ <b>Внимание: Высокое потребление RAM!</b>\n\n"
                                            f"📦 LXC: <b>{vmid} ({name})</b>\n"
-                                           f"🔴 ОЗУ: <b>{mem_pct:.1f}%</b> ({mem / (1024**3):.1f} / {maxmem / (1024**3):.1f} GB) (Порог: {MONITOR_LXC_RAM}%)")
+                                           f"🔴 ОЗУ: <b>{mem_pct:.1f}%</b> ({mem / (1024**3):.1f} / {maxmem / (1024**3):.1f} GB) (Порог: {settings.monitor_lxc_ram}%)")
                                     await send_alert_to_admins(msg)
                             else:
                                 lxc_alert_throttle.pop((vmid, 'ram'), None)
                                 
                             # Проверка Disk
-                            if disk_pct > MONITOR_LXC_DISK:
+                            if disk_pct > settings.monitor_lxc_disk:
                                 last_alert = lxc_alert_throttle.get((vmid, 'disk'), 0)
                                 if now - last_alert > ALERT_THROTTLE_INTERVAL:
                                     lxc_alert_throttle[(vmid, 'disk')] = now
                                     msg = (f"⚠️ <b>Внимание: Переполнение Диска LXC!</b>\n\n"
                                            f"📦 LXC: <b>{vmid} ({name})</b>\n"
-                                           f"🔴 Диск: <b>{disk_pct:.1f}%</b> ({disk / (1024**3):.1f} / {maxdisk / (1024**3):.1f} GB) (Порог: {MONITOR_LXC_DISK}%)")
+                                           f"🔴 Диск: <b>{disk_pct:.1f}%</b> ({disk / (1024**3):.1f} / {maxdisk / (1024**3):.1f} GB) (Порог: {settings.monitor_lxc_disk}%)")
                                     await send_alert_to_admins(msg)
                             else:
                                 lxc_alert_throttle.pop((vmid, 'disk'), None)

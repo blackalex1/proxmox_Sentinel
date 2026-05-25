@@ -8,7 +8,8 @@ from aiogram.types import CallbackQuery
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 
-from core.config import ANSIBLE_PLAYBOOKS_DIR
+from core.config import settings
+ANSIBLE_PLAYBOOKS_DIR = settings.ansible_playbooks_dir or os.path.join(os.getcwd(), 'playbooks')
 from modules.ansible.keyboards import get_ansible_main_keyboard, get_ansible_dynamic_host_keyboard
 
 router = Router(name="ansible_router")

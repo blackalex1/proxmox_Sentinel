@@ -2,7 +2,8 @@ import os
 import glob
 import logging
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-from core.config import ANSIBLE_PLAYBOOKS_DIR
+from core.config import settings
+ANSIBLE_PLAYBOOKS_DIR = settings.ansible_playbooks_dir or os.path.join(os.getcwd(), 'playbooks')
 
 def parse_ansible_inventory(directory: str) -> dict:
     inventory_files = ['hosts.ini', 'inventory', 'hosts']
