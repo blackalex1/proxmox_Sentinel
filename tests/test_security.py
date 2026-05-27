@@ -213,3 +213,211 @@ async def test_get_and_kill_self_defense_child_process():
         settings.ips_process_whitelist = original_whitelist
 
 
+@pytest.mark.asyncio
+async def test_get_bot_public_ip():
+    from modules.proxmox.monitor.remote.auth import get_bot_public_ip
+    import modules.proxmox.monitor.remote.auth as remote_auth
+    
+    # Сбросим кэш перед тестом
+    remote_auth.bot_public_ip = None
+    
+    # Мокаем aiohttp.ClientSession
+    mock_response = AsyncMock()
+    mock_response.status = 200
+    mock_response.text = AsyncMock(return_value="203.0.113.88")
+    
+    mock_session = AsyncMock()
+    mock_session.__aenter__.return_value = mock_session
+    
+    # get должен быть обычным MagicMock, чтобы возвращать контекст напрямую
+    mock_session.get = MagicMock()
+    
+    mock_get_context = AsyncMock()
+    mock_get_context.__aenter__.return_value = mock_response
+    mock_session.get.return_value = mock_get_context
+    
+    with patch("aiohttp.ClientSession", return_value=mock_session):
+        ip = await get_bot_public_ip()
+        assert ip == "203.0.113.88"
+
+
+@pytest.mark.asyncio
+async def test_get_bot_public_ip_fallback():
+    from modules.proxmox.monitor.remote.auth import get_bot_public_ip
+    import modules.proxmox.monitor.remote.auth as remote_auth
+    
+    remote_auth.bot_public_ip = None
+    
+    # Первая попытка фейлится, вторая проходит
+    mock_response_ok = AsyncMock()
+    mock_response_ok.status = 200
+    mock_response_ok.text = AsyncMock(return_value="203.0.113.99")
+    
+    mock_session = AsyncMock()
+    mock_session.__aenter__.return_value = mock_session
+    
+    # get должен быть обычным MagicMock, чтобы возвращать контекст напрямую
+    mock_session.get = MagicMock()
+    
+    mock_get_fail_context = AsyncMock()
+    mock_get_fail_context.__aenter__.side_effect = Exception("ipify failed")
+    
+    mock_get_ok_context = AsyncMock()
+    mock_get_ok_context.__aenter__.return_value = mock_response_ok
+    
+    mock_session.get.side_effect = [mock_get_fail_context, mock_get_ok_context]
+    
+    with patch("aiohttp.ClientSession", return_value=mock_session):
+        ip = await get_bot_public_ip()
+        assert ip == "203.0.113.99"
+
+
+
+def test_parse_tcp_file():
+    from modules.proxmox.monitor.remote.auth import parse_tcp_file
+    
+    tcp_content = (
+        "  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode\n"
+        "   0: 0100007F:0016 0100007F:0400 01 00000000:00000000 00:00000000 00000000  1000        0 12345 1 0000000000000000\n"
+        "   1: 326433C6:3039 326433C6:0016 01 00000000:00000000 00:00000000 00000000     0        0 23456 1 0000000000000000\n"
+    )
+    
+    mock_open = patch("builtins.open", MagicMock(side_effect=lambda path, *args, **kwargs: 
+        MagicMock(__enter__=lambda s: s, __exit__=lambda s, *a: None, readlines=lambda: tcp_content.splitlines())
+    ))
+    
+    with patch("os.path.exists", return_value=True), mock_open:
+        conns = parse_tcp_file("/proc/999/net/tcp")
+        assert len(conns) == 2
+        assert conns[1] == (12345, "198.51.100.50", 22)
+
+
+def test_get_active_ssh_ports_for_vps():
+    from modules.proxmox.monitor.remote.auth import get_active_ssh_ports_for_vps
+    
+    with patch("os.getpid", return_value=1000), \
+         patch("modules.proxmox.monitor.remote.auth.get_child_pids", return_value=[1001, 1002]), \
+         patch("os.path.exists", side_effect=lambda path: True if "/proc/" in str(path) else False), \
+         patch("builtins.open", MagicMock(side_effect=lambda path, *args, **kwargs:
+             MagicMock(__enter__=lambda s: s, __exit__=lambda s, *a: None, read=lambda: "ssh" if "1001/comm" in str(path) else "bash")
+         )), \
+         patch("modules.proxmox.monitor.remote.auth.parse_tcp_file", side_effect=lambda path: 
+             [(43210, "198.51.100.50", 22)] if "1001" in str(path) else []
+         ):
+        ports = get_active_ssh_ports_for_vps("198.51.100.50")
+        assert ports == [43210]
+
+
+@pytest.mark.asyncio
+async def test_handle_remote_ssh_auth_line_trusted_bot():
+    from modules.proxmox.monitor.remote.auth import handle_remote_ssh_auth_line
+    import modules.proxmox.monitor.remote.auth as remote_auth
+    from core.config import settings
+    
+    server = {
+        'ip': '198.51.100.50',
+        'user': 'root',
+        'key': 'config/dummy_key'
+    }
+    
+    original_keys = settings.remote_monitor_ignore_keys
+    original_ips = settings.remote_monitor_ignore_ips
+    settings.remote_monitor_ignore_keys = ["bot@bot"]
+    settings.remote_monitor_ignore_ips = ["203.0.113.88"]
+    
+    line = "May 27 21:00:00 server sshd[123]: Accepted publickey for root from 203.0.113.88 port 43210 ssh2: RSA SHA256:fingerprint_xyz"
+    
+    try:
+        remote_auth.remote_key_caches[server['ip']] = {"SHA256:fingerprint_xyz": "bot@bot"}
+        remote_auth.bot_public_ip = "203.0.113.88"
+        
+        with patch("modules.proxmox.monitor.remote.auth.get_active_ssh_ports_for_vps", return_value=[43210]), \
+             patch("modules.proxmox.monitor.remote.auth.refresh_remote_key_cache", AsyncMock()) as mock_refresh, \
+             patch("modules.proxmox.monitor.remote.auth.send_alert_to_admins", AsyncMock()) as mock_send:
+            await handle_remote_ssh_auth_line(line, server=server)
+            mock_send.assert_not_called()
+            mock_refresh.assert_not_called()
+    finally:
+        settings.remote_monitor_ignore_keys = original_keys
+        settings.remote_monitor_ignore_ips = original_ips
+
+
+@pytest.mark.asyncio
+async def test_handle_remote_ssh_auth_line_unauthorized_ip():
+    from modules.proxmox.monitor.remote.auth import handle_remote_ssh_auth_line
+    import modules.proxmox.monitor.remote.auth as remote_auth
+    from core.config import settings
+    
+    server = {
+        'ip': '198.51.100.50',
+        'user': 'root',
+        'key': 'config/dummy_key'
+    }
+    
+    original_keys = settings.remote_monitor_ignore_keys
+    original_ips = settings.remote_monitor_ignore_ips
+    settings.remote_monitor_ignore_keys = ["bot@bot"]
+    settings.remote_monitor_ignore_ips = ["203.0.113.88"]
+    
+    line = "May 27 21:00:00 server sshd[123]: Accepted publickey for root from 99.99.99.99 port 54321 ssh2: RSA SHA256:fingerprint_xyz"
+    
+    try:
+        remote_auth.remote_key_caches[server['ip']] = {"SHA256:fingerprint_xyz": "bot@bot"}
+        remote_auth.bot_public_ip = "203.0.113.88"
+        
+        with patch("modules.proxmox.monitor.remote.auth.get_active_ssh_ports_for_vps", return_value=[]), \
+             patch("modules.proxmox.monitor.remote.auth.refresh_remote_key_cache", AsyncMock()) as mock_refresh, \
+             patch("modules.proxmox.monitor.remote.auth.send_alert_to_admins", AsyncMock()) as mock_send:
+            await handle_remote_ssh_auth_line(line, server=server)
+            
+            mock_send.assert_called_once()
+            alert_text = mock_send.call_args[0][0]
+            assert "КРИТИЧЕСКОЕ ПРЕДУПРЕЖДЕНИЕ БЕЗОПАСНОСТИ" in alert_text
+            assert "Возможна утечка и компрометация приватного ключа" in alert_text
+            mock_refresh.assert_not_called()
+    finally:
+        settings.remote_monitor_ignore_keys = original_keys
+        settings.remote_monitor_ignore_ips = original_ips
+
+
+@pytest.mark.asyncio
+async def test_handle_remote_ssh_auth_line_compromised_container():
+    from modules.proxmox.monitor.remote.auth import handle_remote_ssh_auth_line
+    import modules.proxmox.monitor.remote.auth as remote_auth
+    from core.config import settings
+    
+    server = {
+        'ip': '198.51.100.50',
+        'user': 'root',
+        'key': 'config/dummy_key'
+    }
+    
+    original_keys = settings.remote_monitor_ignore_keys
+    original_ips = settings.remote_monitor_ignore_ips
+    settings.remote_monitor_ignore_keys = ["bot@bot"]
+    settings.remote_monitor_ignore_ips = ["203.0.113.88"]
+    
+    line = "May 27 21:00:00 server sshd[123]: Accepted publickey for root from 203.0.113.88 port 9999 ssh2: RSA SHA256:fingerprint_xyz"
+    
+    try:
+        remote_auth.remote_key_caches[server['ip']] = {"SHA256:fingerprint_xyz": "bot@bot"}
+        remote_auth.bot_public_ip = "203.0.113.88"
+        
+        with patch("modules.proxmox.monitor.remote.auth.get_active_ssh_ports_for_vps", return_value=[43210]), \
+             patch("modules.proxmox.monitor.remote.auth.refresh_remote_key_cache", AsyncMock()) as mock_refresh, \
+             patch("modules.proxmox.monitor.remote.auth.send_alert_to_admins", AsyncMock()) as mock_send:
+            await handle_remote_ssh_auth_line(line, server=server)
+            
+            mock_send.assert_called_once()
+            alert_text = mock_send.call_args[0][0]
+            assert "КРИТИЧЕСКОЕ ПРЕДУПРЕЖДЕНИЕ БЕЗОПАСНОСТИ" in alert_text
+            assert "Крайне высокий риск компрометации контейнера/хоста бота" in alert_text
+            mock_refresh.assert_not_called()
+    finally:
+        settings.remote_monitor_ignore_keys = original_keys
+        settings.remote_monitor_ignore_ips = original_ips
+
+
+
+
+

@@ -77,25 +77,171 @@ async def save_active_cards_state():
         serializable_cards[key_str] = serializable_card
         
     await set_state("active_activity_cards", serializable_cards)
+def is_card_active(card, now_time):
+    """Проверяет, активна ли карточка сессии Hysteria.
+    Карточка считается активной, если:
+    1. У пользователя есть хотя бы одно незакрытое (активное) подключение.
+    2. Или с момента последнего события (активности) прошло менее 15 минут (900 сек).
+    """
+    if not card:
+        return False
+        
+    # Проверяем наличие активных подключений
+    has_active = False
+    for ip, conns in card.get('connections', {}).items():
+        if conns:
+            has_active = True
+            break
+            
+    if has_active:
+        return True
+        
+    # Если все отключились, даем карточке "повисеть" 15 минут для группировки переподключений
+    last_act = card.get('last_activity_at', card.get('started_at', now_time))
+    return now_time - last_act < 900.0
 
 
-def format_card_msg(server_ip, username, lines):
-    # Показываем последние 15 строк хронологии событий
+# Кэш параметров API Hysteria для каждого сервера: server_ip -> (port, secret)
+hysteria_api_configs = {}
+
+async def discover_hysteria_api_config(server):
+    """Автоматически считывает и разбирает /etc/hysteria/config.json на удаленном сервере
+    для извлечения порта и секрета Traffic Stats API.
+    """
+    import json
+    ip = server['ip']
+    if ip in hysteria_api_configs:
+        return hysteria_api_configs[ip]
+        
+    logging.info(f"[Remote Hysteria {ip}] Попытка автоопределения параметров Traffic Stats API...")
+    try:
+        from ..ssh import run_remote_ssh_cmd
+        success, stdout, stderr = await run_remote_ssh_cmd(server, ["cat", "/etc/hysteria/config.json"])
+        if success and stdout:
+            data = json.loads(stdout)
+            stats = data.get("trafficStats", {})
+            listen = stats.get("listen", "")
+            secret = stats.get("secret", "")
+            
+            if listen and secret:
+                port = "25413"
+                if ":" in listen:
+                    port = listen.split(":")[-1]
+                
+                config = {"port": port, "secret": secret}
+                hysteria_api_configs[ip] = config
+                logging.info(f"[Remote Hysteria {ip}] Успешно обнаружен API: порт {port}, секрет найден.")
+                return config
+    except Exception as e:
+        logging.warning(f"[Remote Hysteria {ip}] Не удалось разобрать конфиг для автоопределения API: {e}")
+        
+    return None
+
+async def get_remote_hysteria_traffic(server, username):
+    """Запрашивает из Traffic Stats API текущий трафик (tx/rx) для конкретного пользователя."""
+    import json
+    try:
+        config = await discover_hysteria_api_config(server)
+        if not config:
+            return None
+            
+        port = config["port"]
+        secret = config["secret"]
+        
+        from ..ssh import run_remote_ssh_cmd
+        cmd = ["curl", "-s", "-H", f"'Authorization: {secret}'", f"http://127.0.0.1:{port}/traffic"]
+        
+        success, stdout, stderr = await run_remote_ssh_cmd(server, cmd)
+        if success and stdout:
+            data = json.loads(stdout)
+            user_stats = data.get(username)
+            if user_stats:
+                return user_stats
+    except Exception as e:
+        logging.warning(f"[Remote Hysteria {server['ip']}] Не удалось получить трафик для {username}: {e}")
+    return None
+
+async def format_card_msg_async(server, username, lines):
+    """Форматирует сообщение карточки активности Hysteria 2 с добавлением данных по трафику."""
     displayed_lines = lines[-15:]
     timeline = "\n".join(displayed_lines)
     if len(lines) > 15:
         timeline = "<i>... показать ещё ...</i>\n" + timeline
         
+    traffic_str = ""
+    stats = await get_remote_hysteria_traffic(server, username)
+    if stats:
+        tx = stats.get("tx", 0)
+        rx = stats.get("rx", 0)
+        
+        def format_bytes(b):
+            if b < 1024:
+                return f"{b} B"
+            elif b < 1024 * 1024:
+                return f"{b / 1024:.2f} KB"
+            elif b < 1024 * 1024 * 1024:
+                return f"{b / (1024 * 1024):.2f} MB"
+            else:
+                return f"{b / (1024 * 1024 * 1024):.2f} GB"
+                
+        # В Hysteria tx — это то, что отправлено клиенту (скачано им), rx — принято от клиента (загружено им)
+        download = format_bytes(tx)
+        upload = format_bytes(rx)
+        traffic_str = f"📥 <b>Скачано:</b> <code>{download}</code> | 📤 <b>Загружено:</b> <code>{upload}</code>\n\n"
+        
     text = (
-        f"📊 <b>[VPS Hysteria: {server_ip}] Активность сессии</b>\n"
+        f"📊 <b>[VPS Hysteria: {server['ip']}] Активность сессии</b>\n"
         f"━━━━━━━━━━━━━━━━━━━━━━━━\n"
         f"👤 <b>Пользователь:</b> <code>{username}</code>\n\n"
+        f"{traffic_str}"
         f"📋 <b>Хронология событий:</b>\n"
         f"{timeline}"
     )
     return text
 
-async def handle_hysteria_connect(server, username, client_ip):
+async def poll_active_hysteria_traffic():
+    """Фоновый периодический опрос API Hysteria для обновления трафика в активных карточках."""
+    while True:
+        try:
+            await asyncio.sleep(60) # опрашиваем раз в минуту
+            
+            from core.config import settings
+            if not settings.remote_servers:
+                continue
+                
+            for server in settings.remote_servers:
+                server_ip = server['ip']
+                
+                for (srv_ip, username), card in list(active_activity_cards.items()):
+                    if srv_ip != server_ip:
+                        continue
+                        
+                    import time as pytime
+                    now_time = pytime.time()
+                    if not is_card_active(card, now_time):
+                        continue
+                        
+                    # Если карточка создана в бесшумном режиме (нет Telegram-сообщений), пропускаем опрос
+                    if not card.get('admin_messages'):
+                        continue
+                        
+                    msg = await format_card_msg_async(server, username, card['lines'])
+                    
+                    for s in card['admin_messages']:
+                        try:
+                            await bot.edit_message_text(
+                                chat_id=s['admin_id'],
+                                message_id=s['message_id'],
+                                text=msg,
+                                parse_mode="HTML"
+                            )
+                        except Exception as e:
+                            if "message is not modified" not in str(e).lower():
+                                logging.error(f"Не удалось обновить трафик в карточке Hysteria: {e}")
+        except Exception as e:
+            logging.error(f"Ошибка в фоновом опросе трафика Hysteria: {e}")
+
+async def handle_hysteria_connect(server, username, client_ip, silent=False):
     """Добавляет новое подключение к хронологической карточке (создает новую или обновляет текущую)."""
     server_ip = server['ip']
     now_time = pytime.time()
@@ -107,6 +253,20 @@ async def handle_hysteria_connect(server, username, client_ip):
     
     # СЦЕНАРИЙ БЕЗОПАСНОСТИ: Если обнаружен НОВЫЙ IP-адрес, шлем отдельное тревожное сообщение (🚨)
     if is_new_ip:
+        if silent:
+            # В бесшумном режиме просто создаем карточку без отправки Telegram сообщения
+            lines = [f"🟢 <code>[{timestamp}]</code> Подключение с <code>{client_ip}</code> ⚠️ <b>[НОВЫЙ IP]</b>"]
+            connections = {client_ip: [datetime.datetime.now()]}
+            active_activity_cards[key] = {
+                'admin_messages': [],
+                'started_at': now_time,
+                'last_activity_at': now_time,
+                'lines': lines,
+                'connections': connections
+            }
+            await save_active_cards_state()
+            return
+
         msg = (f"🚨 <b>[VPS Hysteria Security: {server_ip}] Обнаружено подключение с нового IP!</b>\n\n"
                f"👤 <b>Пользователь:</b> <code>{username}</code>\n"
                f"🌐 <b>Новый IP-адрес:</b> <code>{client_ip}</code> ⚠️ <b>[ВНИМАНИЕ]</b>\n"
@@ -141,6 +301,7 @@ async def handle_hysteria_connect(server, username, client_ip):
             active_activity_cards[key] = {
                 'admin_messages': sent_messages,
                 'started_at': now_time,
+                'last_activity_at': now_time,
                 'lines': lines,
                 'connections': connections
             }
@@ -151,25 +312,40 @@ async def handle_hysteria_connect(server, username, client_ip):
     event_line = f"🟢 <code>[{timestamp}]</code> Подключение с <code>{client_ip}</code>"
     
     card = active_activity_cards.get(key)
-    # Если карточка активна и создана менее 5 минут назад, просто редактируем её
-    if card and now_time - card['started_at'] < 300.0:
+    # Если карточка активна, просто редактируем её
+    if card and is_card_active(card, now_time):
         card['lines'].append(event_line)
+        card['last_activity_at'] = now_time
         if client_ip not in card['connections']:
             card['connections'][client_ip] = []
         card['connections'][client_ip].append(datetime.datetime.now())
         await save_active_cards_state()
         
-        msg = format_card_msg(server_ip, username, card['lines'])
-        for s in card['admin_messages']:
-            try:
-                await bot.edit_message_text(
-                    chat_id=s['admin_id'],
-                    message_id=s['message_id'],
-                    text=msg,
-                    parse_mode="HTML"
-                )
-            except Exception as e:
-                logging.error(f"Не удалось обновить карточку Hysteria для админа {s['admin_id']}: {e}")
+        if not silent:
+            if not card.get('admin_messages'):
+                # Если карточка была создана без отправки сообщения (в бесшумном режиме), шлем новое
+                msg = await format_card_msg_async(server, username, card['lines'])
+                sent_messages = []
+                for admin_id in settings.admin_ids:
+                    try:
+                        m = await bot.send_message(admin_id, msg, parse_mode="HTML")
+                        sent_messages.append({'admin_id': admin_id, 'message_id': m.message_id})
+                    except Exception:
+                        pass
+                card['admin_messages'] = sent_messages
+                await save_active_cards_state()
+            else:
+                msg = await format_card_msg_async(server, username, card['lines'])
+                for s in card['admin_messages']:
+                    try:
+                        await bot.edit_message_text(
+                            chat_id=s['admin_id'],
+                            message_id=s['message_id'],
+                            text=msg,
+                            parse_mode="HTML"
+                        )
+                    except Exception as e:
+                        logging.error(f"Не удалось обновить карточку Hysteria для админа {s['admin_id']}: {e}")
     else:
         # Создаем новую карточку активности
         lines = [event_line]
@@ -188,7 +364,18 @@ async def handle_hysteria_connect(server, username, client_ip):
         else:
             lines.append(f"\n📋 <i>Это первое зафиксированное подключение пользователя.</i>")
             
-        msg = format_card_msg(server_ip, username, lines)
+        if silent:
+            active_activity_cards[key] = {
+                'admin_messages': [],
+                'started_at': now_time,
+                'last_activity_at': now_time,
+                'lines': lines,
+                'connections': connections
+            }
+            await save_active_cards_state()
+            return
+
+        msg = await format_card_msg_async(server, username, lines)
         sent_messages = []
         for admin_id in settings.admin_ids:
             try:
@@ -204,12 +391,13 @@ async def handle_hysteria_connect(server, username, client_ip):
             active_activity_cards[key] = {
                 'admin_messages': sent_messages,
                 'started_at': now_time,
+                'last_activity_at': now_time,
                 'lines': lines,
                 'connections': connections
             }
             await save_active_cards_state()
 
-async def handle_hysteria_disconnect(server, username, client_ip):
+async def handle_hysteria_disconnect(server, username, client_ip, silent=False):
     """Добавляет событие отключения и длительность к хронологической карточке активности."""
     server_ip = server['ip']
     now_time = pytime.time()
@@ -217,11 +405,13 @@ async def handle_hysteria_disconnect(server, username, client_ip):
     key = (server_ip, username)
     
     card = active_activity_cards.get(key)
-    if not card or now_time - card['started_at'] > 300.0:
-        await asyncio.sleep(0.8)
-        card = active_activity_cards.get(key)
+    if not card or not is_card_active(card, now_time):
+        if not silent:
+            await asyncio.sleep(0.8)
+            card = active_activity_cards.get(key)
         
-    if card and now_time - card['started_at'] < 300.0:
+    if card and is_card_active(card, now_time):
+        card['last_activity_at'] = now_time
         duration_str = "неизвестно"
         conn_list = card['connections'].get(client_ip, [])
         if conn_list:
@@ -241,21 +431,31 @@ async def handle_hysteria_disconnect(server, username, client_ip):
         card['lines'].append(event_line)
         await save_active_cards_state()
         
-        msg = format_card_msg(server_ip, username, card['lines'])
-        for s in card['admin_messages']:
-            try:
-                await bot.edit_message_text(
-                    chat_id=s['admin_id'],
-                    message_id=s['message_id'],
-                    text=msg,
-                    parse_mode="HTML"
-                )
-            except Exception as e:
-                logging.error(f"Не удалось обновить карточку Hysteria при отключении: {e}")
+        if not silent:
+            if not card.get('admin_messages'):
+                # Если карточка была создана без отправки сообщения (в бесшумном режиме), шлем разовый алерт о завершении сессии
+                msg = (f"🔴 <b>[VPS Hysteria: {server_ip}] Клиент отключился</b>\n\n"
+                       f"👤 Пользователь: <code>{username}</code>\n"
+                       f"🌐 IP-адрес: <code>{client_ip}</code> — {duration_str}\n"
+                       f"🕒 Время: <code>{timestamp}</code>")
+                await send_alert_to_admins(msg)
+            else:
+                msg = await format_card_msg_async(server, username, card['lines'])
+                for s in card['admin_messages']:
+                    try:
+                        await bot.edit_message_text(
+                            chat_id=s['admin_id'],
+                            message_id=s['message_id'],
+                            text=msg,
+                            parse_mode="HTML"
+                        )
+                    except Exception as e:
+                        logging.error(f"Не удалось обновить карточку Hysteria при отключении: {e}")
     else:
-        # Если карточки нет в памяти, шлем разовое сообщение об отключении
-        msg = (f"🔴 <b>[VPS Hysteria: {server_ip}] Клиент отключился</b>\n\n"
-               f"👤 Пользователь: <code>{username}</code>\n"
-               f"🌐 IP-адрес: <code>{client_ip}</code>\n"
-               f"🕒 Время: <code>{timestamp}</code>")
-        await send_alert_to_admins(msg)
+        if not silent:
+            # Если карточки нет в памяти, шлем разовое сообщение об отключении
+            msg = (f"🔴 <b>[VPS Hysteria: {server_ip}] Клиент отключился</b>\n\n"
+                   f"👤 Пользователь: <code>{username}</code>\n"
+                   f"🌐 IP-адрес: <code>{client_ip}</code>\n"
+                   f"🕒 Время: <code>{timestamp}</code>")
+            await send_alert_to_admins(msg)
