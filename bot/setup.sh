@@ -136,6 +136,28 @@ if [ -z "${run_wizard}" ] || [ "${run_wizard}" = "y" ] || [ "${run_wizard}" = "Y
     # Настройки прокси для Telegram
     prompt_var "PROXY_URL" "Прокси для Telegram (PROXY_URL, оставьте пустым если не требуется)" ""
 
+    # Мониторинг роутера Mihomo (Clash.Meta) и автоматический бан
+    prompt_var "MIHOMO_MONITOR_ENABLE" "Включить мониторинг роутера через Mihomo API? (True/False)" "False"
+    local mihomo_enabled=$(grep -E "^MIHOMO_MONITOR_ENABLE=" "${ENV_FILE}" | cut -d'=' -f2- | tr '[:upper:]' '[:lower:]')
+    if [ "${mihomo_enabled}" = "true" ] || [ "${mihomo_enabled}" = "1" ] || [ "${mihomo_enabled}" = "y" ] || [ "${mihomo_enabled}" = "yes" ]; then
+        prompt_var "MIHOMO_API_HOST" "IP-адрес REST API роутера Mihomo (MIHOMO_API_HOST)" "192.168.1.1"
+        prompt_var "MIHOMO_API_PORT" "Порт REST API роутера Mihomo (MIHOMO_API_PORT)" "9090"
+        prompt_var "MIHOMO_API_SECRET" "Секретный токен API Mihomo (MIHOMO_API_SECRET, оставьте пустым если нет)" ""
+        prompt_var "MIHOMO_AUTO_BAN" "Включить автоматический бан нарушителей на роутере? (True/False)" "False"
+        prompt_var "MIHOMO_MAX_VIOLATIONS" "Лимит попыток доступа до автоблокировки (MIHOMO_MAX_VIOLATIONS)" "3"
+        
+        prompt_var "ROUTER_SSH_ENABLE" "Разрешить боту подключаться к роутеру по SSH для блокировок? (True/False)" "False"
+        local r_ssh_enabled=$(grep -E "^ROUTER_SSH_ENABLE=" "${ENV_FILE}" | cut -d'=' -f2- | tr '[:upper:]' '[:lower:]')
+        if [ "${r_ssh_enabled}" = "true" ] || [ "${r_ssh_enabled}" = "1" ] || [ "${r_ssh_enabled}" = "y" ] || [ "${r_ssh_enabled}" = "yes" ]; then
+            prompt_var "ROUTER_SSH_HOST" "IP-адрес SSH роутера (ROUTER_SSH_HOST)" "192.168.1.1"
+            prompt_var "ROUTER_SSH_PORT" "Порт SSH роутера (ROUTER_SSH_PORT)" "22"
+            prompt_var "ROUTER_SSH_USER" "Имя пользователя SSH роутера (ROUTER_SSH_USER)" "root"
+            prompt_var "ROUTER_SSH_PASSWORD" "Пароль SSH роутера (ROUTER_SSH_PASSWORD, если пустой - будет использоваться ключ)" ""
+            prompt_var "ROUTER_SSH_KEY" "Путь к приватному SSH ключу роутера (ROUTER_SSH_KEY)" "config/id_rsa_router"
+            prompt_var "ROUTER_TYPE" "Тип операционной системы роутера (openwrt/keenetic/generic)" "openwrt"
+        fi
+    fi
+
     ENV_CREATED=0 # Сбрасываем предупреждение, так как переменные заполнены!
     echo -e "\n${GREEN}🎉 Конфигурация .env успешно завершена!${NC}"
 else

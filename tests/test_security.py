@@ -418,6 +418,40 @@ async def test_handle_remote_ssh_auth_line_compromised_container():
         settings.remote_monitor_ignore_ips = original_ips
 
 
+@pytest.mark.asyncio
+async def test_hysteria_disconnect_silent_no_ssh():
+    from modules.proxmox.monitor.remote.hysteria.alerts import handle_hysteria_disconnect, active_activity_cards
+    import time as pytime
+    import datetime
+    
+    server = {'ip': '198.51.100.50'}
+    username = 'test_user'
+    client_ip = '198.51.100.99'
+    key = (server['ip'], username)
+    
+    # Создаем активную карточку в памяти
+    now = pytime.time()
+    active_activity_cards[key] = {
+        'admin_messages': [],
+        'started_at': now,
+        'last_activity_at': now,
+        'lines': [],
+        'connections': {client_ip: [datetime.datetime.now()]}
+    }
+    
+    with patch("modules.proxmox.monitor.remote.hysteria.alerts.get_remote_hysteria_traffic", AsyncMock()) as mock_get_traffic, \
+         patch("modules.proxmox.monitor.remote.hysteria.alerts.update_disconnection", AsyncMock()) as mock_db:
+         
+        # Запускаем в бесшумном режиме (silent=True)
+        await handle_hysteria_disconnect(server, username, client_ip, silent=True)
+        
+        # Убеждаемся, что запрос трафика к удаленному API Hysteria по SSH/curl НЕ вызывался
+        mock_get_traffic.assert_not_called()
+        # Но сессия в базе данных все равно закрылась
+        mock_db.assert_called_once()
+
+
+
 
 
 

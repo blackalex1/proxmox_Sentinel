@@ -37,9 +37,22 @@ def init_db():
                     disconnect_time TEXT,
                     duration TEXT,
                     is_new_ip INTEGER,
+                    download_bytes INTEGER DEFAULT 0,
+                    upload_bytes INTEGER DEFAULT 0,
                     PRIMARY KEY (username, session_id)
                 );
             """)
+            
+            # Автоматическая миграция: добавляем новые колонки для трафика, если их нет
+            try:
+                conn.execute("ALTER TABLE vpn_sessions ADD COLUMN download_bytes INTEGER DEFAULT 0;")
+            except sqlite3.OperationalError:
+                pass # уже существует
+            try:
+                conn.execute("ALTER TABLE vpn_sessions ADD COLUMN upload_bytes INTEGER DEFAULT 0;")
+            except sqlite3.OperationalError:
+                pass # уже существует
+
             conn.execute("CREATE INDEX IF NOT EXISTS idx_sessions_username ON vpn_sessions (username);")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_sessions_ip ON vpn_sessions (ip);")
             conn.execute("""
@@ -57,7 +70,7 @@ def init_db():
                 );
             """)
             
-        logging.info("[Database] Таблицы базы данных успешно проверены/созданы.")
+        logging.info("[Database] Таблицы базы данных успешно проверены/созданы с поддержкой трафика.")
         
         # Миграция из JSON файла при первом запуске
         if os.path.exists(JSON_FILE):
