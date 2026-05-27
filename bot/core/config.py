@@ -59,6 +59,8 @@ class Settings(BaseSettings):
 
     # Мониторинг удаленного сервера (Target VPS)
     remote_monitor_enable: bool = Field(default=False, validation_alias='REMOTE_MONITOR_ENABLE')
+    remote_monitor_ignore_keys: List[str] | str = Field(default=['bot@bot'], validation_alias='REMOTE_MONITOR_IGNORE_KEYS')
+    remote_monitor_ignore_ips: List[str] | str = Field(default_factory=list, validation_alias='REMOTE_MONITOR_IGNORE_IPS')
 
     # Белый список процессов IPS
     ips_process_whitelist: List[str] | str = Field(default_factory=list, validation_alias='IPS_PROCESS_WHITELIST')
@@ -95,7 +97,7 @@ class Settings(BaseSettings):
         return [int(x.strip()) for x in str(v).split(',') if x.strip().isdigit()]
 
     @field_validator(
-        'trusted_admin_ips', 'vpn_ignore_users', 'ips_process_whitelist',
+        'trusted_admin_ips', 'vpn_ignore_users', 'ips_process_whitelist', 'remote_monitor_ignore_keys', 'remote_monitor_ignore_ips',
         mode='before'
     )
     @classmethod

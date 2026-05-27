@@ -16,7 +16,7 @@ from .alerts import (
 )
 from .ips import block_remote_hysteria_user, unblock_remote_hysteria_user
 
-async def handle_remote_hysteria_line(line, server=None):
+async def handle_remote_hysteria_line(line, server=None, silent=False):
     """Парсинг JSON логов подключений и TCP-ошибок Hysteria 2."""
     if not server:
         return
@@ -31,8 +31,9 @@ async def handle_remote_hysteria_line(line, server=None):
                 if username in settings.vpn_ignore_users:
                     return
                     
-                await handle_hysteria_connect(server, username, client_ip)
-                logging.info(f"[Remote Hysteria {server['ip']}] Client {username} connected from {client_ip}")
+                await handle_hysteria_connect(server, username, client_ip, silent=silent)
+                if not silent:
+                    logging.info(f"[Remote Hysteria {server['ip']}] Client {username} connected from {client_ip}")
 
         elif "client disconnected" in line:
             match = re.search(r"client disconnected\s+(\{.*\})", line)
@@ -44,10 +45,13 @@ async def handle_remote_hysteria_line(line, server=None):
                 if username in settings.vpn_ignore_users:
                     return
                     
-                await handle_hysteria_disconnect(server, username, client_ip)
-                logging.info(f"[Remote Hysteria {server['ip']}] Client {username} disconnected")
+                await handle_hysteria_disconnect(server, username, client_ip, silent=silent)
+                if not silent:
+                    logging.info(f"[Remote Hysteria {server['ip']}] Client {username} disconnected")
 
         elif "TCP error" in line:
+            if silent:
+                return
             match = re.search(r"TCP error\s+(\{.*\})", line)
             if match:
                 data = json.loads(match.group(1))
