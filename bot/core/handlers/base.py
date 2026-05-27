@@ -3,17 +3,35 @@ from aiogram import Router, types, F
 from aiogram.filters.command import Command
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 
-from .keyboards import get_main_menu_keyboard, get_main_menu_text, get_help_text
+from .keyboards import get_main_menu_keyboard, get_main_menu_text, get_help_text, get_persistent_reply_keyboard
 
 router = Router(name="core_base_router")
 
 @router.message(Command("start"))
+@router.message(F.text == "🛡️ Панель управления")
 async def cmd_start(message: types.Message):
+    # При старте или клике отправляем приветствие с персистентной клавиатурой
+    await message.answer(
+        "👋 <b>Добро пожаловать в систему мониторинга PVE Aegis!</b>\n"
+        "<i>Ниже активирована постоянная панель быстрого доступа к главным командам.</i>",
+        parse_mode="HTML",
+        reply_markup=get_persistent_reply_keyboard()
+    )
+    # И сразу отправляем интерактивное меню
     await message.answer(
         get_main_menu_text(),
         parse_mode="HTML",
         reply_markup=get_main_menu_keyboard()
     )
+
+@router.message(F.text == "📊 Статус систем")
+async def btn_status(message: types.Message):
+    from .status import cmd_status
+    await cmd_status(message)
+
+@router.message(F.text == "ℹ️ Справка")
+async def btn_help(message: types.Message):
+    await cmd_help(message)
 
 @router.callback_query(F.data == "main_menu")
 async def process_main_menu(callback: CallbackQuery):

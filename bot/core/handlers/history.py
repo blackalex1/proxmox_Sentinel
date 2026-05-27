@@ -137,11 +137,29 @@ async def callback_vpn_history_view(callback: CallbackQuery):
         status_emoji = "🟢" if s.get('disconnect_time') is None else "⚪"
         
         ip_warning = " ⚠️ <b>[НОВЫЙ IP]</b>" if s.get('is_new_ip') else ""
+        
+        # Форматируем объем трафика
+        def format_bytes(b):
+            if b is None or b == 0:
+                return "0 B"
+            if b < 1024:
+                return f"{b} B"
+            elif b < 1024 * 1024:
+                return f"{b / 1024:.2f} KB"
+            elif b < 1024 * 1024 * 1024:
+                return f"{b / (1024 * 1024):.2f} MB"
+            else:
+                return f"{b / (1024 * 1024 * 1024):.2f} GB"
+
+        download = format_bytes(s.get('download_bytes', 0))
+        upload = format_bytes(s.get('upload_bytes', 0))
+        
         lines.append(
             f"{status_emoji} <b>Сессия #{session_num}</b>\n"
             f"   ├─ <b>IP:</b> <code>{s['ip']}</code>{ip_warning}\n"
             f"   ├─ <b>Вход:</b> <code>{conn_str}</code>\n"
             f"   ├─ <b>Выход:</b> <code>{disc_str}</code>\n"
+            f"   ├─ <b>Трафик:</b> 📥 <code>{download}</code> | 📤 <code>{upload}</code>\n"
             f"   └─ <b>Длительность:</b> <code>{duration}</code>\n"
         )
         
