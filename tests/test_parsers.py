@@ -116,3 +116,26 @@ ansible_ssh_private_key_file=/path/to/key
         settings.remote_servers = original_remote
 
 
+@pytest.mark.asyncio
+async def test_xray_log_parsing_correct_ip():
+    from modules.proxmox.monitor.xui_connections import handle_xray_log_line, active_clients
+    from unittest.mock import AsyncMock, patch
+    
+    active_clients.clear()
+    
+    log_line = "2026/05/28 00:13:56.440850 from 192.0.2.1:47640 accepted tcp:51.159.186.137:22 [inbound-31534 -> hysteria] email: test_user"
+    
+    with patch("modules.proxmox.monitor.xui_connections.send_alert_to_admins", AsyncMock()) as mock_alert:
+        await handle_xray_log_line(log_line)
+        
+        # Проверяем, что клиент успешно сохранен с правильным IP-адресом
+        assert "test_user" in active_clients
+        assert active_clients["test_user"]["ip"] == "192.0.2.1"
+        
+        # Проверяем, что было отправлено корректное сообщение с правильным IP
+        mock_alert.assert_called_once()
+        alert_text = mock_alert.call_args[0][0]
+        assert "IP-адрес: <code>192.0.2.1</code>" in alert_text
+
+
+

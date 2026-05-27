@@ -14,6 +14,7 @@ def find_xray_access_log_path(vmid):
     """Поиск пути к access.log контейнера Xray на файловой системе хоста."""
     rootfs = f"/var/lib/lxc/{vmid}/rootfs"
     possible_paths = [
+        f"{rootfs}/var/log/x-ui/access.log",
         f"{rootfs}/usr/local/x-ui/access.log",
         f"{rootfs}/var/log/xray/access.log",
         f"{rootfs}/etc/x-ui/xray-access.log"
@@ -37,9 +38,9 @@ async def handle_xray_log_line(line):
         email = match.group(1).strip()
         now = asyncio.get_event_loop().time()
         
-        # Извлекаем IP-адрес клиента
+        # Извлекаем IP-адрес клиента (ищем IP:порт перед словом accepted)
         client_ip = "Неизвестный"
-        ip_match = re.search(r"(?:(?:\d{4}[/\-]\d{2}[/\-]\d{2}\s+\d{2}:\d{2}:\d{2})\s+)?(\[[0-9a-fA-F:]+\]|[\d\.]+):(\d+)", line)
+        ip_match = re.search(r"(\[[0-9a-fA-F:]+\]|[\d\.]+):(\d+)\s+accepted", line)
         if ip_match:
             client_ip = ip_match.group(1).replace("[", "").replace("]", "")
 
@@ -104,6 +105,7 @@ def find_xray_access_log_path_inside_container(vmid):
     if platform.system() != 'Linux':
         return None
     possible_paths = [
+        "/var/log/x-ui/access.log",
         "/usr/local/x-ui/access.log",
         "/var/log/xray/access.log",
         "/etc/x-ui/xray-access.log"

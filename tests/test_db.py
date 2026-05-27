@@ -51,16 +51,21 @@ async def test_hysteria_history_sqlite():
     await execute_write("DELETE FROM vpn_sessions")
     
     # Записываем первое подключение
-    session_id, recent_prev, is_new_ip = await log_connection("alex", "1.1.1.1")
+    session_id, recent_prev, is_new_ip = await log_connection("test_user", "1.1.1.1")
     assert session_id == "0"
     assert is_new_ip is False
     assert len(recent_prev) == 0
     
-    # Закрываем сессию
-    await update_disconnection("alex", "1.1.1.1", "5 сек")
+    # Закрываем сессию с указанием байтов трафика (100 MB скачано, 50 MB загружено)
+    await update_disconnection("test_user", "1.1.1.1", "5 сек", 104857600, 52428800)
+    
+    # Загружаем историю и проверяем сохраненные байты трафика
+    history = await load_history()
+    assert history["test_user"][0]["download_bytes"] == 104857600
+    assert history["test_user"][0]["upload_bytes"] == 52428800
     
     # Записываем второе подключение с новым IP
-    session_id2, recent_prev2, is_new_ip2 = await log_connection("alex", "2.2.2.2")
+    session_id2, recent_prev2, is_new_ip2 = await log_connection("test_user", "2.2.2.2")
     assert session_id2 == "1"
     assert is_new_ip2 is True
     assert len(recent_prev2) == 1

@@ -12,6 +12,7 @@ from .remote import monitor_remote_server
 
 async def start_all_lxc_monitors():
     """Инициализация и запуск всех фоновых асинхронных задач мониторинга LXC и удаленных серверов."""
+    from modules.mihomo.monitor import monitor_mihomo_connections
     # 0. Запускаем фоновый Garbage Collector для очистки просроченных временных блокировок
     asyncio.create_task(monitor_expired_bans())
     
@@ -34,6 +35,11 @@ async def start_all_lxc_monitors():
     if settings.remote_monitor_enable:
         asyncio.create_task(monitor_remote_server())
         logging.info("Мониторинг удаленного сервера запущен!")
+        
+    # 6. Запускаем мониторинг роутера через Mihomo API, если включен в конфиге
+    if settings.mihomo_monitor_enable:
+        asyncio.create_task(monitor_mihomo_connections())
+        logging.info("Мониторинг роутера (Mihomo API) запущен!")
         
     logging.info("Все службы LXC мониторинга успешно запущены в фоне!")
 

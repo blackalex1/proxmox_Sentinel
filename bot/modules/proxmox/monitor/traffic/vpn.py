@@ -91,6 +91,7 @@ def find_xray_client_email(vmid, dst_ip, dpt):
     try:
         target_conn = f"{dst_ip}:{dpt}"
         log_paths = [
+            "/var/log/x-ui/access.log",
             "/usr/local/x-ui/access.log",
             "/var/log/xray/access.log",
             "/etc/x-ui/xray-access.log"

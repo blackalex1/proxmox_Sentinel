@@ -161,7 +161,7 @@ async def get_remote_hysteria_traffic(server, username):
         logging.warning(f"[Remote Hysteria {server['ip']}] Не удалось получить трафик для {username}: {e}")
     return None
 
-async def format_card_msg_async(server, username, lines):
+async def format_card_msg_async(server, username, lines, card=None):
     """Форматирует сообщение карточки активности Hysteria 2 с добавлением данных по трафику."""
     displayed_lines = lines[-15:]
     timeline = "\n".join(displayed_lines)
@@ -170,10 +170,19 @@ async def format_card_msg_async(server, username, lines):
         
     traffic_str = ""
     stats = await get_remote_hysteria_traffic(server, username)
+    tx = None
+    rx = None
     if stats:
         tx = stats.get("tx", 0)
         rx = stats.get("rx", 0)
+        if card:
+            card['download_bytes'] = tx
+            card['upload_bytes'] = rx
+    elif card and card.get('download_bytes') is not None:
+        tx = card.get('download_bytes')
+        rx = card.get('upload_bytes')
         
+    if tx is not None and rx is not None:
         def format_bytes(b):
             if b < 1024:
                 return f"{b} B"
@@ -225,7 +234,7 @@ async def poll_active_hysteria_traffic():
                     if not card.get('admin_messages'):
                         continue
                         
-                    msg = await format_card_msg_async(server, username, card['lines'])
+                    msg = await format_card_msg_async(server, username, card['lines'], card=card)
                     
                     for s in card['admin_messages']:
                         try:
@@ -324,7 +333,7 @@ async def handle_hysteria_connect(server, username, client_ip, silent=False):
         if not silent:
             if not card.get('admin_messages'):
                 # Если карточка была создана без отправки сообщения (в бесшумном режиме), шлем новое
-                msg = await format_card_msg_async(server, username, card['lines'])
+                msg = await format_card_msg_async(server, username, card['lines'], card=card)
                 sent_messages = []
                 for admin_id in settings.admin_ids:
                     try:
@@ -335,7 +344,7 @@ async def handle_hysteria_connect(server, username, client_ip, silent=False):
                 card['admin_messages'] = sent_messages
                 await save_active_cards_state()
             else:
-                msg = await format_card_msg_async(server, username, card['lines'])
+                msg = await format_card_msg_async(server, username, card['lines'], card=card)
                 for s in card['admin_messages']:
                     try:
                         await bot.edit_message_text(
@@ -424,8 +433,20 @@ async def handle_hysteria_disconnect(server, username, client_ip, silent=False):
             else:
                 duration_str = f"{duration_sec // 3600} ч {(duration_sec % 3600) // 60} мин"
                 
+            # Получаем накопленный трафик из карточки или пытаемся сделать быстрый опрос напоследок
+            download_bytes = card.get('download_bytes', 0)
+            upload_bytes = card.get('upload_bytes', 0)
+            
+            if not silent:
+                stats = await get_remote_hysteria_traffic(server, username)
+                if stats:
+                    download_bytes = stats.get("tx", 0)
+                    upload_bytes = stats.get("rx", 0)
+                    card['download_bytes'] = download_bytes
+                    card['upload_bytes'] = upload_bytes
+                
             # Завершаем запись сессии в SQLite БД
-            await update_disconnection(username, client_ip, duration_str)
+            await update_disconnection(username, client_ip, duration_str, download_bytes, upload_bytes)
                 
         event_line = f"🔴 <code>[{timestamp}]</code> Отключение <code>{client_ip}</code> — {duration_str}"
         card['lines'].append(event_line)
@@ -440,7 +461,7 @@ async def handle_hysteria_disconnect(server, username, client_ip, silent=False):
                        f"🕒 Время: <code>{timestamp}</code>")
                 await send_alert_to_admins(msg)
             else:
-                msg = await format_card_msg_async(server, username, card['lines'])
+                msg = await format_card_msg_async(server, username, card['lines'], card=card)
                 for s in card['admin_messages']:
                     try:
                         await bot.edit_message_text(

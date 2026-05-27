@@ -1,4 +1,4 @@
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup, KeyboardButton
 from core.config import settings
 
 def get_main_menu_keyboard() -> InlineKeyboardMarkup:
@@ -19,6 +19,18 @@ def get_main_menu_keyboard() -> InlineKeyboardMarkup:
         ]
     ]
     return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+def get_persistent_reply_keyboard() -> ReplyKeyboardMarkup:
+    buttons = [
+        [
+            KeyboardButton(text="🛡️ Панель управления"),
+            KeyboardButton(text="📊 Статус систем")
+        ],
+        [
+            KeyboardButton(text="ℹ️ Справка")
+        ]
+    ]
+    return ReplyKeyboardMarkup(keyboard=buttons, resize_keyboard=True, is_persistent=True)
 
 def get_main_menu_text() -> str:
     pve_ip = settings.proxmox_host.split(":")[0] if settings.proxmox_host else "Не настроен"
@@ -44,3 +56,4 @@ def get_help_text() -> str:
         "• /id — Показать ваш Telegram ID / ID чата\n\n"
         "🛡️ <i>Бот автоматически отслеживает попытки авторизации (SSH Auth Monitor) и несанкционированную сетевую активность (Active IPS Engine) в реальном времени. Все алерты приходят напрямую в этот чат.</i>"
     )
+

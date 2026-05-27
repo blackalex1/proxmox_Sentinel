@@ -68,6 +68,23 @@ class Settings(BaseSettings):
     # Белый список LXC контейнеров для IPS (им разрешены любые исходящие соединения)
     ips_lxc_whitelist: List[int] | str = Field(default_factory=list, validation_alias='IPS_LXC_WHITELIST')
 
+    # Mihomo (Clash.Meta) мониторинг роутера
+    mihomo_monitor_enable: bool = Field(default=False, validation_alias='MIHOMO_MONITOR_ENABLE')
+    mihomo_api_host: str = Field(default='192.168.1.1', validation_alias='MIHOMO_API_HOST')
+    mihomo_api_port: int = Field(default=9090, validation_alias='MIHOMO_API_PORT')
+    mihomo_api_secret: str = Field(default='', validation_alias='MIHOMO_API_SECRET')
+    mihomo_auto_ban: bool = Field(default=False, validation_alias='MIHOMO_AUTO_BAN')
+    mihomo_max_violations: int = Field(default=3, validation_alias='MIHOMO_MAX_VIOLATIONS')
+
+    # Настройки SSH для роутера (для банов)
+    router_ssh_enable: bool = Field(default=False, validation_alias='ROUTER_SSH_ENABLE')
+    router_ssh_host: str = Field(default='192.168.1.1', validation_alias='ROUTER_SSH_HOST')
+    router_ssh_port: int = Field(default=22, validation_alias='ROUTER_SSH_PORT')
+    router_ssh_user: str = Field(default='root', validation_alias='ROUTER_SSH_USER')
+    router_ssh_password: str = Field(default='', validation_alias='ROUTER_SSH_PASSWORD')
+    router_ssh_key: str = Field(default='config/id_rsa_router', validation_alias='ROUTER_SSH_KEY')
+    router_type: str = Field(default='openwrt', validation_alias='ROUTER_TYPE')
+
     # Параметры удаленных серверов
     remote_server_ip: str = Field(default='', validation_alias='REMOTE_SERVER_IP')
     remote_server_user: str = Field(default='root', validation_alias='REMOTE_SERVER_USER')
@@ -107,6 +124,10 @@ class Settings(BaseSettings):
         if not v:
             return []
         return [x.strip() for x in str(v).split(',') if x.strip()]
+
+    @property
+    def mihomo_api_url(self) -> str:
+        return f"http://{self.mihomo_api_host}:{self.mihomo_api_port}"
 
     # Пост-валидация для генерации структуры remote_servers
     @model_validator(mode='after')

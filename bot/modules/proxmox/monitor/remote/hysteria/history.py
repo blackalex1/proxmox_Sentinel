@@ -17,7 +17,9 @@ async def load_history() -> dict:
                 'connect_time': r['connect_time'],
                 'disconnect_time': r['disconnect_time'],
                 'duration': r['duration'],
-                'is_new_ip': bool(r['is_new_ip'])
+                'is_new_ip': bool(r['is_new_ip']),
+                'download_bytes': r.get('download_bytes', 0),
+                'upload_bytes': r.get('upload_bytes', 0)
             })
         return history
     except Exception as e:
@@ -74,17 +76,17 @@ async def log_connection(username: str, client_ip: str) -> tuple:
 
     return session_id, recent_prev, is_new_ip
 
-async def update_disconnection(username: str, client_ip: str, duration_str: str) -> bool:
-    """Обновляет время отключения и длительность последней активной сессии в SQLite."""
+async def update_disconnection(username: str, client_ip: str, duration_str: str, download_bytes: int = 0, upload_bytes: int = 0) -> bool:
+    """Обновляет время отключения, длительность и объем трафика последней активной сессии в SQLite."""
     now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     # Используем ROWID подзапрос, чтобы точечно обновить последнюю по времени активную сессию
     query = """
         UPDATE vpn_sessions 
-        SET disconnect_time = ?, duration = ? 
+        SET disconnect_time = ?, duration = ?, download_bytes = ?, upload_bytes = ?
         WHERE ROWID = (
             SELECT ROWID FROM vpn_sessions 
             WHERE username = ? AND ip = ? AND disconnect_time IS NULL 
             ORDER BY connect_time DESC LIMIT 1
         )
     """
-    return await execute_write(query, (now_str, duration_str, username, client_ip))
+    return await execute_write(query, (now_str, duration_str, download_bytes, upload_bytes, username, client_ip))
