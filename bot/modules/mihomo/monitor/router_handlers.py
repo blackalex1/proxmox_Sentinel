@@ -28,7 +28,7 @@ async def handle_router_iptables_log_line(line):
             return
             
         # Проверяем белый список IP (с детальной проверкой процессов на хосте)
-        if await check_is_bot_or_admin(src_ip, src_port):
+        if await check_is_bot_or_admin(src_ip, src_port, dst_host, dst_port):
             return
                 
         import time as pytime
@@ -117,7 +117,7 @@ async def handle_router_conntrack_log_line(line):
             return
             
         # Проверяем белый список IP (с детальной проверкой процессов на хосте)
-        if await check_is_bot_or_admin(src_ip, src_port):
+        if await check_is_bot_or_admin(src_ip, src_port, dst_host, dst_port):
             return
                 
         import time as pytime

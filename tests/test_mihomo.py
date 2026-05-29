@@ -553,6 +553,21 @@ async def test_check_is_bot_or_admin():
             assert await check_is_bot_or_admin("192.168.1.120", 47278) is False
             mock_local.assert_called_once_with(47278)
             
+        # Proactive SSH connection bypass check
+        settings.router_ssh_port = 22
+        original_remote_servers = settings.remote_servers
+        settings.remote_servers = [{"ip": "194.87.29.14", "user": "root", "key": "key"}]
+        try:
+            # Proxmox host connecting to router SSH port (192.168.1.1:22)
+            assert await check_is_bot_or_admin("192.168.1.120", 47278, "192.168.1.1", 22) is True
+            # Proxmox host connecting to remote VPS SSH port (194.87.29.14:22)
+            assert await check_is_bot_or_admin("192.168.1.120", 47278, "194.87.29.14", 22) is True
+            # Proxmox host connecting to some random IP on port 22 (should fall back to is_local_bot_process, returning False)
+            with patch("modules.mihomo.monitor.helpers.is_local_bot_process", AsyncMock(return_value=False)):
+                assert await check_is_bot_or_admin("192.168.1.120", 47278, "8.8.8.8", 22) is False
+        finally:
+            settings.remote_servers = original_remote_servers
+
         # Normal client IP
         assert await check_is_bot_or_admin("192.168.1.50", 12345) is False
     finally:
