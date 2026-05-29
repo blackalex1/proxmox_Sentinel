@@ -49,13 +49,21 @@ async def handle_traffic_log_line(line):
             if spt in recent_bot_ports:
                 is_bot = True
             else:
-                # Резервная проверка через ss, если порт по какой-то причине не в кэше
-                try:
-                    from modules.mihomo.monitor.helpers import is_local_bot_process
-                    if await is_local_bot_process(spt):
+                # Вносим кратковременную задержку для устранения гонки при установлении сессии
+                # (так как логирование трафика ОС опережает завершение хэндшейка asyncssh)
+                if dpt == settings.router_ssh_port or dpt == 22:
+                    await asyncio.sleep(0.5)
+                    if spt in recent_bot_ports:
                         is_bot = True
-                except Exception as e:
-                    logging.error(f"Ошибка проверки локального процесса бота в watcher: {e}")
+                
+                if not is_bot:
+                    # Резервная проверка через ss, если порт по какой-то причине не в кэше
+                    try:
+                        from modules.mihomo.monitor.helpers import is_local_bot_process
+                        if await is_local_bot_process(spt):
+                            is_bot = True
+                    except Exception as e:
+                        logging.error(f"Ошибка проверки локального процесса бота в watcher: {e}")
 
         if is_bot:
             risk_level, label, desc = ('INFO', '🟢 Служебный SSH Хоста (Бот)', 'Легитимный служебный трафик бота (ре сверка/conntrack/SSH)')
