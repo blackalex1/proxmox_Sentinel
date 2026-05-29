@@ -138,64 +138,48 @@ async def test_xray_log_parsing_correct_ip():
         assert "IP-адрес: <code>192.0.2.1</code>" in alert_text
 
 
-def test_classify_connection_host_router_bypass():
-    from modules.proxmox.monitor.traffic.parser import classify_connection
-    from core.config import settings
+@pytest.mark.asyncio
+async def test_watcher_host_ssh_verification():
+    from modules.proxmox.monitor.traffic.watcher import handle_traffic_log_line
+    from modules.proxmox.monitor.state import recent_bot_ports, lxc_traffic_history
+    from unittest.mock import AsyncMock, patch
 
-    original_remote = settings.remote_servers
-    original_router = settings.router_ssh_host
-    original_router_port = settings.router_ssh_port
+    # 1. Clean state
+    recent_bot_ports.clear()
+    lxc_traffic_history[0].clear()
 
-    settings.remote_servers = [{"ip": "194.87.29.14", "user": "root", "key": "key"}]
-    settings.router_ssh_host = "192.168.1.1"
-    settings.router_ssh_port = 22
+    # Log line where Host (vmid=0) connects to router SSH (192.168.1.1:22) from source port 56088
+    log_line = (
+        "May 30 02:47:54 proxmox kernel: [12345.67] HOST_CONN_OUT: "
+        "IN= OUT=eth0 SRC=192.168.1.120 DST=192.168.1.1 LEN=60 "
+        "TOS=0x00 PREC=0x00 TTL=64 ID=21151 DF PROTO=TCP SPT=56088 DPT=22"
+    )
 
-    try:
-        # 1. Outgoing SSH from host (vmid=0) to remote VPS (legitimate service traffic)
-        event_vps = {
-            'vmid': 0,
-            'direction': 'OUT',
-            'proto': 'TCP',
-            'src': '192.168.1.120',
-            'dst': '194.87.29.14',
-            'spt': 12345,
-            'dpt': 22
-        }
-        risk, label, desc = classify_connection(event_vps)
-        assert risk == 'INFO'
-        assert 'Служебный SSH Хоста к VPS' in label
+    # A) Simulate legitimate connection by the bot: port 56088 is registered in recent_bot_ports
+    recent_bot_ports.append(56088)
 
-        # 2. Outgoing SSH from host (vmid=0) to router (legitimate service traffic)
-        event_router = {
-            'vmid': 0,
-            'direction': 'OUT',
-            'proto': 'TCP',
-            'src': '192.168.1.120',
-            'dst': '192.168.1.1',
-            'spt': 12345,
-            'dpt': 22
-        }
-        risk, label, desc = classify_connection(event_router)
-        assert risk == 'INFO'
-        assert 'Служебный SSH Хоста к роутеру' in label
+    with patch("modules.proxmox.monitor.traffic.watcher.send_alert_to_admins", AsyncMock()) as mock_alert:
+        await handle_traffic_log_line(log_line)
+        # Should be classified as INFO, no alerts sent
+        mock_alert.assert_not_called()
+        assert len(lxc_traffic_history[0]) == 1
+        assert lxc_traffic_history[0][0]['risk_level'] == 'INFO'
+        assert '🟢 Служебный SSH Хоста (Бот)' in lxc_traffic_history[0][0]['label']
 
-        # 3. Outgoing SSH from host (vmid=0) to some random external IP (suspicious/critical threat)
-        event_random = {
-            'vmid': 0,
-            'direction': 'OUT',
-            'proto': 'TCP',
-            'src': '192.168.1.120',
-            'dst': '8.8.8.8',
-            'spt': 12345,
-            'dpt': 22
-        }
-        risk, label, desc = classify_connection(event_random)
-        assert risk == 'CRITICAL'
-        assert 'Исходящий запрос Хоста на sensitive порт' in label
-    finally:
-        settings.remote_servers = original_remote
-        settings.router_ssh_host = original_router
-        settings.router_ssh_port = original_router_port
+    # B) Simulate malicious/unauthorized connection by someone else: port 56088 is NOT in recent_bot_ports
+    recent_bot_ports.clear()
+    lxc_traffic_history[0].clear()
+
+    # Mock is_local_bot_process to return False
+    with patch("modules.proxmox.monitor.traffic.watcher.send_alert_to_admins", AsyncMock()) as mock_alert, \
+         patch("modules.mihomo.monitor.helpers.is_local_bot_process", AsyncMock(return_value=False)), \
+         patch("modules.proxmox.monitor.traffic.watcher.get_and_kill_local_or_lxc_process", AsyncMock(return_value=("ssh", 9999))):
+        await handle_traffic_log_line(log_line)
+        # Must be classified as CRITICAL, alert sent immediately!
+        mock_alert.assert_called_once()
+        assert len(lxc_traffic_history[0]) == 1
+        assert lxc_traffic_history[0][0]['risk_level'] == 'CRITICAL'
+        assert '🚨 Исходящий запрос Хоста на sensitive порт' in lxc_traffic_history[0][0]['label']
 
 
 
