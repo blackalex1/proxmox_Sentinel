@@ -138,4 +138,64 @@ async def test_xray_log_parsing_correct_ip():
         assert "IP-адрес: <code>192.0.2.1</code>" in alert_text
 
 
+def test_classify_connection_host_router_bypass():
+    from modules.proxmox.monitor.traffic.parser import classify_connection
+    from core.config import settings
+
+    original_remote = settings.remote_servers
+    original_router = settings.router_ssh_host
+    original_router_port = settings.router_ssh_port
+
+    settings.remote_servers = [{"ip": "198.51.100.42", "user": "root", "key": "key"}]
+    settings.router_ssh_host = "192.168.1.1"
+    settings.router_ssh_port = 22
+
+    try:
+        # 1. Outgoing SSH from host (vmid=0) to remote VPS (legitimate service traffic)
+        event_vps = {
+            'vmid': 0,
+            'direction': 'OUT',
+            'proto': 'TCP',
+            'src': '192.168.1.120',
+            'dst': '198.51.100.42',
+            'spt': 12345,
+            'dpt': 22
+        }
+        risk, label, desc = classify_connection(event_vps)
+        assert risk == 'INFO'
+        assert 'Служебный SSH Хоста к VPS' in label
+
+        # 2. Outgoing SSH from host (vmid=0) to router (legitimate service traffic)
+        event_router = {
+            'vmid': 0,
+            'direction': 'OUT',
+            'proto': 'TCP',
+            'src': '192.168.1.120',
+            'dst': '192.168.1.1',
+            'spt': 12345,
+            'dpt': 22
+        }
+        risk, label, desc = classify_connection(event_router)
+        assert risk == 'INFO'
+        assert 'Служебный SSH Хоста к роутеру' in label
+
+        # 3. Outgoing SSH from host (vmid=0) to some random external IP (suspicious/critical threat)
+        event_random = {
+            'vmid': 0,
+            'direction': 'OUT',
+            'proto': 'TCP',
+            'src': '192.168.1.120',
+            'dst': '8.8.8.8',
+            'spt': 12345,
+            'dpt': 22
+        }
+        risk, label, desc = classify_connection(event_random)
+        assert risk == 'CRITICAL'
+        assert 'Исходящий запрос Хоста на sensitive порт' in label
+    finally:
+        settings.remote_servers = original_remote
+        settings.router_ssh_host = original_router
+        settings.router_ssh_port = original_router_port
+
+
 
