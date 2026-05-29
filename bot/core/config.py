@@ -75,6 +75,8 @@ class Settings(BaseSettings):
     mihomo_api_secret: str = Field(default='', validation_alias='MIHOMO_API_SECRET')
     mihomo_auto_ban: bool = Field(default=False, validation_alias='MIHOMO_AUTO_BAN')
     mihomo_max_violations: int = Field(default=3, validation_alias='MIHOMO_MAX_VIOLATIONS')
+    mihomo_monitor_mode: str = Field(default='polling', validation_alias='MIHOMO_MONITOR_MODE')
+    mihomo_poll_interval: float = Field(default=2.0, validation_alias='MIHOMO_POLL_INTERVAL')
 
     # Настройки SSH для роутера (для банов)
     router_ssh_enable: bool = Field(default=False, validation_alias='ROUTER_SSH_ENABLE')

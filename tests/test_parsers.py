@@ -65,7 +65,7 @@ def test_classify_connection_lxc_whitelist():
 
 
 def test_generate_ansible_hosts_ini(tmp_path):
-    from modules.ansible.keyboards import get_existing_ip_mappings, generate_ansible_hosts_ini
+    from modules.ansible.inventory import get_existing_ip_mappings, generate_ansible_hosts_ini
     from core.config import settings
     
     # Создаем фиктивный hosts.ini во временной папке для проверки парсинга старого
@@ -123,7 +123,7 @@ async def test_xray_log_parsing_correct_ip():
     
     active_clients.clear()
     
-    log_line = "2026/05/28 00:13:56.440850 from 192.0.2.1:47640 accepted tcp:51.159.186.137:22 [inbound-31534 -> hysteria] email: test_user"
+    log_line = "2026/05/28 00:13:56.440850 from 192.0.2.1:47640 accepted tcp:51.159.186.137:443 [inbound-31534 -> hysteria] email: test_user"
     
     with patch("modules.proxmox.monitor.xui_connections.send_alert_to_admins", AsyncMock()) as mock_alert:
         await handle_xray_log_line(log_line)

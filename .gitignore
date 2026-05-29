@@ -36,3 +36,11 @@ bot/ansible/hosts.ini
 bot/ansible/id_ed25519_ansible
 bot/ansible/id_ed25519_ansible.pub
 
+# Additional local environments and large files
+.venv/
+*.pcap
+*.apk
+*.xapk
+*.txt
+
+
