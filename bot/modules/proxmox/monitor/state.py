@@ -18,3 +18,6 @@ traffic_tailer = None
 
 # Rolling буфер для дедупликации локальных соединений VPN-контейнера
 recent_local_conns = deque(maxlen=500)
+
+# Rolling буфер для регистрации недавних исходящих портов самого бота (для мгновенного вайтлиста)
+recent_bot_ports = deque(maxlen=200)
