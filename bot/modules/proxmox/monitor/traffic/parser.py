@@ -43,12 +43,7 @@ def classify_connection(event):
                     if p_ip:
                         proxmox_ip = p_ip
                 
-                vps_ips = [s.get('ip') if isinstance(s, dict) else getattr(s, 'ip', None) for s in settings.remote_servers] if hasattr(settings, 'remote_servers') else []
-                vps_ips = [ip for ip in vps_ips if ip]
-                if dst in vps_ips and dpt == 22:
-                    return ('INFO', 'Служебный SSH Хоста к VPS', 'Легитимный служебный трафик мониторинга VPS')
-                if dst == settings.router_ssh_host and dpt == settings.router_ssh_port:
-                    return ('INFO', 'Служебный SSH Хоста к роутеру', 'Легитимный служебный трафик бота к роутеру')
+
                 
                 if dst in [proxmox_ip, '127.0.0.1', '::1', 'localhost'] or dst == src:
                     return ('INFO', f'🟢 Локальное служебное обращение Хоста (порт :{dpt})', f'Информационное: Локальное обращение хоста к собственному сервису на порту {dpt}')
