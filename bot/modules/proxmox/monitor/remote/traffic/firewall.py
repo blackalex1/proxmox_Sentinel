@@ -81,3 +81,32 @@ async def block_remote_ip(server, dst_ip, delay=3600):
         logging.error(f"[Remote IPS {server['ip']}] Ошибка при блокировке {dst_ip} через iptables: {stderr}")
         return False
 
+
+async def unban_remote_ip(server, dst_ip):
+    """
+    Снимает временную блокировку целевого IP на удаленном сервере вручную.
+    """
+    key = (server['ip'], dst_ip)
+    if key in active_remote_blocks:
+        active_remote_blocks[key].cancel()
+        active_remote_blocks.pop(key, None)
+        
+    try:
+        cmd = [f"iptables -D OUTPUT -d {dst_ip} -m comment --comment \"AEGIS-TEMP-BLOCK\" -j DROP"]
+        success, stdout, stderr = await run_remote_ssh_cmd(server, cmd)
+        
+        from core.db import execute_write
+        await execute_write(
+            "DELETE FROM temp_bans WHERE server_ip = ? AND dst_ip = ?",
+            (server['ip'], dst_ip)
+        )
+        if success:
+            logging.info(f"[Remote IPS {server['ip']}] Временная блокировка {dst_ip} успешно снята вручную.")
+            return True, f"Блокировка на VPS {server['ip']} снята"
+        else:
+            logging.error(f"[Remote IPS {server['ip']}] Ошибка при снятии блокировки с {dst_ip}: {stderr}")
+            return False, stderr
+    except Exception as e:
+        logging.error(f"[Remote IPS {server['ip']}] Исключение при снятии блокировки {dst_ip}: {e}")
+        return False, str(e)
+

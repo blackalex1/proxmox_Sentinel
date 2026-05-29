@@ -4,7 +4,7 @@ import time
 import datetime
 
 from core.config import settings
-from modules.proxmox.monitor.state import lxc_name_cache, lxc_traffic_history, recent_local_conns, lxc_alert_throttle
+from modules.proxmox.monitor.state import lxc_name_cache, lxc_traffic_history, recent_local_conns, lxc_alert_throttle, recent_bot_ports
 from modules.proxmox.monitor.utils import LogTailer, send_alert_to_admins
 from modules.proxmox.monitor.firewall import setup_iptables
 
@@ -43,7 +43,25 @@ async def handle_traffic_log_line(line):
         container_name = lxc_name_cache.get(vmid, "Host" if vmid == 0 else "Unknown")
         
         # 1. Классифицируем соединение
-        risk_level, label, desc = classify_connection(event)
+        is_bot = False
+        if vmid == 0 and direction == 'OUT':
+            # Сначала проверяем наш сверхбыстрый мгновенный кэш портов бота
+            if spt in recent_bot_ports:
+                is_bot = True
+            else:
+                # Резервная проверка через ss, если порт по какой-то причине не в кэше
+                try:
+                    from modules.mihomo.monitor.helpers import is_local_bot_process
+                    if await is_local_bot_process(spt):
+                        is_bot = True
+                except Exception as e:
+                    logging.error(f"Ошибка проверки локального процесса бота в watcher: {e}")
+
+        if is_bot:
+            risk_level, label, desc = ('INFO', '🟢 Служебный SSH Хоста (Бот)', 'Легитимный служебный трафик бота (ре сверка/conntrack/SSH)')
+        else:
+            risk_level, label, desc = classify_connection(event)
+            
         risk_emoji = "🟢" if risk_level == 'INFO' else "⚠️" if risk_level == 'WARNING' else "🚨"
         
         traffic_event = {

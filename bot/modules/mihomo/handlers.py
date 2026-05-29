@@ -1,7 +1,7 @@
 from aiogram import Router, F
 from aiogram.types import CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 import logging
-from .monitor import close_mihomo_connection
+from .monitor.parser import close_mihomo_connection
 from .router import ban_router_ip, unban_router_ip
 
 router = Router()

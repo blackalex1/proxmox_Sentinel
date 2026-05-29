@@ -14,6 +14,9 @@ def get_main_menu_keyboard() -> InlineKeyboardMarkup:
             InlineKeyboardButton(text="📋 История VPN-подключений", callback_data="vpn_history_select")
         ],
         [
+            InlineKeyboardButton(text="🛑 Центр блокировок", callback_data="ban_center_main")
+        ],
+        [
             InlineKeyboardButton(text="📊 Статус систем", callback_data="status_check"),
             InlineKeyboardButton(text="ℹ️ Справка", callback_data="help_info")
         ]
@@ -52,6 +55,7 @@ def get_help_text() -> str:
         "ℹ️ <b>Справка по командам PVE Aegis:</b>\n\n"
         "• /start — Показать интерактивную панель управления (Главное меню)\n"
         "• /status — Быстрый аудит и статус всех систем (Proxmox, 3X-UI, фоновые службы)\n"
+        "• /bans — Центр управления активными временными блокировками IP\n"
         "• /help — Показать это справочное сообщение\n"
         "• /id — Показать ваш Telegram ID / ID чата\n\n"
         "🛡️ <i>Бот автоматически отслеживает попытки авторизации (SSH Auth Monitor) и несанкционированную сетевую активность (Active IPS Engine) в реальном времени. Все алерты приходят напрямую в этот чат.</i>"

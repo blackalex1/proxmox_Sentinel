@@ -5,6 +5,7 @@ import sqlite3
 
 # Перехватываем путь к файлу БД и подменяем его временным файлом для тестов
 import core.db
+ORIGINAL_DB_FILE = core.db.DB_FILE
 temp_db_fd, temp_db_path = tempfile.mkstemp()
 core.db.DB_FILE = temp_db_path
 core.db.init_db()
@@ -108,3 +109,5 @@ def teardown_module(module):
         os.remove(temp_db_path)
     except Exception:
         pass
+    core.db.DB_FILE = ORIGINAL_DB_FILE
+    core.db.init_db()
