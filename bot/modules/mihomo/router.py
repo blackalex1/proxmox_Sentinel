@@ -36,13 +36,15 @@ async def run_router_ssh_cmd(command):
             
         async with asyncssh.connect(**connect_kwargs) as conn:
             # Регистрируем исходящий порт сокета бота для вайтлиста
-            sockname = conn.get_extra_info('sockname')
-            if sockname and isinstance(sockname, tuple):
-                try:
-                    from modules.proxmox.monitor.state import recent_bot_ports
-                    recent_bot_ports.append(sockname[1])
-                except Exception:
-                    pass
+            try:
+                sock = conn.get_extra_info('socket')
+                if sock:
+                    sockname = sock.getsockname()
+                    if sockname and isinstance(sockname, tuple):
+                        from modules.proxmox.monitor.state import recent_bot_ports
+                        recent_bot_ports.append(sockname[1])
+            except Exception:
+                pass
             result = await conn.run(command, check=False)
             return result.exit_status == 0, result.stdout.strip(), result.stderr.strip()
             

@@ -34,6 +34,17 @@ async def get_ssh_connection(server) -> asyncssh.SSHClientConnection:
                     keepalive_interval=30, # Отправка пинг-пакетов каждые 30 секунд
                     keepalive_count_max=3
                 )
+                
+                # Заносим локальный порт в белый список портов бота для верификации трафика
+                try:
+                    sock = conn.get_extra_info('socket')
+                    if sock:
+                        sockname = sock.getsockname()
+                        from modules.proxmox.monitor.state import recent_bot_ports
+                        recent_bot_ports.append(sockname[1])
+                except Exception:
+                    pass
+
                 _ssh_connections[ip] = conn
                 logging.info(f"[Remote SSH {ip}] Асинхронное соединение успешно установлено и закэшировано.")
             except Exception as e:
