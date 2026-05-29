@@ -568,6 +568,10 @@ async def test_check_is_bot_or_admin():
         finally:
             settings.remote_servers = original_remote_servers
 
+        # Bot's own public IP bypass check
+        with patch("modules.proxmox.monitor.remote.helpers.get_bot_public_ip", AsyncMock(return_value="89.110.53.137")):
+            assert await check_is_bot_or_admin("89.110.53.137", 12345) is True
+
         # Normal client IP
         assert await check_is_bot_or_admin("192.168.1.50", 12345) is False
     finally:
