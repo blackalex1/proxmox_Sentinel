@@ -69,6 +69,15 @@ async def check_is_bot_or_admin(src_ip, src_port, dst_host=None, dst_port=None):
     if src_ip == settings.router_ssh_host:
         return True
         
+    # Игнорируем собственный публичный IP-адрес бота (для предотвращения блокировки его NAT-сессий)
+    try:
+        from modules.proxmox.monitor.remote.helpers import get_bot_public_ip
+        bot_pub_ip = await get_bot_public_ip()
+        if bot_pub_ip and src_ip == bot_pub_ip:
+            return True
+    except Exception:
+        pass
+        
     # 3. Если запрос идет с IP Proxmox хоста (где крутится бот),
     # детально проверяем, является ли источник соединения самим процессом бота на хосте.
     # Это предотвращает ложные срабатывания на собственные SSH-сессии бота,
