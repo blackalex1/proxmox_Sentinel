@@ -10,6 +10,13 @@ async def is_local_bot_process(sport):
     Проверяет, принадлежит ли порт sport самому процессу бота или его потомкам/белому списку на хосте Proxmox.
     """
     try:
+        from modules.proxmox.monitor.state import recent_bot_ports
+        if sport in recent_bot_ports:
+            return True
+    except Exception:
+        pass
+
+    try:
         cmd = ["ss", "-atnup"]
         proc = await asyncio.create_subprocess_exec(
             *cmd,
