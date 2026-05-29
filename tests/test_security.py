@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, patch, MagicMock
 from modules.proxmox.monitor.traffic.killer import get_and_kill_local_or_lxc_process
 from modules.proxmox.monitor.traffic.firewall import block_local_ip
 from modules.proxmox.monitor.remote.hysteria import handle_remote_hysteria_line
-from modules.proxmox.monitor.remote.hysteria.alerts import recent_hysteria_violations
+from modules.proxmox.monitor.remote.hysteria.alerts.state import recent_hysteria_violations
 
 @pytest.mark.asyncio
 async def test_get_and_kill_local_process():
@@ -215,11 +215,11 @@ async def test_get_and_kill_self_defense_child_process():
 
 @pytest.mark.asyncio
 async def test_get_bot_public_ip():
-    from modules.proxmox.monitor.remote.auth import get_bot_public_ip
-    import modules.proxmox.monitor.remote.auth as remote_auth
+    from modules.proxmox.monitor.remote.helpers import get_bot_public_ip
+    import modules.proxmox.monitor.remote.helpers as remote_helpers
     
     # Сбросим кэш перед тестом
-    remote_auth.bot_public_ip = None
+    remote_helpers.bot_public_ip = None
     
     # Мокаем aiohttp.ClientSession
     mock_response = AsyncMock()
@@ -243,10 +243,10 @@ async def test_get_bot_public_ip():
 
 @pytest.mark.asyncio
 async def test_get_bot_public_ip_fallback():
-    from modules.proxmox.monitor.remote.auth import get_bot_public_ip
-    import modules.proxmox.monitor.remote.auth as remote_auth
+    from modules.proxmox.monitor.remote.helpers import get_bot_public_ip
+    import modules.proxmox.monitor.remote.helpers as remote_helpers
     
-    remote_auth.bot_public_ip = None
+    remote_helpers.bot_public_ip = None
     
     # Первая попытка фейлится, вторая проходит
     mock_response_ok = AsyncMock()
@@ -274,7 +274,7 @@ async def test_get_bot_public_ip_fallback():
 
 
 def test_parse_tcp_file():
-    from modules.proxmox.monitor.remote.auth import parse_tcp_file
+    from modules.proxmox.monitor.remote.helpers import parse_tcp_file
     
     tcp_content = (
         "  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode\n"
@@ -293,15 +293,15 @@ def test_parse_tcp_file():
 
 
 def test_get_active_ssh_ports_for_vps():
-    from modules.proxmox.monitor.remote.auth import get_active_ssh_ports_for_vps
+    from modules.proxmox.monitor.remote.helpers import get_active_ssh_ports_for_vps
     
     with patch("os.getpid", return_value=1000), \
-         patch("modules.proxmox.monitor.remote.auth.get_child_pids", return_value=[1001, 1002]), \
+         patch("modules.proxmox.monitor.remote.helpers.get_child_pids", return_value=[1001, 1002]), \
          patch("os.path.exists", side_effect=lambda path: True if "/proc/" in str(path) else False), \
          patch("builtins.open", MagicMock(side_effect=lambda path, *args, **kwargs:
              MagicMock(__enter__=lambda s: s, __exit__=lambda s, *a: None, read=lambda: "ssh" if "1001/comm" in str(path) else "bash")
          )), \
-         patch("modules.proxmox.monitor.remote.auth.parse_tcp_file", side_effect=lambda path: 
+         patch("modules.proxmox.monitor.remote.helpers.parse_tcp_file", side_effect=lambda path: 
              [(43210, "198.51.100.50", 22)] if "1001" in str(path) else []
          ):
         ports = get_active_ssh_ports_for_vps("198.51.100.50")
@@ -329,7 +329,8 @@ async def test_handle_remote_ssh_auth_line_trusted_bot():
     
     try:
         remote_auth.remote_key_caches[server['ip']] = {"SHA256:fingerprint_xyz": "bot@bot"}
-        remote_auth.bot_public_ip = "203.0.113.88"
+        import modules.proxmox.monitor.remote.helpers as remote_helpers
+        remote_helpers.bot_public_ip = "203.0.113.88"
         
         with patch("modules.proxmox.monitor.remote.auth.get_active_ssh_ports_for_vps", return_value=[43210]), \
              patch("modules.proxmox.monitor.remote.auth.refresh_remote_key_cache", AsyncMock()) as mock_refresh, \
@@ -363,7 +364,8 @@ async def test_handle_remote_ssh_auth_line_unauthorized_ip():
     
     try:
         remote_auth.remote_key_caches[server['ip']] = {"SHA256:fingerprint_xyz": "bot@bot"}
-        remote_auth.bot_public_ip = "203.0.113.88"
+        import modules.proxmox.monitor.remote.helpers as remote_helpers
+        remote_helpers.bot_public_ip = "203.0.113.88"
         
         with patch("modules.proxmox.monitor.remote.auth.get_active_ssh_ports_for_vps", return_value=[]), \
              patch("modules.proxmox.monitor.remote.auth.refresh_remote_key_cache", AsyncMock()) as mock_refresh, \
@@ -401,7 +403,8 @@ async def test_handle_remote_ssh_auth_line_compromised_container():
     
     try:
         remote_auth.remote_key_caches[server['ip']] = {"SHA256:fingerprint_xyz": "bot@bot"}
-        remote_auth.bot_public_ip = "203.0.113.88"
+        import modules.proxmox.monitor.remote.helpers as remote_helpers
+        remote_helpers.bot_public_ip = "203.0.113.88"
         
         with patch("modules.proxmox.monitor.remote.auth.get_active_ssh_ports_for_vps", return_value=[43210]), \
              patch("modules.proxmox.monitor.remote.auth.refresh_remote_key_cache", AsyncMock()) as mock_refresh, \
@@ -420,7 +423,8 @@ async def test_handle_remote_ssh_auth_line_compromised_container():
 
 @pytest.mark.asyncio
 async def test_hysteria_disconnect_silent_no_ssh():
-    from modules.proxmox.monitor.remote.hysteria.alerts import handle_hysteria_disconnect, active_activity_cards
+    from modules.proxmox.monitor.remote.hysteria.alerts.disconnect import handle_hysteria_disconnect
+    from modules.proxmox.monitor.remote.hysteria.alerts.state import active_activity_cards
     import time as pytime
     import datetime
     
@@ -439,8 +443,8 @@ async def test_hysteria_disconnect_silent_no_ssh():
         'connections': {client_ip: [datetime.datetime.now()]}
     }
     
-    with patch("modules.proxmox.monitor.remote.hysteria.alerts.get_remote_hysteria_traffic", AsyncMock()) as mock_get_traffic, \
-         patch("modules.proxmox.monitor.remote.hysteria.alerts.update_disconnection", AsyncMock()) as mock_db:
+    with patch("modules.proxmox.monitor.remote.hysteria.alerts.disconnect.get_remote_hysteria_traffic", AsyncMock()) as mock_get_traffic, \
+         patch("modules.proxmox.monitor.remote.hysteria.alerts.disconnect.update_disconnection", AsyncMock()) as mock_db:
          
         # Запускаем в бесшумном режиме (silent=True)
         await handle_hysteria_disconnect(server, username, client_ip, silent=True)

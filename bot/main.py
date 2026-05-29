@@ -29,15 +29,27 @@ from core.handlers import router as core_router
 from modules.proxmox.handlers import router as proxmox_router
 from modules.proxmox.tasks import monitor_nodes as proxmox_monitor
 from modules.xui.handlers import router as xui_router
-from modules.ansible.handlers import router as ansible_router
+from modules.ansible.handlers.playbooks import router as ansible_router
+import modules.ansible.handlers.setup
+import modules.ansible.handlers.setup_lxc
+import modules.ansible.handlers.setup_vps
 
 async def main():
     logging.info("Бот запускается...")
 
+    # Верификация .env конфигурации
+    try:
+        from core.env_verifier import verify_env_configuration
+        verify_env_configuration()
+    except Exception as e:
+        logging.error(f"Ошибка при верификации .env: {e}")
+
     # Автоматическая проверка и генерация SSH-ключей ED25519 для Ansible
     try:
-        from modules.ansible.keyboards import ANSIBLE_PLAYBOOKS_DIR, check_and_generate_ansible_keys
+        from modules.ansible.keyboards import ANSIBLE_PLAYBOOKS_DIR
+        from modules.ansible.keys import check_and_generate_ansible_keys
         check_and_generate_ansible_keys(ANSIBLE_PLAYBOOKS_DIR)
+
     except Exception as e:
         logging.error(f"Не удалось проверить/сгенерировать SSH ключи Ansible при старте: {e}")
 

@@ -6,10 +6,10 @@ import re
 from core.config import settings
 from modules.proxmox.monitor.utils import send_alert_to_admins
 
-from .alerts import (
-    handle_hysteria_connect, 
-    handle_hysteria_disconnect, 
-    recent_hysteria_violations, 
+from .alerts.cards import handle_hysteria_connect
+from .alerts.disconnect import handle_hysteria_disconnect
+from .alerts.state import (
+    recent_hysteria_violations,
     recent_remote_traffic_alerts,
     save_violations_state,
     save_traffic_alerts_state

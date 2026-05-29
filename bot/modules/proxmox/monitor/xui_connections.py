@@ -25,7 +25,7 @@ def find_xray_access_log_path(vmid):
     return None
 
 async def handle_xray_log_line(line):
-    """Обработка лог-линий Xray для отслеживания сессий клиентов."""
+    """Обработка лог-линий Xray для отслеживания сессий клиентов и детекции sensitive портов."""
     try:
         if "email:" not in line:
             return
@@ -44,6 +44,37 @@ async def handle_xray_log_line(line):
         if ip_match:
             client_ip = ip_match.group(1).replace("[", "").replace("]", "")
 
+        # 1. Детекция обращений к чувствительным портам через прокси-туннель
+        # Пример: accepted tcp:8.8.8.8:22
+        dest_match = re.search(r"accepted\s+(tcp|udp):([^\s]+):(\d+)", line)
+        if dest_match:
+            proto = dest_match.group(1).upper()
+            dst_host = dest_match.group(2)
+            dst_port = int(dest_match.group(3))
+            
+            if dst_port in settings.monitor_lxc_ports_sensitive:
+                from modules.proxmox.monitor.state import lxc_alert_throttle
+                import time as pytime
+                curr_time = pytime.time()
+                
+                throttle_key = (settings.vpn_vmid, 'xui_sensitive_port', email, dst_host, dst_port)
+                last_alert = lxc_alert_throttle.get(throttle_key, 0)
+                if curr_time - last_alert >= 15:
+                    lxc_alert_throttle[throttle_key] = curr_time
+                    
+                    timestamp_str = datetime.datetime.now().strftime("%H:%M:%S")
+                    msg = (f"⚠️ <b>[VPN Security] Обнаружен доступ к чувствительному порту!</b>\n\n"
+                           f"📦 Контейнер: <b>{settings.vpn_vmid} (VPN / 3X-UI)</b>\n"
+                           f"👤 Пользователь Xray: <code>{email}</code>\n"
+                           f"🌐 IP-адрес клиента: <code>{client_ip}</code>\n"
+                           f"🎯 Назначение: <code>{dst_host}:{dst_port}</code> ({proto})\n"
+                           f"🕒 Время: <code>{timestamp_str}</code>\n\n"
+                           f"ℹ️ Описание: <i>Подключенный VPN-клиент обратился к чувствительному порту {dst_port} внешней сети через прокси-туннель.</i>")
+                    
+                    await send_alert_to_admins(msg)
+                    logging.warning(f"[XUI Monitor] Пользователь {email} ({client_ip}) обратился к чувствительному порту {dst_host}:{dst_port}")
+
+        # 2. Обработка онлайн/офлайн статусов
         # Если пользователь в списке игнорируемых
         if email in settings.vpn_ignore_users:
             active_clients[email] = {"last_seen": now, "ip": client_ip}

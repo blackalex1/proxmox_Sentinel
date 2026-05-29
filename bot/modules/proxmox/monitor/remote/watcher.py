@@ -77,7 +77,8 @@ async def monitor_remote_server():
     
     # Загружаем сохраненное состояние алертов Hysteria 2 и запускаем фоновый опрос трафика
     try:
-        from .hysteria.alerts import load_alerts_state, poll_active_hysteria_traffic
+        from .hysteria.alerts.state import load_alerts_state
+        from .hysteria.alerts.traffic import poll_active_hysteria_traffic
         await load_alerts_state()
         asyncio.create_task(poll_active_hysteria_traffic())
     except Exception as e:
