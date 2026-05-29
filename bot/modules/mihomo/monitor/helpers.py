@@ -55,7 +55,7 @@ async def is_local_bot_process(sport):
         logging.error(f"Ошибка проверки локального процесса бота: {e}")
     return False
 
-async def check_is_bot_or_admin(src_ip, src_port):
+async def check_is_bot_or_admin(src_ip, src_port, dst_host=None, dst_port=None):
     """Проверяет, является ли отправитель доверенным (администратором или легитимным процессом бота на хосте)."""
     # 1. Проверяем белый список администраторов из настроек
     if hasattr(settings, 'trusted_admin_ips'):
@@ -89,6 +89,18 @@ async def check_is_bot_or_admin(src_ip, src_port):
             pass
             
     if is_proxmox_host:
+        # ПРЕВЕНТИВНЫЙ ОБХОД ДЛЯ СОБСТВЕННЫХ SSH-ПОДКЛЮЧЕНИЙ БОТА К РОУТЕРУ ИЛИ VPS!
+        # (Так как соединение в conntrack детектируется раньше, чем порт попадает в recent_bot_ports)
+        if dst_host and dst_port:
+            if dst_host == settings.router_ssh_host and dst_port == settings.router_ssh_port:
+                return True
+            remote_ips = []
+            if hasattr(settings, 'remote_servers') and settings.remote_servers:
+                remote_ips = [s.get('ip') if isinstance(s, dict) else getattr(s, 'ip', None) for s in settings.remote_servers]
+                remote_ips = [ip for ip in remote_ips if ip]
+            if dst_host in remote_ips and dst_port == 22:
+                return True
+
         if await is_local_bot_process(src_port):
             return True
             
