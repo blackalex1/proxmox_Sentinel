@@ -60,7 +60,7 @@ async def handle_traffic_log_line(line):
                     # Резервная проверка через ss, если порт по какой-то причине не в кэше
                     try:
                         from modules.mihomo.monitor.helpers import is_local_bot_process
-                        if await is_local_bot_process(spt):
+                        if await is_local_bot_process(spt, dst):
                             is_bot = True
                     except Exception as e:
                         logging.error(f"Ошибка проверки локального процесса бота в watcher: {e}")

@@ -5,7 +5,7 @@ import socket
 import logging
 from core.config import settings
 
-async def is_local_bot_process(sport):
+async def is_local_bot_process(sport, dst_ip=None):
     """
     Проверяет, принадлежит ли порт sport самому процессу бота или его потомкам/белому списку на хосте Proxmox.
     """
@@ -15,6 +15,35 @@ async def is_local_bot_process(sport):
             return True
     except Exception:
         pass
+
+    # 0. Если передан dst_ip, пробуем сверхнадежный и быстрый поиск по procfs дочерних SSH-процессов бота
+    if dst_ip:
+        try:
+            my_pid = os.getpid()
+            from modules.proxmox.monitor.remote.helpers import get_child_pids, parse_tcp_file
+            child_pids = get_child_pids(my_pid)
+            all_pids = [my_pid] + child_pids
+            
+            for pid in all_pids:
+                try:
+                    comm_path = f"/proc/{pid}/comm"
+                    if os.path.exists(comm_path):
+                        with open(comm_path, 'r') as f:
+                            comm = f.read().strip()
+                        if comm != 'ssh':
+                            continue
+                    else:
+                        continue
+                    
+                    for tcp_file in [f"/proc/{pid}/net/tcp", f"/proc/{pid}/net/tcp6"]:
+                        conns = parse_tcp_file(tcp_file)
+                        for local_port, remote_ip, remote_port in conns:
+                            if local_port == sport and remote_ip == dst_ip:
+                                return True
+                except Exception:
+                    pass
+        except Exception:
+            pass
 
     try:
         cmd = ["ss", "-atnup"]
