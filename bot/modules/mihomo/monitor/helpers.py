@@ -27,28 +27,36 @@ async def is_local_bot_process(sport):
         stdout = stdout_bytes.decode('utf-8', errors='ignore')
         
         for line in stdout.splitlines():
-            if f":{sport} " in line:
+            if f":{sport}" in line:
                 match = re.search(r'users:\(\("([^"]+)",(?:pid=)?(\d+)', line)
                 if match:
                     proc_name, pid = match.groups()
                     target_pid = int(pid)
                     
-                    # 1. Проверяем, не сам ли это бот
-                    if target_pid == os.getpid():
-                        return True
-                        
-                    # 2. Проверяем родительский PID
-                    status_path = f"/proc/{target_pid}/status"
-                    if os.path.exists(status_path):
+                    # 1. Проверяем предков процесса вплоть до PID бота
+                    curr_pid = target_pid
+                    is_bot_ancestor = False
+                    for _ in range(5):  # Максимум 5 уровней вверх
+                        if curr_pid == os.getpid():
+                            is_bot_ancestor = True
+                            break
+                        status_path = f"/proc/{curr_pid}/status"
+                        if not os.path.exists(status_path):
+                            break
+                        next_ppid = None
                         with open(status_path, "r") as f:
                             for status_line in f:
                                 if status_line.startswith("PPid:"):
-                                    ppid = int(status_line.split()[1])
-                                    if ppid == os.getpid():
-                                        return True
+                                    next_ppid = int(status_line.split()[1])
                                     break
-                                    
-                    # 3. Проверяем белый список процессов IPS
+                        if next_ppid is None or next_ppid <= 1:
+                            break
+                        curr_pid = next_ppid
+                        
+                    if is_bot_ancestor:
+                        return True
+                        
+                    # 2. Проверяем белый список процессов IPS
                     if proc_name.lower().strip() in settings.ips_process_whitelist:
                         return True
     except Exception as e:
