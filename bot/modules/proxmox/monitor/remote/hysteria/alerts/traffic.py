@@ -41,28 +41,48 @@ async def discover_hysteria_api_config(server):
         
     return None
 
+# Кэш трафика Hysteria для предотвращения частых повторных запросов в течение одного цикла опроса
+# server_ip -> (timestamp, data_dict)
+_traffic_data_cache = {}
+_traffic_cache_lock = asyncio.Lock()
+
 async def get_remote_hysteria_traffic(server, username):
-    """Запрашивает из Traffic Stats API текущий трафик (tx/rx) для конкретного пользователя."""
+    """Запрашивает из Traffic Stats API текущий трафик (tx/rx) для конкретного пользователя.
+    Использует кэширование на 5 секунд, чтобы избежать повторных SSH-запросов, если опрашивается несколько карточек сразу.
+    """
     import json
-    try:
-        config = await discover_hysteria_api_config(server)
-        if not config:
-            return None
-            
-        port = config["port"]
-        secret = config["secret"]
+    ip = server['ip']
+    
+    async with _traffic_cache_lock:
+        now = pytime.time()
+        cached_entry = _traffic_data_cache.get(ip)
         
-        from ...ssh import run_remote_ssh_cmd
-        cmd = ["curl", "-s", "-H", f"'Authorization: {secret}'", f"http://127.0.0.1:{port}/traffic"]
-        
-        success, stdout, stderr = await run_remote_ssh_cmd(server, cmd)
-        if success and stdout:
-            data = json.loads(stdout)
-            user_stats = data.get(username)
-            if user_stats:
-                return user_stats
-    except Exception as e:
-        logging.warning(f"[Remote Hysteria {server['ip']}] Не удалось получить трафик для {username}: {e}")
+        # Если в кэше есть свежие данные (менее 5 секунд назад), берем их
+        if cached_entry and (now - cached_entry[0] < 5.0):
+            data = cached_entry[1]
+        else:
+            # Иначе делаем новый запрос на сервер (получаем полный листинг трафика всех пользователей)
+            data = None
+            try:
+                config = await discover_hysteria_api_config(server)
+                if config:
+                    port = config["port"]
+                    secret = config["secret"]
+                    
+                    from ...ssh import run_remote_ssh_cmd
+                    cmd = ["curl", "-s", "-H", f"'Authorization: {secret}'", f"http://127.0.0.1:{port}/traffic"]
+                    
+                    success, stdout, stderr = await run_remote_ssh_cmd(server, cmd)
+                    if success and stdout:
+                        data = json.loads(stdout)
+                        # Записываем полученный листинг в кэш
+                        _traffic_data_cache[ip] = (now, data)
+            except Exception as e:
+                logging.warning(f"[Remote Hysteria {ip}] Не удалось получить общий листинг трафика с сервера: {e}")
+                
+    # Извлекаем статистику конкретного пользователя из полученного общего списка
+    if data:
+        return data.get(username)
     return None
 
 async def poll_active_hysteria_traffic():

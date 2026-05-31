@@ -8,6 +8,8 @@ RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
+CYAN='\033[0;36m'
+MAGENTA='\033[0;35m'
 NC='\033[0m' # No Color
 
 echo -e "${BLUE}=== Proxmox LXC Monitor Bot - Fully Automated Setup ===${NC}"
@@ -23,10 +25,47 @@ fi
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 echo -e "Директория установки: ${GREEN}${SCRIPT_DIR}${NC}"
 
+# Ask for installation proxy or auto-detect
+echo -e "\n${MAGENTA}==================================================${NC}"
+echo -e "${MAGENTA}        НАСТРОЙКА УСТАНОВОЧНОГО ПРОКСИ (PIP)${NC}"
+echo -e "${MAGENTA}==================================================${NC}"
+echo -e "Проверка прямого доступа к серверам Python (pypi.org)..."
+
+INSTALL_PROXY=""
+if python3 -c "import urllib.request; urllib.request.urlopen('https://pypi.org', timeout=3)" 2>/dev/null; then
+    echo -e "${GREEN}✓ Прямой доступ к PyPI стабилен. Прокси не требуется.${NC}"
+else
+    echo -e "${YELLOW}⚠️ Прямой доступ к PyPI отсутствует или заблокирован.${NC}"
+    
+    # Try to auto-detect proxy from existing .env
+    ENV_FILE="${SCRIPT_DIR}/config/.env"
+    if [ -f "${ENV_FILE}" ]; then
+        EXISTING_PROXY=$(grep -E "^PROXY_URL=" "${ENV_FILE}" | cut -d'=' -f2-)
+        # Strip potential quotes or spaces
+        EXISTING_PROXY=$(echo "${EXISTING_PROXY}" | tr -d '"' | tr -d "'")
+        if [ -n "${EXISTING_PROXY}" ]; then
+            echo -e "${GREEN}✓ Автоматически подтягиваем рабочий прокси из .env: ${YELLOW}${EXISTING_PROXY}${NC}"
+            INSTALL_PROXY="${EXISTING_PROXY}"
+        fi
+    fi
+
+    if [ -z "${INSTALL_PROXY}" ]; then
+        echo -e "${YELLOW}Хотите ли вы указать прокси-сервер вручную? (y/n) [n]${NC}"
+        read -p ">> " use_install_proxy
+        if [ "${use_install_proxy}" = "y" ] || [ "${use_install_proxy}" = "Y" ]; then
+            echo -e "\n${BLUE}Введите URL прокси (например, socks5://127.0.0.1:10808 или http://127.0.0.1:10809):${NC}"
+            read -p ">> " INSTALL_PROXY
+            if [ -n "${INSTALL_PROXY}" ]; then
+                echo -e "${GREEN}✓ Установочный прокси настроен: ${INSTALL_PROXY}${NC}"
+            fi
+        fi
+    fi
+fi
+
 # 1. Update apt and install python3-venv, python3-pip if missing
 echo -e "\n${YELLOW}[1/5] Установка системных зависимостей (apt)...${NC}"
 apt-get update
-apt-get install -y python3-venv python3-pip python3-dev build-essential
+apt-get install -y python3-venv python3-pip python3-dev build-essential curl
 
 # 2. Recreate venv
 echo -e "\n${YELLOW}[2/5] Создание виртуального окружения (venv)...${NC}"
@@ -39,8 +78,34 @@ echo -e "${GREEN}✓ Виртуальное окружение venv создан
 
 # 3. Upgrade pip and install requirements
 echo -e "\n${YELLOW}[3/5] Обновление pip и установка библиотек...${NC}"
-"${SCRIPT_DIR}/venv/bin/pip" install --upgrade pip
-"${SCRIPT_DIR}/venv/bin/pip" install -r "${SCRIPT_DIR}/requirements.txt"
+
+if [ -n "${INSTALL_PROXY}" ]; then
+    # Check if SOCKS proxy is used
+    if [[ "${INSTALL_PROXY}" == socks* ]]; then
+        echo -e "${BLUE}Обнаружен SOCKS прокси. Начинаем бутстрап поддержки SOCKS для pip...${NC}"
+        
+        # Download PySocks wheel using curl with the proxy
+        PYSOCKS_WHEEL="${SCRIPT_DIR}/venv/PySocks-1.7.1-py3-none-any.whl"
+        echo -e "Скачивание библиотеки PySocks через прокси..."
+        if curl -s -L --proxy "${INSTALL_PROXY}" -o "${PYSOCKS_WHEEL}" "https://files.pythonhosted.org/packages/41/ad/7eab6f1b4d34f111977d44fd2f6b866c1b370c48b2bf3276889a7f350064/PySocks-1.7.1-py3-none-any.whl"; then
+            echo -e "${GREEN}✓ Библиотека PySocks успешно скачана.${NC}"
+            # Install it locally
+            "${SCRIPT_DIR}/venv/bin/pip" install "${PYSOCKS_WHEEL}"
+            rm -f "${PYSOCKS_WHEEL}"
+        else
+            echo -e "${RED}❌ Не удалось скачать PySocks через прокси. Попробуем установить напрямую...${NC}"
+        fi
+    fi
+
+    # Run pip with --proxy
+    echo -e "Запуск pip с прокси: ${INSTALL_PROXY}"
+    "${SCRIPT_DIR}/venv/bin/pip" install --proxy "${INSTALL_PROXY}" --upgrade pip
+    "${SCRIPT_DIR}/venv/bin/pip" install --proxy "${INSTALL_PROXY}" -r "${SCRIPT_DIR}/requirements.txt"
+else
+    # Direct install
+    "${SCRIPT_DIR}/venv/bin/pip" install --upgrade pip
+    "${SCRIPT_DIR}/venv/bin/pip" install -r "${SCRIPT_DIR}/requirements.txt"
+fi
 echo -e "${GREEN}✓ Все зависимости установлены.${NC}"
 
 # 4. Create and configure .env interactively
@@ -137,7 +202,7 @@ if [ ${ENV_EXISTS} -eq 0 ]; then
         prompt_var "XUI_PASSWORD" "Пароль 3X-UI (XUI_PASSWORD)" ""
         
         # Настройки прокси для Telegram
-        prompt_var "PROXY_URL" "Прокси для Telegram (PROXY_URL, оставьте пустым если не требуется)" ""
+        prompt_var "PROXY_URL" "Прокси для Telegram (PROXY_URL, оставьте пустым если не требуется)" "${INSTALL_PROXY}"
     
         # Мониторинг роутера Mihomo (Clash.Meta) и автоматический бан
         prompt_var "MIHOMO_MONITOR_ENABLE" "Включить мониторинг роутера через Mihomo API? (True/False)" "False"

@@ -43,4 +43,7 @@ bot/ansible/id_ed25519_ansible.pub
 *.xapk
 *.txt
 
+# Temporary diagnostic & scratch scripts
+scratch/
+
 

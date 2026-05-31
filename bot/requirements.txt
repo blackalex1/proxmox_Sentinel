@@ -11,3 +11,4 @@ pydantic-settings
 asyncssh
 pytest
 pytest-asyncio
+pysocks

@@ -9,10 +9,11 @@ async def test_ssh_run_command_mocked():
     mock_result.stdout = "mongosh success response"
     mock_result.stderr = ""
     
+    from unittest.mock import MagicMock
     mock_conn = AsyncMock()
-    mock_conn.run.return_return = mock_result
     mock_conn.run.return_value = mock_result
     mock_conn.is_closed.return_value = False
+    mock_conn.get_extra_info = MagicMock(return_value=None)
     
     with patch("asyncssh.connect", AsyncMock(return_value=mock_conn)) as mock_connect:
         from modules.proxmox.monitor.remote.ssh import run_remote_ssh_cmd
