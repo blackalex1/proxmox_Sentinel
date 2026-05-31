@@ -44,20 +44,43 @@ async def handle_traffic_log_line(line):
         
         # 1. Классифицируем соединение
         is_bot = False
+        
+        # Проверяем, исходит ли соединение от самого бота или его дочерних процессов на хосте Proxmox
+        is_source_local = False
         if vmid == 0 and direction == 'OUT':
+            is_source_local = True
+        elif vmid != 0 and direction == 'IN':
+            # Проверяем, является ли источником хост Proxmox VE, на котором работает бот
+            proxmox_ip = "127.0.0.1"
+            if settings.proxmox_host:
+                p_ip = settings.proxmox_host.split(':')[0]
+                if p_ip:
+                    proxmox_ip = p_ip
+            if src == proxmox_ip or src in ['127.0.0.1', '::1', 'localhost']:
+                is_source_local = True
+            else:
+                try:
+                    import socket
+                    local_ips = socket.gethostbyname_ex(socket.gethostname())[2]
+                    if src in local_ips:
+                        is_source_local = True
+                except Exception:
+                    pass
+
+        if is_source_local:
             # Сначала проверяем наш сверхбыстрый мгновенный кэш портов бота
             if spt in recent_bot_ports:
                 is_bot = True
             else:
                 # Вносим кратковременную задержку для устранения гонки при установлении сессии
-                # (так как логирование трафика ОС опережает завершение хэндшейка asyncssh)
+                # (так как логирование трафика ОС опережает завершение хэндшейка asyncssh/ansible)
                 if dpt == settings.router_ssh_port or dpt == 22:
                     await asyncio.sleep(0.5)
                     if spt in recent_bot_ports:
                         is_bot = True
                 
                 if not is_bot:
-                    # Резервная проверка через ss, если порт по какой-то причине не в кэше
+                    # Резервная проверка через ss и procfs
                     try:
                         from modules.mihomo.monitor.helpers import is_local_bot_process
                         if await is_local_bot_process(spt, dst):
