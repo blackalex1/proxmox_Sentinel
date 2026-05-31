@@ -24,6 +24,7 @@ def get_ansible_main_keyboard() -> InlineKeyboardMarkup:
 
 def get_ansible_setup_keyboard() -> InlineKeyboardMarkup:
     buttons = [
+        [InlineKeyboardButton(text="🖥 Настроить на самом Хосте Proxmox", callback_data="ansible_setup_host")],
         [InlineKeyboardButton(text="📦 Настроить во всех активных LXC", callback_data="ansible_setup_lxc")],
         [InlineKeyboardButton(text="🌐 Настроить на всех удаленных VPS", callback_data="ansible_setup_vps")],
         [InlineKeyboardButton(text="🔙 Назад", callback_data="ansible_main")]

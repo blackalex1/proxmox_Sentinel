@@ -1,0 +1,162 @@
+import pytest
+import os
+import json
+import asyncio
+from unittest.mock import AsyncMock, MagicMock, patch
+from aiogram import Bot
+from aiogram.exceptions import TelegramNetworkError, TelegramRetryAfter
+
+# Подтягиваем модуль исходящей очереди
+from core.outbox import ResilientOutbox, OUTBOX_FILE
+
+@pytest.fixture
+def clean_outbox():
+    """Фикстура для очистки файлов очереди перед и после теста."""
+    if os.path.exists(OUTBOX_FILE):
+        try:
+            os.remove(OUTBOX_FILE)
+        except:
+            pass
+            
+    outbox = ResilientOutbox()
+    yield outbox
+    
+    if os.path.exists(OUTBOX_FILE):
+        try:
+            os.remove(OUTBOX_FILE)
+        except:
+            pass
+
+def test_outbox_save_load_disk(clean_outbox):
+    """
+    Проверяет, что сообщения сохраняются на диск и корректно
+    загружаются обратно при инициализации очереди.
+    """
+    outbox = clean_outbox
+    
+    # Изначально очередь пуста
+    assert len(outbox.queue) == 0
+    
+    # Добавляем сообщения через блокирующий лок в синхронном стиле для теста
+    outbox.queue.append({
+        "chat_id": 12345,
+        "text": "Тестовое сообщение 1",
+        "kwargs": {"parse_mode": "HTML"},
+        "timestamp": 123456789.0
+    })
+    outbox.save_to_disk()
+    
+    # Файл должен существовать
+    assert os.path.exists(OUTBOX_FILE)
+    
+    # Инициализируем новый инстанс outbox и проверяем, загрузились ли данные
+    new_outbox = ResilientOutbox()
+    assert len(new_outbox.queue) == 1
+    assert new_outbox.queue[0]["chat_id"] == 12345
+    assert new_outbox.queue[0]["text"] == "Тестовое сообщение 1"
+    assert new_outbox.queue[0]["kwargs"] == {"parse_mode": "HTML"}
+
+@pytest.mark.asyncio
+async def test_bot_patching_and_fallback(clean_outbox):
+    """
+    Проверяет, что patch_bot корректно перехватывает сетевые ошибки
+    и складывает сообщения в исходящую очередь.
+    """
+    outbox = clean_outbox
+    
+    # Создаем фиктивного бота
+    bot = MagicMock(spec=Bot)
+    
+    # Мокаем оригинальный метод так, чтобы он всегда падал с сетевой ошибкой
+    bot.send_message = AsyncMock(side_effect=TelegramNetworkError(
+        method=MagicMock(), 
+        message="Simulated Network Failure"
+    ))
+    
+    # Патчим бота
+    outbox.patch_bot(bot)
+    
+    # Отправляем сообщение через пропатченного бота
+    # Метод не должен бросать исключение наружу (оно перехватывается)
+    result = await bot.send_message(99999, "Сбойный алерт", parse_mode="HTML")
+    
+    # Возвращаемое значение None (ошибка поймана)
+    assert result is None
+    
+    # Сообщение должно оказаться в очереди outbox
+    assert len(outbox.queue) == 1
+    assert outbox.queue[0]["chat_id"] == 99999
+    assert outbox.queue[0]["text"] == "Сбойный алерт"
+    assert outbox.queue[0]["kwargs"] == {"parse_mode": "HTML"}
+
+@pytest.mark.asyncio
+async def test_outbox_flush_success(clean_outbox):
+    """
+    Проверяет, что flush_queue успешно отправляет сообщения
+    после восстановления сети и очищает очередь.
+    """
+    outbox = clean_outbox
+    
+    # Заполняем очередь
+    outbox.queue.append({
+        "chat_id": 55555,
+        "text": "Ура, сеть есть!",
+        "kwargs": {}
+    })
+    outbox.save_to_disk()
+    
+    # Мокаем бота с успешной отправкой
+    bot = MagicMock(spec=Bot)
+    bot._original_send_message = AsyncMock()
+    
+    # Смываем очередь
+    await outbox.flush_queue(bot)
+    
+    # Метод отправки должен быть вызван с прикрепленным номером сообщения в очереди
+    bot._original_send_message.assert_called_once_with(55555, "Ура, сеть есть!\n\n[Отложенное сообщение 1/1]")
+    
+    # Очередь должна полностью очиститься
+    assert len(outbox.queue) == 0
+    
+    # Файл очереди на диске тоже должен обновиться до пустого массива
+    with open(OUTBOX_FILE, 'r', encoding='utf-8') as f:
+        disk_queue = json.load(f)
+    assert len(disk_queue) == 0
+
+@pytest.mark.asyncio
+async def test_outbox_flood_control(clean_outbox):
+    """
+    Проверяет, что flush_queue корректно реагирует на ошибку флуда (TelegramRetryAfter):
+    приостанавливает отправку на указанное время, сохраняет оставшиеся сообщения
+    в очереди и прекращает текущую итерацию.
+    """
+    outbox = clean_outbox
+    
+    # Добавляем 2 сообщения в очередь
+    outbox.queue.append({"chat_id": 111, "text": "Msg 1", "kwargs": {}})
+    outbox.queue.append({"chat_id": 222, "text": "Msg 2", "kwargs": {}})
+    outbox.save_to_disk()
+    
+    # Мокаем бота так, чтобы первый вызов падал с ошибкой TelegramRetryAfter(retry_after=5)
+    bot = MagicMock(spec=Bot)
+    
+    retry_exc = TelegramRetryAfter(
+        method=MagicMock(),
+        message="Flood control exceeded",
+        retry_after=5
+    )
+    
+    bot._original_send_message = AsyncMock(side_effect=retry_exc)
+    
+    # Мокаем asyncio.sleep, чтобы тест не спал реальные 5 секунд
+    with patch('asyncio.sleep') as mock_sleep:
+        await outbox.flush_queue(bot)
+        
+        # Проверяем, что sleep был вызван с аргументом 5 (время ожидания)
+        mock_sleep.assert_any_call(5)
+        
+        # Первая отправка должна быть вызвана с прикрепленным номером сообщения
+        bot._original_send_message.assert_called_once_with(111, "Msg 1\n\n[Отложенное сообщение 1/2]")
+        
+        # Обе отправки должны остаться в очереди (т.к. первая провалилась и выбросила прерывание)
+        assert len(outbox.queue) == 2

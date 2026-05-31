@@ -54,5 +54,9 @@ def setup_logging():
     root_logger.addHandler(warnings_handler)
     root_logger.addHandler(console_handler)
 
+    # Настраиваем уровень логирования для библиотеки asyncssh на WARNING,
+    # чтобы не забивать логи INFO-сообщениями о каждом сессионном канале SSH.
+    logging.getLogger('asyncssh').setLevel(logging.WARNING)
+
     logging.info(f"[Logging] Инициализировано общее логирование: {log_file} (5x10MB)")
     logging.info(f"[Logging] Инициализирован выделенный лог предупреждений: {warnings_file} (max 50MB)")

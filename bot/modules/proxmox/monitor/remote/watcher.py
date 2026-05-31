@@ -7,12 +7,68 @@ from .hysteria import handle_remote_hysteria_line
 from .auth import handle_remote_ssh_auth_line
 from .traffic import handle_remote_traffic_line, cleanup_remote_blocks_on_startup
 
+async def is_ssh_port_open(ip, port=22, timeout=2.0) -> bool:
+    """Быстрая неблокирующая проверка доступности TCP-порта SSH.
+    Позволяет избежать тяжелого процесса инициализации SSH/spawning процессов, если сервер выключен.
+    """
+    try:
+        _, writer = await asyncio.wait_for(
+            asyncio.open_connection(ip, port),
+            timeout=timeout
+        )
+        writer.close()
+        await writer.wait_closed()
+        return True
+    except Exception:
+        return False
+
+# Хранилище статуса доступности VPS серверов для отправки Telegram-алертов: server_ip -> is_online
+_servers_online_status = {}
+_status_lock = asyncio.Lock()
+
 async def monitor_remote_task(server, service_name, command_args, callback):
     """Фоновый воркер с автоматическим переподключением для отслеживания логов по SSH на конкретном сервере."""
     logging.info(f"[Remote Monitor] Запуск стриминга {service_name} для VPS {server['ip']}...")
     is_reconnect = False
     while True:
         try:
+            # Если это переподключение, сначала проверяем физическую доступность SSH-порта
+            if is_reconnect:
+                port = 22
+                if isinstance(server, dict) and 'port' in server:
+                    try:
+                        port = int(server['port'])
+                    except:
+                        pass
+                
+                # Проверяем доступность порта первый раз перед сном
+                is_open = await is_ssh_port_open(server['ip'], port, timeout=2.0)
+                if not is_open:
+                    # Сервер ушел в оффлайн — отправляем алерт один раз на все 3 службы
+                    async with _status_lock:
+                        if _servers_online_status.get(server['ip'], True):
+                            _servers_online_status[server['ip']] = False
+                            from modules.proxmox.monitor.utils import send_alert_to_admins
+                            await send_alert_to_admins(
+                                f"⚠️ <b>[Remote Monitor]</b> Удаленный VPS-сервер <b>{server['ip']}</b> отключен или недоступен!"
+                            )
+                
+                # Ждем открытия порта, опрашивая его раз в 10 секунд
+                while not is_open:
+                    await asyncio.sleep(10)
+                    is_open = await is_ssh_port_open(server['ip'], port, timeout=2.0)
+                
+                # Сервер вернулся в сеть — отправляем оповещение о восстановлении один раз
+                async with _status_lock:
+                    if not _servers_online_status.get(server['ip'], True):
+                        _servers_online_status[server['ip']] = True
+                        from modules.proxmox.monitor.utils import send_alert_to_admins
+                        await send_alert_to_admins(
+                            f"✅ <b>[Remote Monitor]</b> Связь с удаленным VPS-сервером <b>{server['ip']}</b> успешно восстановлена!"
+                        )
+                
+                logging.info(f"[Remote Monitor {server['ip']}] SSH порт ({port}) открылся. Возобновляем подключение для {service_name}...")
+
             ssh_base = get_ssh_base_cmd(server)
             
             current_args = list(command_args)

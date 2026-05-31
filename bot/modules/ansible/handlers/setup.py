@@ -51,6 +51,30 @@ async def check_vps_ansible_status(server: dict, pub_key_content: str) -> bool:
         logging.error(f"Error checking ansible status on VPS {server.get('ip')}: {e}")
         return False
 
+async def check_host_ansible_status(pub_key_content: str) -> bool:
+    """Checks if user 'ansible' is configured on the Proxmox Host."""
+    if not pub_key_content:
+        return False
+    try:
+        parts = pub_key_content.strip().split()
+        key_body = parts[1] if len(parts) >= 2 else pub_key_content.strip()
+        
+        check_cmd = [
+            "bash", "-c",
+            f"id ansible && test -f /home/ansible/.ssh/authorized_keys && grep -q '{key_body}' /home/ansible/.ssh/authorized_keys"
+        ]
+        
+        proc = await asyncio.create_subprocess_exec(
+            *check_cmd,
+            stdout=asyncio.subprocess.DEVNULL,
+            stderr=asyncio.subprocess.DEVNULL
+        )
+        await proc.wait()
+        return proc.returncode == 0
+    except Exception as e:
+        logging.error(f"Error checking ansible status on Proxmox Host: {e}")
+        return False
+
 @router.callback_query(F.data == "ansible_setup_env")
 async def process_ansible_setup_env(callback: CallbackQuery):
     # 1. Отвечаем на callback и показываем индикатор загрузки
@@ -109,6 +133,7 @@ async def process_ansible_setup_env(callback: CallbackQuery):
     lxc_results = []
     vps_results = []
     tasks = []
+    host_is_ok = [False]
     
     async def check_lxc(l_host):
         is_ok = await check_lxc_ansible_status(l_host['vmid'], pub_key_content)
@@ -118,6 +143,11 @@ async def process_ansible_setup_env(callback: CallbackQuery):
         is_ok = await check_vps_ansible_status(v_host, pub_key_content)
         vps_results.append((v_host, is_ok))
         
+    async def check_host():
+        is_ok = await check_host_ansible_status(pub_key_content)
+        host_is_ok[0] = is_ok
+        
+    tasks.append(check_host())
     for lxc in lxc_hosts:
         tasks.append(check_lxc(lxc))
     for vps in vps_hosts:
@@ -132,6 +162,14 @@ async def process_ansible_setup_env(callback: CallbackQuery):
     
     # Формируем статус-текст
     status_text = ""
+    
+    # Добавляем Proxmox Host
+    pve_ip = "127.0.0.1"
+    if settings.proxmox_host:
+        pve_ip = settings.proxmox_host.split(':')[0]
+    host_emoji = "🟢" if host_is_ok[0] else "🔴"
+    status_text += f"<b>Хост Proxmox VE:</b>\n{host_emoji} proxmox ({pve_ip})\n\n"
+    
     if lxc_results:
         status_text += "<b>Контейнеры LXC:</b>\n"
         for l_host, is_ok in lxc_results:
@@ -155,6 +193,7 @@ async def process_ansible_setup_env(callback: CallbackQuery):
         f"🔑 <b>Настройка окружения Ansible</b>\n\n"
         f"Я могу автоматически создать пользователя <code>ansible</code> с беспарольным доступом <code>sudo</code> "
         f"и установить сгенерированный публичный SSH-ключ:\n"
+        f"• На самом <b>Хосте Proxmox VE</b>.\n"
         f"• Во все <b>активные LXC контейнеры</b> на хосте Proxmox.\n"
         f"• На все <b>удаленные VPS сервера</b>, добавленные в конфигурацию.\n\n"
         f"📋 <b>Текущий статус готовности хостов:</b>\n"

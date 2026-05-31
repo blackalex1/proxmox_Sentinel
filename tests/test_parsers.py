@@ -182,4 +182,58 @@ async def test_watcher_host_ssh_verification():
         assert '🚨 Исходящий запрос Хоста на sensitive порт' in lxc_traffic_history[0][0]['label']
 
 
+@pytest.mark.asyncio
+async def test_watcher_lxc_inbound_ssh_verification():
+    from modules.proxmox.monitor.traffic.watcher import handle_traffic_log_line
+    from modules.proxmox.monitor.state import recent_bot_ports, lxc_traffic_history
+    from unittest.mock import AsyncMock, patch
+    from core.config import settings
+
+    # Clean state
+    recent_bot_ports.clear()
+    lxc_traffic_history[109].clear()
+
+    # Log line where someone SSHs into LXC 109 from host IP
+    log_line = (
+        "May 30 16:45:10 proxmox kernel: [12345.67] LXC_CONN: "
+        "IN=veth109i0 OUT= SRC=192.168.1.120 DST=192.168.1.53 LEN=60 "
+        "TOS=0x00 PREC=0x00 TTL=64 ID=21151 DF PROTO=TCP SPT=48614 DPT=22"
+    )
+
+    # Mock settings.proxmox_host to make 192.168.1.120 the host IP
+    original_host = settings.proxmox_host
+    settings.proxmox_host = "192.168.1.120:8006"
+
+    try:
+        # A) Simulate legitimate connection by the bot / child process (e.g. Ansible):
+        # is_local_bot_process returns True
+        with patch("modules.proxmox.monitor.traffic.watcher.send_alert_to_admins", AsyncMock()) as mock_alert, \
+             patch("modules.mihomo.monitor.helpers.is_local_bot_process", AsyncMock(return_value=True)):
+            
+            await handle_traffic_log_line(log_line)
+            # Should be classified as INFO, no alerts sent
+            mock_alert.assert_not_called()
+            assert len(lxc_traffic_history[109]) == 1
+            assert lxc_traffic_history[109][0]['risk_level'] == 'INFO'
+            assert '🟢 Служебный SSH Хоста (Бот)' in lxc_traffic_history[109][0]['label']
+
+        # B) Simulate malicious/unauthorized connection by someone else on the host (is_local_bot_process returns False)
+        recent_bot_ports.clear()
+        lxc_traffic_history[109].clear()
+
+        with patch("modules.proxmox.monitor.traffic.watcher.send_alert_to_admins", AsyncMock()) as mock_alert, \
+             patch("modules.mihomo.monitor.helpers.is_local_bot_process", AsyncMock(return_value=False)), \
+             patch("modules.proxmox.monitor.traffic.watcher.get_and_kill_local_or_lxc_process", AsyncMock(return_value=(None, None))):
+            
+            await handle_traffic_log_line(log_line)
+            # Must be classified as WARNING, alert sent!
+            mock_alert.assert_called_once()
+            assert len(lxc_traffic_history[109]) == 1
+            assert lxc_traffic_history[109][0]['risk_level'] == 'WARNING'
+            assert '⚠️ Локальный вход на порт' in lxc_traffic_history[109][0]['label']
+    finally:
+        settings.proxmox_host = original_host
+
+
+
 
