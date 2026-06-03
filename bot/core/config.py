@@ -74,6 +74,9 @@ class Settings(BaseSettings):
     # Белый список LXC контейнеров для IPS (им разрешены любые исходящие соединения)
     ips_lxc_whitelist: List[int] | str = Field(default_factory=list, validation_alias='IPS_LXC_WHITELIST')
 
+    # Временный белый список командной строки процессов (для авто-тестов)
+    ips_temp_whitelist_cmdline: str = Field(default='', validation_alias='IPS_TEMP_WHITELIST_CMDLINE')
+
     # Mihomo (Clash.Meta) мониторинг роутера
     mihomo_monitor_enable: bool = Field(default=False, validation_alias='MIHOMO_MONITOR_ENABLE')
     mihomo_api_host: str = Field(default='192.168.1.1', validation_alias='MIHOMO_API_HOST')

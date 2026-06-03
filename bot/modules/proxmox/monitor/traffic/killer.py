@@ -13,6 +13,7 @@ async def get_and_kill_local_or_lxc_process(vmid, spt):
     try:
         if vmid == 0:
             cmd = ["ss", "-atnup"]
+            logging.info(f"[Local IPS] Запуск команды: {' '.join(cmd)}")
             proc = await asyncio.create_subprocess_exec(
                 *cmd,
                 stdout=asyncio.subprocess.PIPE,
@@ -21,8 +22,14 @@ async def get_and_kill_local_or_lxc_process(vmid, spt):
             stdout_bytes, _ = await proc.communicate()
             stdout = stdout_bytes.decode('utf-8', errors='ignore')
             
+            logging.info(f"[Local IPS] Вывод ss (первых 500 символов): {stdout[:500]}...")
+            
+            matched = False
             for line in stdout.splitlines():
-                if f":{spt} " in line:
+                parts = line.strip().split()
+                if len(parts) >= 5 and parts[4].endswith(f":{spt}"):
+                    matched = True
+                    logging.info(f"[Local IPS] Найдена строка совпадения для порта {spt}: {line.strip()}")
                     match = re.search(r'users:\(\("([^"]+)",(?:pid=)?(\d+)', line)
                     if match:
                         proc_name, pid = match.groups()
@@ -35,16 +42,29 @@ async def get_and_kill_local_or_lxc_process(vmid, spt):
                             if target_pid == os.getpid():
                                 is_self_or_child = True
                             else:
+                                # Проверяем временный белый список командной строки
+                                if getattr(settings, 'ips_temp_whitelist_cmdline', None):
+                                    cmdline_path = f"/proc/{target_pid}/cmdline"
+                                    if os.path.exists(cmdline_path):
+                                        try:
+                                            with open(cmdline_path, "r") as f:
+                                                cmdline = f.read()
+                                            if settings.ips_temp_whitelist_cmdline in cmdline:
+                                                is_self_or_child = True
+                                        except Exception:
+                                            pass
+                                
                                 # Проверяем родительский PID в /proc
-                                status_path = f"/proc/{target_pid}/status"
-                                if os.path.exists(status_path):
-                                    with open(status_path, "r") as f:
-                                        for status_line in f:
-                                            if status_line.startswith("PPid:"):
-                                                ppid = int(status_line.split()[1])
-                                                if ppid == os.getpid():
-                                                    is_self_or_child = True
-                                                break
+                                if not is_self_or_child:
+                                    status_path = f"/proc/{target_pid}/status"
+                                    if os.path.exists(status_path):
+                                        with open(status_path, "r") as f:
+                                            for status_line in f:
+                                                if status_line.startswith("PPid:"):
+                                                    ppid = int(status_line.split()[1])
+                                                    if ppid == os.getpid():
+                                                        is_self_or_child = True
+                                                    break
                         except Exception:
                             pass
                             
@@ -64,8 +84,11 @@ async def get_and_kill_local_or_lxc_process(vmid, spt):
                         await kill_proc.wait()
                         logging.info(f"[Local IPS] Успешно завершен процесс {proc_name} (PID: {pid}) на Хосте по порту {spt}.")
                         return proc_name, pid
+            if not matched:
+                logging.warning(f"[Local IPS] Не найдено соединение с портом {spt} в выводе ss.")
         else:
             cmd = ["pct", "exec", str(vmid), "--", "ss", "-atnup"]
+            logging.info(f"[LXC IPS] Запуск команды: {' '.join(cmd)}")
             proc = await asyncio.create_subprocess_exec(
                 *cmd,
                 stdout=asyncio.subprocess.PIPE,
@@ -74,8 +97,14 @@ async def get_and_kill_local_or_lxc_process(vmid, spt):
             stdout_bytes, _ = await proc.communicate()
             stdout = stdout_bytes.decode('utf-8', errors='ignore')
             
+            logging.info(f"[LXC IPS] Вывод ss в LXC {vmid} (первых 500 символов): {stdout[:500]}...")
+            
+            matched = False
             for line in stdout.splitlines():
-                if f":{spt} " in line:
+                parts = line.strip().split()
+                if len(parts) >= 5 and parts[4].endswith(f":{spt}"):
+                    matched = True
+                    logging.info(f"[LXC IPS] Найдена строка совпадения для LXC {vmid} порт {spt}: {line.strip()}")
                     match = re.search(r'users:\(\("([^"]+)",(?:pid=)?(\d+)', line)
                     if match:
                         proc_name, pid = match.groups()
@@ -92,6 +121,8 @@ async def get_and_kill_local_or_lxc_process(vmid, spt):
                         await kill_proc.wait()
                         logging.info(f"[LXC IPS] Успешно завершен процесс {proc_name} (PID: {pid}) внутри LXC {vmid} по порту {spt}.")
                         return proc_name, pid
+            if not matched:
+                logging.warning(f"[LXC IPS] Не найдено соединение с портом {spt} внутри LXC {vmid} в выводе ss.")
     except Exception as e:
         logging.error(f"[LXC/Local IPS] Ошибка при поиске и убийстве процесса: {e}")
     return None, None

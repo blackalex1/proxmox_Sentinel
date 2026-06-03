@@ -55,12 +55,12 @@ async def monitor_lxc_auth():
             await host_tailer.start()
             logging.info(f"Запущено файловое отслеживание логов авторизации хоста ({host_log}).")
         else:
-            # Резервный вариант через stdbuf для отключения буферизации в journalctl
+            # Резервный вариант для отключения буферизации в journalctl (в режиме follow логи сбрасываются сразу)
             cmd = ["stdbuf", "-oL", "journalctl", "-f", "-n", "0"]
             host_tailer = LogTailer(cmd, handle_auth_log_line, 0)
             auth_tailers[0] = host_tailer
             await host_tailer.start()
-            logging.info("Запущено отслеживание логов авторизации хоста через journalctl (stdbuf -oL).")
+            logging.info("Запущено отслеживание логов авторизации хоста через journalctl.")
 
     while True:
         try:
@@ -88,7 +88,7 @@ async def monitor_lxc_auth():
                     host_tailer = LogTailer(cmd, handle_auth_log_line, 0)
                     auth_tailers[0] = host_tailer
                     await host_tailer.start()
-                    logging.info("Запущено отслеживание логов авторизации хоста через journalctl (stdbuf -oL).")
+                    logging.info("Запущено отслеживание логов авторизации хоста через journalctl.")
 
             # Получаем список директорий из /var/lib/lxc
             if not os.path.exists("/var/lib/lxc"):
@@ -113,7 +113,7 @@ async def monitor_lxc_auth():
                         await tailer.start()
                     else:
                         # 2. Если файла нет (Debian 12+), стримим логи напрямую через pct exec!
-                        cmd = ["pct", "exec", str(vmid), "--", "journalctl", "-f", "-n", "0"]
+                        cmd = ["pct", "exec", str(vmid), "--", "stdbuf", "-oL", "journalctl", "-f", "-n", "0"]
                         tailer = LogTailer(cmd, handle_auth_log_line, vmid)
                         auth_tailers[vmid] = tailer
                         await tailer.start()
