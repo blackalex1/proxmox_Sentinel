@@ -33,6 +33,17 @@ class SocksProxyRotator:
         logger.info("Начинаем скрапинг свежих списков бесплатных SOCKS5 прокси...")
         unique_proxies = set()
         
+        # Получаем список чувствительных портов для фильтрации
+        from core.config import settings
+        sensitive_ports = settings.monitor_lxc_ports_sensitive
+        if isinstance(sensitive_ports, str):
+            try:
+                sensitive_ports = [int(x.strip()) for x in sensitive_ports.split(',') if x.strip()]
+            except Exception:
+                sensitive_ports = []
+        elif not isinstance(sensitive_ports, list):
+            sensitive_ports = []
+        
         loop = asyncio.get_running_loop()
         
         for url in PROXY_SOURCES:
@@ -48,10 +59,21 @@ class SocksProxyRotator:
                 
                 # Ищем паттерны IP:Port
                 found = re.findall(r'\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\s*:\s*\d{2,5}\b', content)
+                filtered_count = 0
                 for p in found:
-                    unique_proxies.add(p.strip().replace(" ", ""))
+                    p_clean = p.strip().replace(" ", "")
+                    try:
+                        parts = p_clean.split(':')
+                        if len(parts) == 2:
+                            port = int(parts[1])
+                            if port in sensitive_ports:
+                                filtered_count += 1
+                                continue
+                    except Exception:
+                        pass
+                    unique_proxies.add(p_clean)
                     
-                logger.info(f"Успешно загружено {len(found)} прокси из {url}")
+                logger.info(f"Успешно загружено {len(found)} прокси из {url} (отфильтровано чувствительных портов: {filtered_count})")
             except Exception as e:
                 logger.warning(f"Не удалось загрузить список прокси из {url}: {e}")
                 

@@ -2,6 +2,9 @@ import os
 import sys
 import pytest
 
+# Отключаем генерацию кэша байт-кода (.pyc) во время выполнения тестов
+sys.dont_write_bytecode = True
+
 # Добавляем папку bot в sys.path, чтобы импорты внутри тестов работали корректно
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../bot')))
 
@@ -24,3 +27,12 @@ def setup_test_env():
     except Exception:
         pass
     yield
+    
+    # Очищаем собственный __pycache__ тестов в конце работы
+    import shutil
+    cache_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '__pycache__'))
+    if os.path.exists(cache_dir):
+        try:
+            shutil.rmtree(cache_dir)
+        except Exception:
+            pass

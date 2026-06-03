@@ -43,6 +43,11 @@ async def process_main_menu(callback: CallbackQuery):
         )
     except Exception as e:
         logging.error(f"Ошибка при возврате в главное меню: {e}")
+    finally:
+        try:
+            await callback.answer()
+        except Exception:
+            pass
 
 @router.message(Command("id"))
 async def cmd_id(message: types.Message):
@@ -68,6 +73,11 @@ async def callback_help_info(callback: CallbackQuery):
         await callback.message.edit_text(get_help_text(), parse_mode="HTML", reply_markup=kb)
     except Exception as e:
         logging.error(f"Ошибка при показе справки: {e}")
+    finally:
+        try:
+            await callback.answer()
+        except Exception:
+            pass
 
 @router.callback_query(F.data == "noop")
 async def callback_noop(callback: CallbackQuery):

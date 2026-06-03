@@ -72,6 +72,8 @@ async def monitor_xui_panel_logins():
         tailer = LogTailer(cmd, handle_xui_panel_log_line)
         await tailer.start()
         logging.info(f"Запущен мониторинг входов 3X-UI Panel через journalctl для LXC {settings.vpn_vmid}.")
+        if tailer.task:
+            await tailer.task
     except Exception as e:
         logging.error(f"Ошибка при запуске мониторинга входов 3X-UI Panel: {e}")
 
