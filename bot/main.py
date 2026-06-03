@@ -275,7 +275,7 @@ async def main():
     
     # Запускаем фоновые задачи (Proxmox Alert System)
     if settings.admin_ids:
-        asyncio.create_task(proxmox_monitor())
+        asyncio.create_task(proxmox_monitor(), name="monitor_nodes")
         try:
             from modules.proxmox.monitor import start_all_lxc_monitors
             await start_all_lxc_monitors()
@@ -315,11 +315,11 @@ async def main():
                 logging.info("[Proxy Monitor] Основной прокси успешно прошел стартовую проверку.")
                 
         logging.info("[Proxy Monitor] Запуск фоновой службы отслеживания авто-ротации прокси...")
-        asyncio.create_task(proxy_monitor_loop(bot, primary_proxy_endpoint, session_kwargs, active_proxy, using_fallback))
+        asyncio.create_task(proxy_monitor_loop(bot, primary_proxy_endpoint, session_kwargs, active_proxy, using_fallback), name="proxy_monitor_loop")
         
     # Запуск фоновой службы отложенной отправки сообщений (Outbox)
     from core.outbox import outbox_sender_loop
-    asyncio.create_task(outbox_sender_loop(bot))
+    asyncio.create_task(outbox_sender_loop(bot), name="outbox_sender_loop")
         
     # Запуск пулинга
     try:

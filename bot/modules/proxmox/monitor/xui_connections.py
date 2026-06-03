@@ -158,6 +158,7 @@ async def monitor_xui_connections():
     log_path = find_xray_access_log_path(settings.vpn_vmid)
     asyncio.create_task(monitor_xui_offline_check())
     
+    tailer = None
     if log_path:
         tailer = LogTailer(log_path, handle_xray_log_line)
         await tailer.start()
@@ -175,3 +176,6 @@ async def monitor_xui_connections():
             tailer = LogTailer(cmd, handle_xray_log_line)
             await tailer.start()
             logging.info(f"Файл access.log не найден. Запущено резервное отслеживание через pct exec journalctl ({service_name}) для LXC {settings.vpn_vmid}.")
+            
+    if tailer and tailer.task:
+        await tailer.task
