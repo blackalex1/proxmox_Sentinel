@@ -65,7 +65,35 @@ fi
 # 1. Update apt and install python3-venv, python3-pip if missing
 echo -e "\n${YELLOW}[1/5] Установка системных зависимостей (apt)...${NC}"
 apt-get update
-apt-get install -y python3-venv python3-pip python3-dev build-essential curl
+apt-get install -y python3-venv python3-pip python3-dev build-essential curl auditd
+
+# 1.1 Настройка подсистемы аудита ядра (auditd)
+echo -e "\n${YELLOW}[1.1/5] Настройка подсистемы аудита ядра (auditd)...${NC}"
+if command -v auditctl >/dev/null 2>&1; then
+    mkdir -p /etc/audit/rules.d
+    AUDIT_RULES_FILE="/etc/audit/rules.d/audit.rules"
+    RULE_STR="-a always,exit -F arch=b64 -S connect -k aegis_outbound"
+    
+    # Создаем файл, если его нет
+    if [ ! -f "${AUDIT_RULES_FILE}" ]; then
+        touch "${AUDIT_RULES_FILE}"
+    fi
+
+    if ! grep -Fq "${RULE_STR}" "${AUDIT_RULES_FILE}"; then
+        echo "" >> "${AUDIT_RULES_FILE}"
+        echo "${RULE_STR}" >> "${AUDIT_RULES_FILE}"
+        echo -e "${GREEN}✓ Правило Aegis IPS добавлено в ${AUDIT_RULES_FILE}.${NC}"
+    else
+        echo -e "${GREEN}✓ Правило Aegis IPS уже присутствует в ${AUDIT_RULES_FILE}.${NC}"
+    fi
+
+    # Включаем и перезапускаем службу auditd
+    systemctl enable auditd
+    systemctl restart auditd
+    echo -e "${GREEN}✓ Служба auditd успешно настроена и перезапущена.${NC}"
+else
+    echo -e "${RED}❌ Ошибка: Утилита auditctl не найдена после установки auditd.${NC}"
+fi
 
 # 2. Recreate venv
 echo -e "\n${YELLOW}[2/5] Создание виртуального окружения (venv)...${NC}"

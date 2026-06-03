@@ -185,6 +185,7 @@ async def monitor_lxc_traffic():
     log_path = find_kernel_log_path()
     
     from modules.proxmox.monitor import state
+    tailer = None
     if log_path:
         tailer = LogTailer(log_path, handle_traffic_log_line)
         state.traffic_tailer = tailer
@@ -195,3 +196,6 @@ async def monitor_lxc_traffic():
         state.traffic_tailer = tailer
         await tailer.start()
         logging.info("Системный лог (/var/log/messages) не найден. Запущено journalctl-отслеживание для ядра (-k).")
+        
+    if tailer and tailer.task:
+        await tailer.task

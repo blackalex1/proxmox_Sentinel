@@ -140,6 +140,7 @@ async def monitor_remote_server():
     except Exception as e:
         logging.error(f"[Remote Monitor] Ошибка при загрузке состояния алертов Hysteria: {e}")
         
+    tasks = []
     for server in settings.remote_servers:
         logging.info(f"[Remote Monitor] Запуск фоновых задач для VPS {server['ip']}...")
         
@@ -152,15 +153,17 @@ async def monitor_remote_server():
             hysteria_args = ["journalctl", "-u", "hysteria-server.service", "-f", "-n", "0"]
             await monitor_remote_task(srv, "Hysteria2", hysteria_args, handle_remote_hysteria_line)
             
-        asyncio.create_task(run_hysteria_with_preload(server))
+        tasks.append(asyncio.create_task(run_hysteria_with_preload(server)))
         
         # 2. Отслеживание авторизаций SSH
         ssh_args = ["journalctl", "-u", "ssh", "-u", "sshd", "-f", "-n", "0"]
-        asyncio.create_task(monitor_remote_task(server, "SSH Auth", ssh_args, handle_remote_ssh_auth_line))
+        tasks.append(asyncio.create_task(monitor_remote_task(server, "SSH Auth", ssh_args, handle_remote_ssh_auth_line)))
         
         # 3. Отслеживание подозрительного трафика через ядро (iptables logs)
         traffic_args = ["journalctl", "-k", "-f", "-n", "0"]
-        asyncio.create_task(monitor_remote_task(server, "Kernel Traffic", traffic_args, handle_remote_traffic_line))
+        tasks.append(asyncio.create_task(monitor_remote_task(server, "Kernel Traffic", traffic_args, handle_remote_traffic_line)))
         
     logging.info("[Remote Monitor] Все фоновые задачи удаленного мониторинга для всех VPS успешно запущены!")
+    if tasks:
+        await asyncio.gather(*tasks, return_exceptions=True)
 
