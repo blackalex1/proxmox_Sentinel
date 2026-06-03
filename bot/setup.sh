@@ -79,7 +79,7 @@ if command -v auditctl >/dev/null 2>&1; then
         touch "${AUDIT_RULES_FILE}"
     fi
 
-    if ! grep -Fq "${RULE_STR}" "${AUDIT_RULES_FILE}"; then
+    if ! grep -Fq -- "${RULE_STR}" "${AUDIT_RULES_FILE}"; then
         echo "" >> "${AUDIT_RULES_FILE}"
         echo "${RULE_STR}" >> "${AUDIT_RULES_FILE}"
         echo -e "${GREEN}✓ Правило Aegis IPS добавлено в ${AUDIT_RULES_FILE}.${NC}"
@@ -87,54 +87,52 @@ if command -v auditctl >/dev/null 2>&1; then
         echo -e "${GREEN}✓ Правило Aegis IPS уже присутствует в ${AUDIT_RULES_FILE}.${NC}"
     fi
 
-    # Включаем и перезапускаем службу auditd
-    systemctl enable auditd
-    systemctl restart auditd
-    echo -e "${GREEN}✓ Служба auditd успешно настроена и перезапущена.${NC}"
+    # Включаем и перезапускаем службу auditd (игнорируя ошибки, если ядро не поддерживает аудит)
+    systemctl enable auditd || true
+    systemctl restart auditd || echo -e "${YELLOW}⚠️ Предупреждение: Не удалось запустить auditd. Это нормально, если в GRUB отключен аудит (audit=0).${NC}"
+    echo -e "${GREEN}✓ Служба auditd настроена.${NC}"
 else
     echo -e "${RED}❌ Ошибка: Утилита auditctl не найдена после установки auditd.${NC}"
 fi
 
-# 2. Recreate venv
-echo -e "\n${YELLOW}[2/5] Создание виртуального окружения (venv)...${NC}"
+# 2. Recreate venv using uv
+echo -e "\n${YELLOW}[2/5] Создание виртуального окружения (uv venv)...${NC}"
+
+# Install uv if missing
+if ! command -v uv >/dev/null 2>&1; then
+    echo -e "Установка fast-installer (uv)..."
+    curl -LsSf https://astral.sh/uv/install.sh | INSTALLER_NO_MODIFY_PATH=1 sh || pip3 install uv --break-system-packages || pip install uv
+    export PATH="${HOME}/.local/bin:${PATH}"
+fi
+
+# Use uv path helper
+UV_BIN="uv"
+if [ -f "${HOME}/.local/bin/uv" ]; then
+    UV_BIN="${HOME}/.local/bin/uv"
+elif [ -f "/root/.local/bin/uv" ]; then
+    UV_BIN="/root/.local/bin/uv"
+fi
+
 if [ -d "${SCRIPT_DIR}/venv" ]; then
     echo -e "Существующее окружение venv обнаружено. Пересоздаем..."
     rm -rf "${SCRIPT_DIR}/venv"
 fi
-python3 -m venv "${SCRIPT_DIR}/venv"
-echo -e "${GREEN}✓ Виртуальное окружение venv создано.${NC}"
 
-# 3. Upgrade pip and install requirements
-echo -e "\n${YELLOW}[3/5] Обновление pip и установка библиотек...${NC}"
+$UV_BIN venv "${SCRIPT_DIR}/venv"
+echo -e "${GREEN}✓ Виртуальное окружение venv создано с помощью uv.${NC}"
+
+# 3. Install requirements using uv
+echo -e "\n${YELLOW}[3/5] Установка библиотек через uv...${NC}"
 
 if [ -n "${INSTALL_PROXY}" ]; then
-    # Check if SOCKS proxy is used
-    if [[ "${INSTALL_PROXY}" == socks* ]]; then
-        echo -e "${BLUE}Обнаружен SOCKS прокси. Начинаем бутстрап поддержки SOCKS для pip...${NC}"
-        
-        # Download PySocks wheel using curl with the proxy
-        PYSOCKS_WHEEL="${SCRIPT_DIR}/venv/PySocks-1.7.1-py3-none-any.whl"
-        echo -e "Скачивание библиотеки PySocks через прокси..."
-        if curl -s -L --proxy "${INSTALL_PROXY}" -o "${PYSOCKS_WHEEL}" "https://files.pythonhosted.org/packages/41/ad/7eab6f1b4d34f111977d44fd2f6b866c1b370c48b2bf3276889a7f350064/PySocks-1.7.1-py3-none-any.whl"; then
-            echo -e "${GREEN}✓ Библиотека PySocks успешно скачана.${NC}"
-            # Install it locally
-            "${SCRIPT_DIR}/venv/bin/pip" install "${PYSOCKS_WHEEL}"
-            rm -f "${PYSOCKS_WHEEL}"
-        else
-            echo -e "${RED}❌ Не удалось скачать PySocks через прокси. Попробуем установить напрямую...${NC}"
-        fi
-    fi
-
-    # Run pip with --proxy
-    echo -e "Запуск pip с прокси: ${INSTALL_PROXY}"
-    "${SCRIPT_DIR}/venv/bin/pip" install --proxy "${INSTALL_PROXY}" --upgrade pip
-    "${SCRIPT_DIR}/venv/bin/pip" install --proxy "${INSTALL_PROXY}" -r "${SCRIPT_DIR}/requirements.txt"
-else
-    # Direct install
-    "${SCRIPT_DIR}/venv/bin/pip" install --upgrade pip
-    "${SCRIPT_DIR}/venv/bin/pip" install -r "${SCRIPT_DIR}/requirements.txt"
+    echo -e "Запуск uv с прокси: ${INSTALL_PROXY}"
+    export HTTP_PROXY="${INSTALL_PROXY}"
+    export HTTPS_PROXY="${INSTALL_PROXY}"
+    export ALL_PROXY="${INSTALL_PROXY}"
 fi
-echo -e "${GREEN}✓ Все зависимости установлены.${NC}"
+
+$UV_BIN pip install --python "${SCRIPT_DIR}/venv" -r "${SCRIPT_DIR}/requirements.txt"
+echo -e "${GREEN}✓ Все зависимости установлены с помощью uv.${NC}"
 
 # 4. Create and configure .env interactively
 echo -e "\n${YELLOW}[4/5] Настройка файла .env...${NC}"

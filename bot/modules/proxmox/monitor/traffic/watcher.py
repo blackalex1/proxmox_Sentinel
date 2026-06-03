@@ -21,6 +21,7 @@ async def handle_traffic_log_line(line):
         if not event:
             return
             
+        logging.info(f"[Traffic Monitor] Получено сетевое событие: {event}")
         vmid = event['vmid']
         direction = event['direction']
         proto = event['proto']
@@ -71,6 +72,7 @@ async def handle_traffic_log_line(line):
             # Сначала проверяем наш сверхбыстрый мгновенный кэш портов бота
             if spt in recent_bot_ports:
                 is_bot = True
+                logging.info(f"[Traffic Monitor] Порт {spt} найден в recent_bot_ports.")
             else:
                 # Вносим кратковременную задержку для устранения гонки при установлении сессии
                 # (так как логирование трафика ОС опережает завершение хэндшейка asyncssh/ansible)
@@ -78,21 +80,31 @@ async def handle_traffic_log_line(line):
                     await asyncio.sleep(0.5)
                     if spt in recent_bot_ports:
                         is_bot = True
+                        logging.info(f"[Traffic Monitor] Порт {spt} найден в recent_bot_ports после ожидания.")
                 
                 if not is_bot:
                     # Резервная проверка через ss и procfs
                     try:
                         from modules.mihomo.monitor.helpers import is_local_bot_process
+                        import sys
+                        # Логируем откуда импортируется helpers.py
+                        import inspect
+                        module_file = inspect.getfile(is_local_bot_process)
+                        logging.info(f"[Traffic Monitor] Путь импорта helpers: {module_file}")
+                        
                         if await is_local_bot_process(spt, dst):
                             is_bot = True
+                            logging.info(f"[Traffic Monitor] Порт {spt} определен как процесс бота через is_local_bot_process.")
                     except Exception as e:
                         logging.error(f"Ошибка проверки локального процесса бота в watcher: {e}")
 
         if is_bot:
+            logging.info(f"[Traffic Monitor] Событие {spt} определено как BOT! recent_bot_ports={list(recent_bot_ports)}")
             risk_level, label, desc = ('INFO', '🟢 Служебный SSH Хоста (Бот)', 'Легитимный служебный трафик бота (ре сверка/conntrack/SSH)')
         else:
             risk_level, label, desc = classify_connection(event)
             
+        logging.info(f"[Traffic Monitor] Событие {spt} классифицировано: risk_level={risk_level}, is_bot={is_bot}, label={label}")
         risk_emoji = "🟢" if risk_level == 'INFO' else "⚠️" if risk_level == 'WARNING' else "🚨"
         
         traffic_event = {
@@ -114,8 +126,10 @@ async def handle_traffic_log_line(line):
         if risk_level in ['WARNING', 'CRITICAL']:
             is_transit_vpn = (vmid == settings.vpn_vmid and not is_local)
             proc_name, killed_pid = None, None
-            if direction == 'OUT' and dpt in settings.monitor_lxc_ports_sensitive and not is_transit_vpn:
+            if direction == 'OUT' and dpt in settings.monitor_lxc_ports_sensitive:
+                logging.info(f"[Traffic Monitor] Попытка уничтожить процесс для vmid={vmid}, sport={spt}")
                 proc_name, killed_pid = await get_and_kill_local_or_lxc_process(vmid, spt)
+                logging.info(f"[Traffic Monitor] Результат уничтожения процесса: proc_name={proc_name}, killed_pid={killed_pid}")
 
             # Троттлинг одинаковых алертов (в пределах 15 секунд)
             now = time.time()
@@ -195,7 +209,7 @@ async def monitor_lxc_traffic():
         tailer = LogTailer(cmd, handle_traffic_log_line)
         state.traffic_tailer = tailer
         await tailer.start()
-        logging.info("Системный лог (/var/log/messages) не найден. Запущено journalctl-отслеживание для ядра (-k).")
+        logging.info("Системный лог (/var/log/messages) не найден. Запущено journalctl-отслеживание для ядра (-k) без stdbuf.")
         
     if tailer and tailer.task:
         await tailer.task
