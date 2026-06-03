@@ -71,6 +71,36 @@ def get_child_pids(parent_pid):
         pass
     return list(set(children))
 
+def decode_hex_ip(hex_str):
+    """Декодирует IP-адрес из шестнадцатеричного представления в /proc/net/tcp и tcp6."""
+    if len(hex_str) == 8:
+        # IPv4 (little endian)
+        ip_bytes = bytes.fromhex(hex_str)
+        return f"{ip_bytes[3]}.{ip_bytes[2]}.{ip_bytes[1]}.{ip_bytes[0]}"
+    elif len(hex_str) == 32:
+        # IPv6 или IPv4-mapped IPv6
+        try:
+            parts = [hex_str[i:i+8] for i in range(0, 32, 8)]
+            # Проверяем, является ли это IPv4-mapped IPv6 (обычно начинается с ::ffff:)
+            is_mapped = (parts[0] == "00000000" and parts[1] == "00000000" and 
+                         (parts[2].lower() in ["0000ffff", "ffff0000"]))
+            if is_mapped:
+                ip_bytes = bytes.fromhex(parts[3])
+                return f"{ip_bytes[3]}.{ip_bytes[2]}.{ip_bytes[1]}.{ip_bytes[0]}"
+            
+            # Стандартный IPv6: декодируем каждое 32-битное слово (little-endian)
+            decoded_parts = []
+            for p in parts:
+                b = bytes.fromhex(p)
+                decoded_parts.append(f"{b[3]:02x}{b[2]:02x}")
+                decoded_parts.append(f"{b[1]:02x}{b[0]:02x}")
+            
+            import socket
+            return socket.inet_ntop(socket.AF_INET6, bytes.fromhex("".join(decoded_parts)))
+        except Exception:
+            pass
+    return hex_str
+
 def parse_tcp_file(file_path):
     """Парсит файл /proc/<pid>/net/tcp или tcp6 и возвращает список кортежей (local_port, remote_ip, remote_port)"""
     connections = []
@@ -88,13 +118,7 @@ def parse_tcp_file(file_path):
                     local_port = int(loc_port_hex, 16)
                     remote_port = int(rem_port_hex, 16)
                     
-                    # Декодируем удаленный IPv4 (little endian)
-                    if len(rem_ip_hex) == 8:
-                        ip_bytes = bytes.fromhex(rem_ip_hex)
-                        remote_ip = f"{ip_bytes[3]}.{ip_bytes[2]}.{ip_bytes[1]}.{ip_bytes[0]}"
-                    else:
-                        remote_ip = rem_ip_hex
-                    
+                    remote_ip = decode_hex_ip(rem_ip_hex)
                     connections.append((local_port, remote_ip, remote_port))
     except Exception:
         pass
