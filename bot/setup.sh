@@ -306,5 +306,6 @@ else
     echo -e "=================================================="
     echo -e "Служба: ${BLUE}proxmox-lxc-bot.service${NC} активна и в автозапуске."
     echo -e "Смотреть логи: ${YELLOW}journalctl -u proxmox-lxc-bot -f${NC}"
+    echo -e "👉 ${BLUE}Запуск E2E тестов IPS: ${YELLOW}sudo venv/bin/python install_test/test_ips.py${NC}"
     echo -e "=================================================="
 fi
