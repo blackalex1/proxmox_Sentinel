@@ -623,7 +623,7 @@ async def main():
             # Check if LXC is in IPS whitelist
             if vmid in settings.ips_lxc_whitelist:
                 print_info(f"LXC {vmid} находится в белом списке (IPS Whitelist). Пропускаем тест.")
-                results[f"LXC {vmid} ({name}) [В белом списке]"] = True
+                results[f"LXC {vmid} ({name})"] = "WHITELISTED"
                 continue
                 
             lxc_ok = await test_container_ips(vmid, name)
@@ -648,9 +648,12 @@ async def main():
         print_header("СВОДНАЯ ТАБЛИЦА РЕЗУЛЬТАТОВ ТЕСТИРОВАНИЯ")
         all_ok = True
         for target, status in results.items():
-            status_str = f"{GREEN}РАБОТАЕТ (ЗАБЛОКИРОВАНО){NC}" if status else f"{RED}НЕ СРАБОТАЛО (НЕТ БЛОКИРОВКИ){NC}"
+            if status == "WHITELISTED":
+                status_str = f"{YELLOW}ПРОПУЩЕНО (РАЗРЕШЕНО / БЕЛЫЙ СПИСОК){NC}"
+            else:
+                status_str = f"{GREEN}РАБОТАЕТ (ЗАБЛОКИРОВАНО){NC}" if status else f"{RED}НЕ СРАБОТАЛО (НЕТ БЛОКИРОВКИ){NC}"
             print(f" - {target:<35} : {status_str}")
-            if not status:
+            if status is False:
                 all_ok = False
                 
         print("\n" + "="*60)
