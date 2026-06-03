@@ -49,9 +49,10 @@ class LogTailer:
                 line_bytes = await proc.stdout.readline()
                 if not line_bytes:
                     if proc.returncode is not None:
-                        stderr_bytes = await proc.stderr.read()
-                        stderr_text = stderr_bytes.decode('utf-8', errors='ignore').strip()
-                        logging.error(f"[LogTailer] Процесс {self.source} завершился с кодом {proc.returncode}. Ошибка: {stderr_text}")
+                        if self.running:
+                            stderr_bytes = await proc.stderr.read()
+                            stderr_text = stderr_bytes.decode('utf-8', errors='ignore').strip()
+                            logging.error(f"[LogTailer] Процесс {self.source} завершился с кодом {proc.returncode}. Ошибка: {stderr_text}")
                         break
                     await asyncio.sleep(1)
                     continue

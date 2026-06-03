@@ -101,8 +101,26 @@ def decode_hex_ip(hex_str):
             pass
     return hex_str
 
+def get_process_socket_inodes(pid):
+    """Возвращает множество (set) inode сокетов, открытых процессом pid."""
+    inodes = set()
+    fd_dir = f"/proc/{pid}/fd"
+    try:
+        if os.path.exists(fd_dir):
+            for fd in os.listdir(fd_dir):
+                try:
+                    link = os.readlink(os.path.join(fd_dir, fd))
+                    if link.startswith("socket:["):
+                        inode = int(link[8:-1])
+                        inodes.add(inode)
+                except Exception:
+                    pass
+    except Exception:
+        pass
+    return inodes
+
 def parse_tcp_file(file_path):
-    """Парсит файл /proc/<pid>/net/tcp или tcp6 и возвращает список кортежей (local_port, remote_ip, remote_port)"""
+    """Парсит файл /proc/<pid>/net/tcp или tcp6 и возвращает список кортежей (local_port, remote_ip, remote_port, inode)"""
     connections = []
     if not os.path.exists(file_path):
         return connections
@@ -119,7 +137,13 @@ def parse_tcp_file(file_path):
                     remote_port = int(rem_port_hex, 16)
                     
                     remote_ip = decode_hex_ip(rem_ip_hex)
-                    connections.append((local_port, remote_ip, remote_port))
+                    inode = 0
+                    if len(parts) >= 10:
+                        try:
+                            inode = int(parts[9])
+                        except Exception:
+                            pass
+                    connections.append((local_port, remote_ip, remote_port, inode))
     except Exception:
         pass
     return connections
@@ -142,11 +166,15 @@ def get_active_ssh_ports_for_vps(vps_ip):
                         continue
                 else:
                     continue
+                
+                process_inodes = get_process_socket_inodes(pid)
+                if not process_inodes:
+                    continue
                     
                 for tcp_file in [f"/proc/{pid}/net/tcp", f"/proc/{pid}/net/tcp6"]:
                     conns = parse_tcp_file(tcp_file)
-                    for local_port, remote_ip, remote_port in conns:
-                        if remote_ip == vps_ip:
+                    for local_port, remote_ip, remote_port, inode in conns:
+                        if remote_ip == vps_ip and inode in process_inodes:
                             ports.append(local_port)
             except Exception:
                 pass
