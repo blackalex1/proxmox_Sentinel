@@ -16,7 +16,7 @@ async def test_get_and_kill_local_process():
     try:
         # Сценарий 1: Локальный процесс на хосте (vmid == 0)
         mock_proc = AsyncMock()
-        mock_proc.communicate.return_value = (b'users:(("sshd",pid=12345,fd=3)) :22 ', b"")
+        mock_proc.communicate.return_value = (b'tcp ESTAB 0 0 127.0.0.1:22 192.0.2.42:22 users:(("sshd",pid=12345,fd=3))', b"")
         
         with patch("asyncio.create_subprocess_exec", return_value=mock_proc) as mock_exec:
             proc_name, pid = await get_and_kill_local_or_lxc_process(vmid=0, spt=22)
@@ -28,7 +28,7 @@ async def test_get_and_kill_local_process():
             mock_exec.assert_any_call("kill", "-9", "12345", stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL)
     finally:
         settings.ips_process_whitelist = original_whitelist
-
+        
 @pytest.mark.asyncio
 async def test_get_and_kill_lxc_process():
     # Временно очищаем белый список процессов для теста
@@ -39,7 +39,7 @@ async def test_get_and_kill_lxc_process():
     try:
         # Сценарий 2: Процесс внутри LXC контейнера (vmid == 101)
         mock_proc = AsyncMock()
-        mock_proc.communicate.return_value = (b'users:(("nginx",pid=9876,fd=4)) :80 ', b"")
+        mock_proc.communicate.return_value = (b'tcp ESTAB 0 0 127.0.0.1:80 192.0.2.42:80 users:(("nginx",pid=9876,fd=4))', b"")
         
         with patch("asyncio.create_subprocess_exec", return_value=mock_proc) as mock_exec:
             proc_name, pid = await get_and_kill_local_or_lxc_process(vmid=101, spt=80)
@@ -56,7 +56,7 @@ async def test_get_and_kill_lxc_process():
 async def test_get_and_kill_whitelisted_process():
     # Сценарий 3: Попытка убить защищенный процесс из белого списка
     mock_proc = AsyncMock()
-    mock_proc.communicate.return_value = (b'users:(("systemd",pid=1,fd=5)) :22 ', b"")
+    mock_proc.communicate.return_value = (b'tcp ESTAB 0 0 127.0.0.1:22 192.0.2.42:22 users:(("systemd",pid=1,fd=5))', b"")
     
     from core.config import settings
     original_whitelist = settings.ips_process_whitelist
@@ -153,7 +153,7 @@ async def test_get_and_kill_self_defense_bot_itself():
     
     # Сценарий: Процесс имеет PID самого бота
     mock_proc = AsyncMock()
-    mock_proc.communicate.return_value = (f'users:(("python3",pid={my_pid},fd=3)) :22 '.encode(), b"")
+    mock_proc.communicate.return_value = (f'tcp ESTAB 0 0 127.0.0.1:22 192.0.2.42:22 users:(("python3",pid={my_pid},fd=3))'.encode(), b"")
     
     # Временно очищаем белый список процессов
     from core.config import settings
@@ -183,7 +183,7 @@ async def test_get_and_kill_self_defense_child_process():
     
     # Сценарий: Процесс имеет другой PID, но его родитель - наш бот
     mock_proc = AsyncMock()
-    mock_proc.communicate.return_value = (f'users:(("python3",pid={child_pid},fd=3)) :22 '.encode(), b"")
+    mock_proc.communicate.return_value = (f'tcp ESTAB 0 0 127.0.0.1:22 192.0.2.42:22 users:(("python3",pid={child_pid},fd=3))'.encode(), b"")
     
     # Временно очищаем белый список процессов
     from core.config import settings
@@ -289,7 +289,7 @@ def test_parse_tcp_file():
     with patch("os.path.exists", return_value=True), mock_open:
         conns = parse_tcp_file("/proc/999/net/tcp")
         assert len(conns) == 2
-        assert conns[1] == (12345, "198.51.100.50", 22)
+        assert conns[1] == (12345, "198.51.100.50", 22, 23456)
 
 
 def test_get_active_ssh_ports_for_vps():
@@ -301,8 +301,9 @@ def test_get_active_ssh_ports_for_vps():
          patch("builtins.open", MagicMock(side_effect=lambda path, *args, **kwargs:
              MagicMock(__enter__=lambda s: s, __exit__=lambda s, *a: None, read=lambda: "ssh" if "1001/comm" in str(path) else "bash")
          )), \
+         patch("modules.proxmox.monitor.remote.helpers.get_process_socket_inodes", return_value={99999}), \
          patch("modules.proxmox.monitor.remote.helpers.parse_tcp_file", side_effect=lambda path: 
-             [(43210, "198.51.100.50", 22)] if "1001" in str(path) else []
+             [(43210, "198.51.100.50", 22, 99999)] if "1001" in str(path) else []
          ):
         ports = get_active_ssh_ports_for_vps("198.51.100.50")
         assert ports == [43210]

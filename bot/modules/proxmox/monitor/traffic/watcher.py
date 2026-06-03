@@ -86,11 +86,7 @@ async def handle_traffic_log_line(line):
                     # Резервная проверка через ss и procfs
                     try:
                         from modules.mihomo.monitor.helpers import is_local_bot_process
-                        import sys
-                        # Логируем откуда импортируется helpers.py
-                        import inspect
-                        module_file = inspect.getfile(is_local_bot_process)
-                        logging.info(f"[Traffic Monitor] Путь импорта helpers: {module_file}")
+
                         
                         if await is_local_bot_process(spt, dst):
                             is_bot = True
