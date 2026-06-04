@@ -1,7 +1,7 @@
 import pytest
 import asyncio
 from unittest.mock import AsyncMock, patch, MagicMock, ANY
-from core.handlers.base import process_terminate_ssh, process_ban_ssh_key
+from core.handlers.base import process_terminate_ssh, process_ban_ssh_key, get_kill_tree_cmd
 
 @pytest.mark.asyncio
 async def test_process_terminate_ssh_local_success():
@@ -23,9 +23,9 @@ async def test_process_terminate_ssh_local_success():
     with patch("asyncio.create_subprocess_exec", AsyncMock(return_value=mock_proc)) as mock_exec:
         await process_terminate_ssh(mock_callback)
         
-        # Verify subprocess was called with kill -9
+        # Verify subprocess was called with kill tree script
         mock_exec.assert_called_once_with(
-            "kill", "-9", "98765",
+            "sh", "-c", get_kill_tree_cmd(98765),
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE
         )
@@ -58,9 +58,9 @@ async def test_process_terminate_ssh_lxc_already_dead():
     with patch("asyncio.create_subprocess_exec", AsyncMock(return_value=mock_proc)) as mock_exec:
         await process_terminate_ssh(mock_callback)
         
-        # Verify pct exec kill -9 was called
+        # Verify pct exec kill tree script was called
         mock_exec.assert_called_once_with(
-            "pct", "exec", "101", "--", "kill", "-9", "54321",
+            "pct", "exec", "101", "--", "sh", "-c", get_kill_tree_cmd(54321),
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE
         )
@@ -93,8 +93,8 @@ async def test_process_terminate_ssh_remote_vps():
          
         await process_terminate_ssh(mock_callback)
         
-        # Verify remote ssh command was run
-        mock_remote_ssh.assert_called_once_with(mock_server, ["kill", "-9", "3322"])
+        # Verify remote ssh command was run with kill tree script
+        mock_remote_ssh.assert_called_once_with(mock_server, [get_kill_tree_cmd(3322)])
         # Verify success alerts
         mock_callback.answer.assert_called_once_with("SSH-сессия успешно сброшена!", show_alert=True)
         mock_message.edit_text.assert_called_once()
@@ -131,7 +131,7 @@ async def test_process_ban_ssh_key_local_success():
         await process_ban_ssh_key(mock_callback)
         
         # Verify it called kill first
-        mock_exec.assert_any_call("kill", "-9", "98765")
+        mock_exec.assert_any_call("sh", "-c", get_kill_tree_cmd(98765))
         
         # Verify it called python3 ban script with fingerprint and keys path
         mock_exec.assert_any_call(
@@ -176,7 +176,7 @@ async def test_process_ban_ssh_key_remote_vps():
         await process_ban_ssh_key(mock_callback)
         
         # Verify remote ssh command run
-        mock_remote_ssh.assert_any_call(mock_server, ["kill", "-9", "3322"])
+        mock_remote_ssh.assert_any_call(mock_server, [get_kill_tree_cmd(3322)])
         # Verify ban script was run remotely
         mock_remote_ssh.assert_any_call(
             mock_server,
