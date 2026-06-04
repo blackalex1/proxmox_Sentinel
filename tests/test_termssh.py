@@ -1,7 +1,7 @@
 import pytest
 import asyncio
 from unittest.mock import AsyncMock, patch, MagicMock, ANY
-from core.handlers.base import process_terminate_ssh, process_ban_ssh_key, get_kill_tree_cmd
+from core.handlers.base import process_terminate_ssh, process_ban_ssh_key, get_kill_tree_cmd, get_ban_key_tree_cmd
 
 @pytest.mark.asyncio
 async def test_process_terminate_ssh_local_success():
@@ -133,9 +133,9 @@ async def test_process_ban_ssh_key_local_success():
         # Verify it called kill first
         mock_exec.assert_any_call("sh", "-c", get_kill_tree_cmd(98765))
         
-        # Verify it called python3 ban script with fingerprint and empty root_prefix
+        # Verify it called ban shell command on the host
         mock_exec.assert_any_call(
-            "python3", "-c", ANY, "SHA256:targetfingerprint", "",
+            "sh", "-c", get_ban_key_tree_cmd("SHA256:targetfingerprint"),
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE
         )
@@ -177,10 +177,10 @@ async def test_process_ban_ssh_key_remote_vps():
         
         # Verify remote ssh command run
         mock_remote_ssh.assert_any_call(mock_server, [get_kill_tree_cmd(3322)])
-        # Verify ban script was run remotely with empty root_prefix
+        # Verify ban script was run remotely
         mock_remote_ssh.assert_any_call(
             mock_server,
-            ["python3", "-c", ANY, '"SHA256:targetfingerprint"', '""']
+            [get_ban_key_tree_cmd("SHA256:targetfingerprint")]
         )
         
         # Verify success notifications
