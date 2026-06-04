@@ -110,7 +110,7 @@ start_service_and_verify() {
         echo -e "=================================================="
         
         echo -e "\n${YELLOW}Хотите ли вы запустить автоматические E2E тесты IPS прямо сейчас? (y/n) [y]${NC}"
-        read -p ">> " run_tests
+        read -rp ">> " run_tests
         if [ -z "${run_tests}" ] || [ "${run_tests}" = "y" ] || [ "${run_tests}" = "Y" ]; then
             echo -e "\n${BLUE}Запуск E2E тестов IPS...${NC}"
             "${SCRIPT_DIR}/venv/bin/python" "${SCRIPT_DIR}/setup_modules/test_ips.py"
