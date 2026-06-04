@@ -13,17 +13,12 @@ remote_key_caches = {}
 async def refresh_remote_key_cache(server):
     """Запрашивает отпечатки и комментарии ключей с удаленного сервера по SSH."""
     try:
-        ssh_base = get_ssh_base_cmd(server)
-        cmd = ssh_base + ["ssh-keygen", "-l", "-f", "~/.ssh/authorized_keys"]
-        
-        proc = await asyncio.create_subprocess_exec(
-            *cmd,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.DEVNULL
-        )
-        stdout_bytes, _ = await proc.communicate()
-        stdout = stdout_bytes.decode('utf-8', errors='ignore')
-        
+        from .ssh import run_remote_ssh_cmd
+        ok, stdout, stderr = await run_remote_ssh_cmd(server, ["ssh-keygen", "-l", "-f", "~/.ssh/authorized_keys"])
+        if not ok:
+            logging.error(f"[Remote Key Cache {server['ip']}] Ошибка при обновлении кэша ключей: {stderr}")
+            return
+            
         new_cache = {}
         for line in stdout.splitlines():
             line = line.strip()
@@ -43,7 +38,7 @@ async def refresh_remote_key_cache(server):
         remote_key_caches[server['ip']] = new_cache
         logging.info(f"[Remote Key Cache {server['ip']}] Кэш успешно обновлен, загружено ключей: {len(new_cache)}")
     except Exception as e:
-        logging.error(f"[Remote Key Cache {server['ip']}] Ошибка при обнолении кэша ключей: {e}")
+        logging.error(f"[Remote Key Cache {server['ip']}] Ошибка при обновлении кэша ключей: {e}")
 
 def get_child_pids(parent_pid):
     """Рекурсивно находит все PID дочерних процессов для заданного parent_pid."""
