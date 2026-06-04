@@ -9,11 +9,11 @@ async def is_local_bot_process(sport, dst_ip=None):
     """
     Проверяет, принадлежит ли порт sport самому процессу бота или его потомкам/белому списку на хосте Proxmox.
     """
-    logging.info(f"[is_local_bot_process] ВХОД: sport={sport}, dst_ip={dst_ip}")
+    logging.debug(f"[is_local_bot_process] ВХОД: sport={sport}, dst_ip={dst_ip}")
     try:
         from modules.proxmox.monitor.state import recent_bot_ports
         if sport in recent_bot_ports:
-            logging.info(f"[is_local_bot_process] sport={sport} найден в recent_bot_ports (выходим True)")
+            logging.debug(f"[is_local_bot_process] sport={sport} найден в recent_bot_ports (выходим True)")
             return True
     except Exception as e:
         logging.error(f"[is_local_bot_process] Ошибка при проверке recent_bot_ports: {e}")
@@ -85,7 +85,7 @@ async def is_local_bot_process(sport, dst_ip=None):
                                     with open(cmdline_path, "r") as f:
                                         cmdline = f.read()
                                     if settings.ips_temp_whitelist_cmdline in cmdline:
-                                        logging.info(f"[is_local_bot_process] sport={sport}, target_pid={target_pid} совпал с временным белым списком cmdline. Разрешаем.")
+                                        logging.debug(f"[is_local_bot_process] sport={sport}, target_pid={target_pid} совпал с временным белым списком cmdline. Разрешаем.")
                                         return True
                                 except Exception:
                                     pass
@@ -102,13 +102,13 @@ async def is_local_bot_process(sport, dst_ip=None):
                             break
                         curr_pid = next_ppid
                         
-                    logging.info(f"[is_local_bot_process] sport={sport}, target_pid={target_pid}, checked_pids={pids_checked}, bot_pid={os.getpid()}, is_bot_ancestor={is_bot_ancestor}")
+                    logging.debug(f"[is_local_bot_process] sport={sport}, target_pid={target_pid}, checked_pids={pids_checked}, bot_pid={os.getpid()}, is_bot_ancestor={is_bot_ancestor}")
                     if is_bot_ancestor:
                         return True
                         
                     # 2. Проверяем белый список процессов IPS
                     in_whitelist = proc_name.lower().strip() in settings.ips_process_whitelist
-                    logging.info(f"[is_local_bot_process] sport={sport}, proc_name={proc_name}, in_whitelist={in_whitelist}, whitelist={settings.ips_process_whitelist}")
+                    logging.debug(f"[is_local_bot_process] sport={sport}, proc_name={proc_name}, in_whitelist={in_whitelist}, whitelist={settings.ips_process_whitelist}")
                     if in_whitelist:
                         return True
     except Exception as e:
