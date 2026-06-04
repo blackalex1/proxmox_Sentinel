@@ -426,6 +426,7 @@ async def process_ban_ssh_key(callback: CallbackQuery):
             try:
                 import uuid
                 import re
+                import datetime
                 from core.db import get_state, set_state
                 banned_keys = await get_state("banned_ssh_keys", [])
                 
