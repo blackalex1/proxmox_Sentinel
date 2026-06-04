@@ -270,8 +270,55 @@ run_config_wizard() {
                     prompt_var "ROUTER_SSH_HOST" "IP-адрес SSH роутера (ROUTER_SSH_HOST)" "192.168.1.1"
                     prompt_var "ROUTER_SSH_PORT" "Порт SSH роутера (ROUTER_SSH_PORT)" "22"
                     prompt_var "ROUTER_SSH_USER" "Имя пользователя SSH роутера (ROUTER_SSH_USER)" "root"
-                    prompt_var "ROUTER_SSH_PASSWORD" "Пароль SSH роутера (ROUTER_SSH_PASSWORD, если пустой - будет использоваться ключ)" ""
-                    prompt_var "ROUTER_SSH_KEY" "Путь к приватному SSH ключу роутера (ROUTER_SSH_KEY)" "config/id_rsa_router"
+                    
+                    local current_pass=""
+                    local current_key=""
+                    if [ -f "${ENV_FILE}" ]; then
+                        current_pass=$(grep -E "^ROUTER_SSH_PASSWORD=" "${ENV_FILE}" | cut -d'=' -f2-)
+                        current_key=$(grep -E "^ROUTER_SSH_KEY=" "${ENV_FILE}" | cut -d'=' -f2-)
+                    fi
+
+                    local default_method="1"
+                    if [ -z "${current_pass}" ] && [ -n "${current_key}" ] && [ "${current_key}" != "config/id_rsa_router" ]; then
+                        default_method="2"
+                    fi
+
+                    echo -e "\n${BLUE}👉 Выберите метод авторизации на роутере:${NC}"
+                    echo -e "   1) По паролю (ROUTER_SSH_PASSWORD)"
+                    echo -e "   2) По SSH-ключу (ROUTER_SSH_KEY)"
+                    read -rp "   Выберите вариант (1 или 2) [по умолчанию: ${default_method}]: " auth_method
+                    if [ -z "${auth_method}" ]; then
+                        auth_method="${default_method}"
+                    fi
+
+                    if [ "${auth_method}" = "2" ]; then
+                        # Сбрасываем пароль в .env
+                        local tmp_file="${ENV_FILE}.tmp"
+                        while IFS= read -r line || [ -n "$line" ]; do
+                            if [[ "$line" =~ ^ROUTER_SSH_PASSWORD= ]]; then
+                                printf "%s\n" "ROUTER_SSH_PASSWORD=" >> "$tmp_file"
+                            else
+                                printf "%s\n" "$line" >> "$tmp_file"
+                            fi
+                        done < "${ENV_FILE}"
+                        mv "$tmp_file" "${ENV_FILE}"
+
+                        prompt_var "ROUTER_SSH_KEY" "Путь к приватному SSH ключу роутера (ROUTER_SSH_KEY)" "config/id_rsa_router"
+                    else
+                        # Сбрасываем ключ в .env
+                        local tmp_file="${ENV_FILE}.tmp"
+                        while IFS= read -r line || [ -n "$line" ]; do
+                            if [[ "$line" =~ ^ROUTER_SSH_KEY= ]]; then
+                                printf "%s\n" "ROUTER_SSH_KEY=" >> "$tmp_file"
+                            else
+                                printf "%s\n" "$line" >> "$tmp_file"
+                            fi
+                        done < "${ENV_FILE}"
+                        mv "$tmp_file" "${ENV_FILE}"
+
+                        prompt_var "ROUTER_SSH_PASSWORD" "Пароль SSH роутера (ROUTER_SSH_PASSWORD)" ""
+                    fi
+
                     prompt_var "ROUTER_TYPE" "Тип операционной системы роутера (openwrt/keenetic/generic)" "openwrt"
                     
                     # Временно записываем ROUTER_MONITOR_ENABLE=True для корректного считывания тестовым скриптом
