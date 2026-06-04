@@ -456,6 +456,33 @@ async def test_hysteria_disconnect_silent_no_ssh():
         mock_db.assert_called_once()
 
 
+def test_parse_auth_line_ssh_close():
+    from modules.proxmox.monitor.auth_parser import parse_auth_line
+    
+    # 1. Connection closed with user
+    line = "Jun 04 21:28:15 server sshd[17820]: Connection closed by user alex 192.168.1.92 port 54305"
+    event, msg = parse_auth_line(line, vmid=109, timestamp="2026-06-04 21:28:15", container_name="Gleb")
+    assert event is not None
+    assert event['type'] == 'CLOSE'
+    assert event['user'] == 'alex'
+    assert event['pid'] == 17820
+    assert "SSH сессия завершена" in msg
+    assert "alex" in msg
+
+    # 2. Connection closed preauth (should be ignored)
+    line_preauth = "Jun 04 21:28:15 server sshd[17820]: Connection closed by 192.168.1.92 port 54305 [preauth]"
+    event_pre, msg_pre = parse_auth_line(line_preauth, vmid=109, timestamp="2026-06-04 21:28:15", container_name="Gleb")
+    assert event_pre is None
+
+    # 3. pam_unix session closed
+    line_pam = "Jun 04 21:28:15 server sshd[17820]: pam_unix(sshd:session): session closed for user alex"
+    event_pam, msg_pam = parse_auth_line(line_pam, vmid=109, timestamp="2026-06-04 21:28:15", container_name="Gleb")
+    assert event_pam is not None
+    assert event_pam['type'] == 'CLOSE'
+    assert event_pam['user'] == 'alex'
+
+
+
 
 
 
