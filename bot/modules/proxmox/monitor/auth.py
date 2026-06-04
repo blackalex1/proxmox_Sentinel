@@ -39,6 +39,15 @@ async def handle_auth_log_line(line, vmid):
                 target_key = "local" if vmid == 0 else f"lxc_{vmid}"
                 sshd_pid = event['pid']
                 kb = [[InlineKeyboardButton(text="❌ Сбросить SSH-сессию", callback_data=f"termssh:{target_key}:{sshd_pid}")]]
+                
+                # Если вход выполнен по ключу, кэшируем его в БД и добавляем кнопку бана
+                if 'fingerprint' in event:
+                    from core.db import get_state, set_state
+                    cache = await get_state("ssh_key_cache", {})
+                    cache[f"{target_key}:{sshd_pid}"] = [event['fingerprint'], event.get('user', 'root')]
+                    await set_state("ssh_key_cache", cache)
+                    kb.append([InlineKeyboardButton(text="🚫 Заблокировать SSH-ключ", callback_data=f"bankey:{target_key}:{sshd_pid}")])
+                
                 reply_markup = InlineKeyboardMarkup(inline_keyboard=kb)
                 
             await send_alert_to_admins(msg, reply_markup=reply_markup)

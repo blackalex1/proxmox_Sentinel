@@ -74,9 +74,18 @@ async def handle_traffic_log_line(line):
                 is_bot = True
                 logging.debug(f"[Traffic Monitor] Порт {spt} найден в recent_bot_ports.")
             else:
+                # Проверяем, является ли это активной проверкой прокси ботом
+                try:
+                    from modules.proxmox.monitor.state import active_proxy_checks
+                    if active_proxy_checks.get((dst, dpt), 0) > 0:
+                        is_bot = True
+                        logging.debug(f"[Traffic Monitor] Найдено совпадение в active_proxy_checks для {dst}:{dpt}")
+                except Exception as e:
+                    logging.error(f"[Traffic Monitor] Ошибка проверки active_proxy_checks: {e}")
+
                 # Вносим кратковременную задержку для устранения гонки при установлении сессии
                 # (так как логирование трафика ОС опережает завершение хэндшейка asyncssh/ansible)
-                if dpt == settings.router_ssh_port or dpt == 22:
+                if not is_bot and (dpt == settings.router_ssh_port or dpt == 22):
                     await asyncio.sleep(0.5)
                     if spt in recent_bot_ports:
                         is_bot = True

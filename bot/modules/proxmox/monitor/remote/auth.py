@@ -167,6 +167,15 @@ async def handle_remote_ssh_auth_line(line, server=None):
                 if sshd_pid:
                     from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
                     kb = [[InlineKeyboardButton(text="❌ Сбросить SSH-сессию", callback_data=f"termssh:{server['ip']}:{sshd_pid}")]]
+                    
+                    # Если вход выполнен по ключу, кэшируем его в БД и добавляем кнопку бана
+                    if auth_method == "publickey" and fingerprint:
+                        from core.db import get_state, set_state
+                        cache = await get_state("ssh_key_cache", {})
+                        cache[f"{server['ip']}:{sshd_pid}"] = [fingerprint, username]
+                        await set_state("ssh_key_cache", cache)
+                        kb.append([InlineKeyboardButton(text="🚫 Заблокировать SSH-ключ", callback_data=f"bankey:{server['ip']}:{sshd_pid}")])
+                    
                     reply_markup = InlineKeyboardMarkup(inline_keyboard=kb)
                 await send_alert_to_admins(msg, reply_markup=reply_markup)
                 logging.info(f"[Remote SSH Auth {server['ip']}] Successful login for {username} from {client_ip} via {auth_method} {key_details}")
