@@ -120,7 +120,7 @@ async def test_process_ban_ssh_key_local_success():
     mock_proc_kill.wait = AsyncMock(return_value=0)
     
     mock_proc_ban = AsyncMock()
-    mock_proc_ban.communicate.return_value = (b"SUCCESS", b"")
+    mock_proc_ban.communicate.return_value = (b"DELETED_KEY:/root/.ssh/authorized_keys:ssh-rsa AAA...\nSUCCESS", b"")
     mock_proc_ban.returncode = 0
     
     with patch("core.db.get_state", AsyncMock(return_value=mock_db_cache)), \
@@ -133,9 +133,9 @@ async def test_process_ban_ssh_key_local_success():
         # Verify it called kill first
         mock_exec.assert_any_call("sh", "-c", get_kill_tree_cmd(98765))
         
-        # Verify it called python3 ban script with fingerprint and keys path
+        # Verify it called python3 ban script with fingerprint and empty root_prefix
         mock_exec.assert_any_call(
-            "python3", "-c", ANY, "SHA256:targetfingerprint", "/root/.ssh/authorized_keys",
+            "python3", "-c", ANY, "SHA256:targetfingerprint", "",
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE
         )
@@ -170,17 +170,17 @@ async def test_process_ban_ssh_key_remote_vps():
          
         mock_remote_ssh.side_effect = [
             (True, "", ""),  # Result of kill
-            (True, "SUCCESS", "")  # Result of ban script
+            (True, "DELETED_KEY:/root/.ssh/authorized_keys:ssh-rsa AAA...\nSUCCESS", "")  # Result of ban script
         ]
         
         await process_ban_ssh_key(mock_callback)
         
         # Verify remote ssh command run
         mock_remote_ssh.assert_any_call(mock_server, [get_kill_tree_cmd(3322)])
-        # Verify ban script was run remotely
+        # Verify ban script was run remotely with empty root_prefix
         mock_remote_ssh.assert_any_call(
             mock_server,
-            ["python3", "-c", ANY, '"SHA256:targetfingerprint"', '"/root/.ssh/authorized_keys"']
+            ["python3", "-c", ANY, '"SHA256:targetfingerprint"', '""']
         )
         
         # Verify success notifications
