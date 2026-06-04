@@ -198,3 +198,193 @@ async def process_terminate_ssh(callback: CallbackQuery):
     else:
         logging.warning(f"Не удалось сбросить SSH-сессию {pid} на {target}: {error_msg}")
         await callback.answer(f"Не удалось сбросить сессию: {error_msg}", show_alert=True)
+
+
+@router.callback_query(F.data.startswith("bankey:"))
+async def process_ban_ssh_key(callback: CallbackQuery):
+    if not callback.message or not hasattr(callback.message, "edit_text"):
+        try:
+            await callback.answer("Ошибка: сообщение недоступно.", show_alert=True)
+        except Exception:
+            pass
+        return
+
+    # Разбираем target и sshd_pid
+    # callback.data в формате: bankey:<target>:<pid>
+    try:
+        data_parts = callback.data.rsplit(":", 1)
+        if len(data_parts) != 2:
+            await callback.answer("Неверный формат callback-данных.", show_alert=True)
+            return
+        
+        term_part, pid_str = data_parts
+        _, target = term_part.split(":", 1)
+        pid = int(pid_str)
+    except Exception as e:
+        logging.error(f"Ошибка парсинга callback.data '{callback.data}': {e}")
+        await callback.answer("Ошибка при обработке запроса.", show_alert=True)
+        return
+
+    logging.info(f"Запрос на блокировку SSH-ключа: target={target}, pid={pid}")
+
+    # Получаем fingerprint и username из кэша в БД
+    from core.db import get_state
+    cache = await get_state("ssh_key_cache", {})
+    cache_entry = cache.get(f"{target}:{pid}")
+    if not cache_entry:
+        await callback.answer("Не удалось найти отпечаток ключа (кэш устарел).", show_alert=True)
+        return
+
+    fingerprint, username = cache_entry
+
+    # Сначала принудительно сбрасываем саму сессию
+    try:
+        if target == "local":
+            import asyncio
+            proc = await asyncio.create_subprocess_exec("kill", "-9", str(pid))
+            await proc.wait()
+        elif target.startswith("lxc_"):
+            import asyncio
+            vmid = int(target.split("_")[1])
+            proc = await asyncio.create_subprocess_exec("pct", "exec", str(vmid), "--", "kill", "-9", str(pid))
+            await proc.wait()
+        else:
+            from core.config import settings
+            server = next((s for s in settings.remote_servers if s['ip'] == target), None)
+            if server:
+                from modules.proxmox.monitor.remote.ssh import run_remote_ssh_cmd
+                await run_remote_ssh_cmd(server, ["kill", "-9", str(pid)])
+    except Exception as e:
+        logging.error(f"Ошибка при сбросе сессии перед баном ключа: {e}")
+
+    # Разрешаем путь к authorized_keys
+    keys_path = ""
+    if target == "local":
+        if username == "root":
+            keys_path = "/root/.ssh/authorized_keys"
+        else:
+            keys_path = f"/home/{username}/.ssh/authorized_keys"
+    elif target.startswith("lxc_"):
+        vmid = int(target.split("_")[1])
+        if username == "root":
+            keys_path = f"/var/lib/lxc/{vmid}/rootfs/root/.ssh/authorized_keys"
+        else:
+            keys_path = f"/var/lib/lxc/{vmid}/rootfs/home/{username}/.ssh/authorized_keys"
+    else:
+        # Remote VPS
+        if username == "root":
+            keys_path = "/root/.ssh/authorized_keys"
+        else:
+            keys_path = f"/home/{username}/.ssh/authorized_keys"
+
+    PYTHON_BAN_SCRIPT_ESCAPED = (
+        "import sys,os,subprocess\n"
+        "fp,path=sys.argv[1],sys.argv[2]\n"
+        "if not os.path.exists(path):print('NOT_FOUND');sys.exit(0)\n"
+        "lines=open(path,'r',encoding='utf-8',errors='ignore').readlines()\n"
+        "new_lines,removed,temp_path=[],False,f'/tmp/tkey_{os.getpid()}'\n"
+        "for l in lines:\n"
+        "  if not l.strip() or l.strip().startswith('#'):new_lines.append(l);continue\n"
+        "  open(temp_path,'w',encoding='utf-8').write(l)\n"
+        "  res=subprocess.run(['ssh-keygen','-l','-f',temp_path],capture_output=True,text=True)\n"
+        "  if res.returncode==0 and fp in res.stdout:\n"
+        "    removed=True\n"
+        "    print('DELETED_KEY:' + l.strip())\n"
+        "    continue\n"
+        "  new_lines.append(l)\n"
+        "if os.path.exists(temp_path):os.remove(temp_path)\n"
+        "if removed:\n"
+        "  open(path,'w',encoding='utf-8').writelines(new_lines)\n"
+        "  print('SUCCESS')\n"
+        "else:print('NOT_FOUND')\n"
+    )
+
+    success_ban = False
+    error_msg = ""
+    stdout_str = ""
+
+    try:
+        if target == "local" or target.startswith("lxc_"):
+            import asyncio
+            proc = await asyncio.create_subprocess_exec(
+                "python3", "-c", PYTHON_BAN_SCRIPT_ESCAPED, fingerprint, keys_path,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+            stdout, stderr = await proc.communicate()
+            stdout_str = stdout.decode().strip()
+            stderr_str = stderr.decode().strip()
+            if proc.returncode == 0 and "SUCCESS" in stdout_str:
+                success_ban = True
+            elif "NOT_FOUND" in stdout_str:
+                error_msg = "Ключ не найден в authorized_keys."
+            else:
+                error_msg = stderr_str or stdout_str or f"exit code {proc.returncode}"
+        else:
+            # Remote VPS
+            from core.config import settings
+            server = next((s for s in settings.remote_servers if s['ip'] == target), None)
+            if not server:
+                error_msg = f"Сервер {target} не найден в настройках."
+            else:
+                from modules.proxmox.monitor.remote.ssh import run_remote_ssh_cmd
+                run_success, stdout_str, stderr_str = await run_remote_ssh_cmd(
+                    server,
+                    ["python3", "-c", f'"{PYTHON_BAN_SCRIPT_ESCAPED}"', f'"{fingerprint}"', f'"{keys_path}"']
+                )
+                if run_success and "SUCCESS" in stdout_str:
+                    success_ban = True
+                elif "NOT_FOUND" in stdout_str:
+                    error_msg = "Ключ не найден в authorized_keys."
+                else:
+                    error_msg = stderr_str or stdout_str or "Ошибка выполнения скрипта блокировки"
+    except Exception as e:
+        logging.error(f"Ошибка при блокировке SSH-ключа: {e}")
+        error_msg = str(e)
+
+    if success_ban:
+        # Извлекаем тело удаленного ключа из stdout_str
+        key_body = ""
+        for line in stdout_str.splitlines():
+            if line.startswith("DELETED_KEY:"):
+                key_body = line.split(":", 1)[1].strip()
+                break
+        
+        # Сохраняем заблокированный ключ в БД для Центра блокировок
+        if key_body:
+            try:
+                import uuid
+                from core.db import get_state, set_state
+                banned_keys = await get_state("banned_ssh_keys", [])
+                
+                # Добавляем запись о забаненном ключе
+                key_id = str(uuid.uuid4())[:8]
+                banned_keys.append({
+                    "id": key_id,
+                    "target": target,
+                    "username": username,
+                    "fingerprint": fingerprint,
+                    "key_body": key_body,
+                    "keys_path": keys_path,
+                    "banned_at": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                })
+                await set_state("banned_ssh_keys", banned_keys)
+                logging.info(f"Забаненный ключ {fingerprint} для {username} на {target} сохранен в БД. ID: {key_id}")
+            except Exception as e:
+                logging.error(f"Ошибка сохранения забаненного ключа в БД: {e}")
+
+        await callback.answer("SSH-ключ успешно заблокирован и удален!", show_alert=True)
+        # Показываем только последние 12 символов отпечатка для наглядности
+        short_fp = fingerprint[-12:] if len(fingerprint) > 12 else fingerprint
+        status_text = f"🚫 SSH-ключ (...{short_fp}) удален из authorized_keys и сессия сброшена"
+        
+        orig_text = callback.message.html_text or callback.message.text or ""
+        new_text = f"{orig_text}\n\n🛑 <b>{status_text}</b>"
+        
+        try:
+            await callback.message.edit_text(text=new_text, parse_mode="HTML", reply_markup=None)
+        except Exception as e:
+            logging.error(f"Ошибка при обновлении сообщения после блокировки ключа: {e}")
+    else:
+        logging.warning(f"Не удалось заблокировать SSH-ключ {fingerprint} на {target}: {error_msg}")
+        await callback.answer(f"Не удалось заблокировать ключ: {error_msg}", show_alert=True)

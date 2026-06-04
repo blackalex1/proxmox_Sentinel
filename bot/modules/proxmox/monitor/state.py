@@ -21,3 +21,6 @@ recent_local_conns = deque(maxlen=500)
 
 # Rolling буфер для регистрации недавних исходящих портов самого бота (для мгновенного вайтлиста)
 recent_bot_ports = deque(maxlen=200)
+
+# Реестр активных проверок прокси: (host, port) -> count
+active_proxy_checks = defaultdict(int)

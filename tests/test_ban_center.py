@@ -2,7 +2,7 @@ import pytest
 import os
 import tempfile
 import asyncio
-from unittest.mock import AsyncMock, patch, MagicMock
+from unittest.mock import AsyncMock, patch, MagicMock, ANY
 
 # Перехватываем путь к файлу БД и подменяем его временным файлом для тестов
 import core.db
@@ -151,6 +151,85 @@ async def test_render_ban_center_active():
     assert len(reply_markup.inline_keyboard) == 2
     assert reply_markup.inline_keyboard[0][0].callback_data == "ban_center_unban:local:1.1.1.1"
     assert reply_markup.inline_keyboard[1][0].callback_data == "main_menu"
+
+
+@pytest.mark.asyncio
+async def test_render_ban_center_with_ssh_keys():
+    from core.handlers.ban_center import render_ban_center
+    from core.db import execute_write, set_state
+    
+    await execute_write("DELETE FROM temp_bans")
+    
+    mock_banned_keys = [{
+        "id": "testkey1",
+        "target": "local",
+        "username": "alex",
+        "fingerprint": "SHA256:abcd",
+        "key_body": "ssh-ed25519 AAA... alex@pc",
+        "keys_path": "/home/alex/.ssh/authorized_keys",
+        "banned_at": "2026-06-04 20:30:00"
+    }]
+    await set_state("banned_ssh_keys", mock_banned_keys)
+    
+    text, reply_markup = await render_ban_center(None)
+    
+    # Должен отображаться заблокированный ключ
+    assert "alex" in text
+    assert "Proxmox Host" in text
+    assert "abcd" in text
+    
+    # Кнопки: Восстановить ключ + Назад
+    assert len(reply_markup.inline_keyboard) == 2
+    assert reply_markup.inline_keyboard[0][0].callback_data == "ban_center_unbankey:testkey1"
+    assert reply_markup.inline_keyboard[1][0].callback_data == "main_menu"
+
+
+@pytest.mark.asyncio
+async def test_process_ban_center_unbankey_success():
+    from core.handlers.ban_center import process_ban_center_unbankey
+    from core.db import get_state, set_state
+    from aiogram.types import CallbackQuery
+    
+    mock_banned_keys = [{
+        "id": "testkey2",
+        "target": "local",
+        "username": "alex",
+        "fingerprint": "SHA256:abcd",
+        "key_body": "ssh-ed25519 AAA... alex@pc",
+        "keys_path": "/home/alex/.ssh/authorized_keys",
+        "banned_at": "2026-06-04 20:30:00"
+    }]
+    await set_state("banned_ssh_keys", mock_banned_keys)
+    
+    mock_message = AsyncMock()
+    mock_callback = AsyncMock(spec=CallbackQuery)
+    mock_callback.data = "ban_center_unbankey:testkey2"
+    mock_callback.message = mock_message
+    mock_callback.answer = AsyncMock()
+    
+    mock_proc = AsyncMock()
+    mock_proc.wait = AsyncMock(return_value=0)
+    mock_proc.returncode = 0
+    
+    with patch("asyncio.create_subprocess_exec", AsyncMock(return_value=mock_proc)) as mock_exec:
+        await process_ban_center_unbankey(mock_callback)
+        
+        # Проверяем, что ключ был дописан
+        mock_exec.assert_called_once_with(
+            "python3", "-c", ANY, "/home/alex/.ssh/authorized_keys", "ssh-ed25519 AAA... alex@pc",
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
+        
+        # Проверяем, что запись была удалена из БД
+        banned = await get_state("banned_ssh_keys", [])
+        assert len(banned) == 0
+        
+        # Проверяем уведомления
+        mock_callback.answer.assert_any_call("⏳ Восстановление ключа...", show_alert=False)
+        mock_callback.answer.assert_any_call("🟢 SSH-ключ успешно восстановлен!", show_alert=True)
+        mock_message.edit_text.assert_called_once()
+
 
 def teardown_module(module):
     try:
