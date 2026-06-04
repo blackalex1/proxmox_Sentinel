@@ -21,7 +21,7 @@ async def handle_traffic_log_line(line):
         if not event:
             return
             
-        logging.info(f"[Traffic Monitor] Получено сетевое событие: {event}")
+        logging.debug(f"[Traffic Monitor] Получено сетевое событие: {event}")
         vmid = event['vmid']
         direction = event['direction']
         proto = event['proto']
@@ -72,7 +72,7 @@ async def handle_traffic_log_line(line):
             # Сначала проверяем наш сверхбыстрый мгновенный кэш портов бота
             if spt in recent_bot_ports:
                 is_bot = True
-                logging.info(f"[Traffic Monitor] Порт {spt} найден в recent_bot_ports.")
+                logging.debug(f"[Traffic Monitor] Порт {spt} найден в recent_bot_ports.")
             else:
                 # Вносим кратковременную задержку для устранения гонки при установлении сессии
                 # (так как логирование трафика ОС опережает завершение хэндшейка asyncssh/ansible)
@@ -80,7 +80,7 @@ async def handle_traffic_log_line(line):
                     await asyncio.sleep(0.5)
                     if spt in recent_bot_ports:
                         is_bot = True
-                        logging.info(f"[Traffic Monitor] Порт {spt} найден в recent_bot_ports после ожидания.")
+                        logging.debug(f"[Traffic Monitor] Порт {spt} найден в recent_bot_ports после ожидания.")
                 
                 if not is_bot:
                     # Резервная проверка через ss и procfs
@@ -90,17 +90,17 @@ async def handle_traffic_log_line(line):
                         
                         if await is_local_bot_process(spt, dst):
                             is_bot = True
-                            logging.info(f"[Traffic Monitor] Порт {spt} определен как процесс бота через is_local_bot_process.")
+                            logging.debug(f"[Traffic Monitor] Порт {spt} определен как процесс бота через is_local_bot_process.")
                     except Exception as e:
                         logging.error(f"Ошибка проверки локального процесса бота в watcher: {e}")
 
         if is_bot:
-            logging.info(f"[Traffic Monitor] Событие {spt} определено как BOT! recent_bot_ports={list(recent_bot_ports)}")
+            logging.debug(f"[Traffic Monitor] Событие {spt} определено как BOT! recent_bot_ports={list(recent_bot_ports)}")
             risk_level, label, desc = ('INFO', '🟢 Служебный SSH Хоста (Бот)', 'Легитимный служебный трафик бота (ре сверка/conntrack/SSH)')
         else:
             risk_level, label, desc = classify_connection(event)
             
-        logging.info(f"[Traffic Monitor] Событие {spt} классифицировано: risk_level={risk_level}, is_bot={is_bot}, label={label}")
+        logging.debug(f"[Traffic Monitor] Событие {spt} классифицировано: risk_level={risk_level}, is_bot={is_bot}, label={label}")
         risk_emoji = "🟢" if risk_level == 'INFO' else "⚠️" if risk_level == 'WARNING' else "🚨"
         
         traffic_event = {
