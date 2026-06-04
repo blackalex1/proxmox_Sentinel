@@ -85,7 +85,7 @@ async def handle_traffic_log_line(line):
                 if not is_bot:
                     # Резервная проверка через ss и procfs
                     try:
-                        from modules.mihomo.monitor.helpers import is_local_bot_process
+                        from modules.router.monitor.helpers import is_local_bot_process
 
                         
                         if await is_local_bot_process(spt, dst):

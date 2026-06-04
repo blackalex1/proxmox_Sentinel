@@ -6,8 +6,8 @@ from core.config import settings
 
 async def run_router_ssh_cmd(command):
     """Выполняет SSH-команду на роутере с поддержкой авторизации по паролю или ключу."""
-    if not settings.router_ssh_enable:
-        return False, "", "Служба SSH роутера отключена в конфиге"
+    if not settings.router_monitor_enable:
+        return False, "", "Мониторинг роутера отключен в конфиге"
         
     try:
         # Находим полный абсолютный путь к SSH-ключу роутера
@@ -55,8 +55,8 @@ async def run_router_ssh_cmd(command):
 
 async def ban_router_ip(ip, delay=3600):
     """Блокирует весь входящий и исходящий трафик для указанного локального IP-адреса на роутере."""
-    if not settings.router_ssh_enable:
-        return False, "SSH роутера отключен"
+    if not settings.router_monitor_enable:
+        return False, "Мониторинг роутера отключен"
         
     success = False
     desc = ""
@@ -65,8 +65,8 @@ async def ban_router_ip(ip, delay=3600):
         # Пробуем современный nftables (OpenWrt 22+)
         # Добавляем правила блокировки в цепочки форвардинга и входящих соединений роутера (для блокировки прокси)
         nft_cmd = (
-            f"nft add rule inet fw4 forward ip saddr {ip} drop comment \"MIHOMO-IPS-BLOCK\" && "
-            f"nft add rule inet fw4 input ip saddr {ip} drop comment \"MIHOMO-IPS-BLOCK\""
+            f"nft add rule inet fw4 forward ip saddr {ip} drop comment \"ROUTER-IPS-BLOCK\" && "
+            f"nft add rule inet fw4 input ip saddr {ip} drop comment \"ROUTER-IPS-BLOCK\""
         )
         ok, stdout, stderr = await run_router_ssh_cmd(nft_cmd)
         if ok:
@@ -74,8 +74,8 @@ async def ban_router_ip(ip, delay=3600):
         else:
             # Если nftables недоступен, пробуем классический iptables с комментом в обе цепочки
             ipt_cmd = (
-                f"iptables -I FORWARD -s {ip} -j DROP -m comment --comment \"MIHOMO-IPS-BLOCK\" && "
-                f"iptables -I INPUT -s {ip} -j DROP -m comment --comment \"MIHOMO-IPS-BLOCK\""
+                f"iptables -I FORWARD -s {ip} -j DROP -m comment --comment \"ROUTER-IPS-BLOCK\" && "
+                f"iptables -I INPUT -s {ip} -j DROP -m comment --comment \"ROUTER-IPS-BLOCK\""
             )
             ok, stdout, stderr = await run_router_ssh_cmd(ipt_cmd)
             if ok:
@@ -122,8 +122,8 @@ async def ban_router_ip(ip, delay=3600):
 
 async def unban_router_ip(ip):
     """Снимает блокировку для указанного локального IP-адреса на роутере."""
-    if not settings.router_ssh_enable:
-        return False, "SSH роутера отключен"
+    if not settings.router_monitor_enable:
+        return False, "Мониторинг роутера отключен"
         
     success = False
     desc = ""
@@ -131,8 +131,8 @@ async def unban_router_ip(ip):
     if settings.router_type == 'openwrt':
         # Объединяем все команды удаления в одно SSH-подключение для десятикратного ускорения работы!
         combined_cmd = (
-            f"iptables -D FORWARD -s {ip} -j DROP -m comment --comment \"MIHOMO-IPS-BLOCK\" 2>/dev/null; "
-            f"iptables -D INPUT -s {ip} -j DROP -m comment --comment \"MIHOMO-IPS-BLOCK\" 2>/dev/null; "
+            f"iptables -D FORWARD -s {ip} -j DROP -m comment --comment \"ROUTER-IPS-BLOCK\" 2>/dev/null; "
+            f"iptables -D INPUT -s {ip} -j DROP -m comment --comment \"ROUTER-IPS-BLOCK\" 2>/dev/null; "
             f"iptables -D FORWARD -s {ip} -j DROP 2>/dev/null; "
             f"iptables -D INPUT -s {ip} -j DROP 2>/dev/null; "
             f"nft delete rule inet fw4 forward ip saddr {ip} drop 2>/dev/null; "
