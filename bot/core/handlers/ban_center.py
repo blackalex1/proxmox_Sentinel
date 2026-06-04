@@ -185,6 +185,21 @@ async def process_ban_center_unban(callback: CallbackQuery):
         logging.error(f"[Ban Center] Исключение при ручном разбане: {e}")
         await callback.answer(f"❌ Ошибка при снятии блокировки: {e}", show_alert=True)
 
+def get_unban_key_cmd(keys_path: str, key_body: str) -> str:
+    import shlex
+    path_q = shlex.quote(keys_path)
+    body_q = shlex.quote(key_body.strip() + "\n")
+    return (
+        f"path={path_q}; "
+        f"dir=\"${{path%/*}}\"; "
+        f"pdir=\"${{dir%/*}}\"; "
+        f"mkdir -p \"$dir\" && "
+        f"printf %s {body_q} >> \"$path\" && "
+        f"owner=$(stat -c '%U:%G' \"$pdir\" 2>/dev/null || echo 'root:root') && "
+        f"chown \"$owner\" \"$path\" \"$dir\" 2>/dev/null && "
+        f"chmod 700 \"$dir\" 2>/dev/null && "
+        f"chmod 600 \"$path\" 2>/dev/null"
+    )
 
 @router.callback_query(F.data.startswith("ban_center_unbankey:"))
 async def process_ban_center_unbankey(callback: CallbackQuery):
@@ -216,24 +231,36 @@ async def process_ban_center_unbankey(callback: CallbackQuery):
         keys_path = key['keys_path']
         key_body = key['key_body']
         
-        # Скрипт восстановления
-        cmd_unban = (
-            "import sys, os; path, k_body = sys.argv[1], sys.argv[2]; "
-            "os.makedirs(os.path.dirname(path), exist_ok=True); "
-            "open(path, 'a', encoding='utf-8').write(k_body.strip() + '\\n')"
-        )
+        cmd_unban = get_unban_key_cmd(keys_path, key_body)
         
-        if target == "local" or target.startswith("lxc_"):
+        if target == "local":
             import asyncio
             proc = await asyncio.create_subprocess_exec(
-                "python3", "-c", cmd_unban, keys_path, key_body,
+                "sh", "-c", cmd_unban,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE
             )
-            await proc.wait()
+            stdout, stderr = await proc.communicate()
             success = proc.returncode == 0
             if not success:
-                _, stderr = await proc.communicate()
+                desc = stderr.decode().strip() or f"exit code {proc.returncode}"
+                
+        elif target.startswith("lxc_"):
+            import asyncio
+            try:
+                vmid = int(target.split("_")[1])
+            except Exception:
+                await callback.answer("Неверный ID LXC.", show_alert=True)
+                return
+            # Восстанавливаем прямо в пространстве имен контейнера через pct exec
+            proc = await asyncio.create_subprocess_exec(
+                "pct", "exec", str(vmid), "--", "sh", "-c", cmd_unban,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+            stdout, stderr = await proc.communicate()
+            success = proc.returncode == 0
+            if not success:
                 desc = stderr.decode().strip() or f"exit code {proc.returncode}"
         else:
             # Remote VPS
@@ -246,7 +273,7 @@ async def process_ban_center_unbankey(callback: CallbackQuery):
                 from modules.proxmox.monitor.remote.ssh import run_remote_ssh_cmd
                 success, stdout, stderr = await run_remote_ssh_cmd(
                     server,
-                    ["python3", "-c", f'"{cmd_unban}"', f'"{keys_path}"', f'"{key_body}"']
+                    [cmd_unban]
                 )
                 if not success:
                     desc = stderr or stdout
