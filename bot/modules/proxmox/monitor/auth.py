@@ -31,7 +31,17 @@ async def handle_auth_log_line(line, vmid):
         event, msg = parse_auth_line(line, vmid, timestamp, container_name)
         if event and msg:
             lxc_auth_history[vmid].append(event)
-            await send_alert_to_admins(msg)
+            
+            # Если это успешный вход по SSH, добавляем кнопку сброса сессии
+            reply_markup = None
+            if event.get('type') == 'SUCCESS' and 'pid' in event and 'WEB_GUI' not in event.get('ip', ''):
+                from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+                target_key = "local" if vmid == 0 else f"lxc_{vmid}"
+                sshd_pid = event['pid']
+                kb = [[InlineKeyboardButton(text="❌ Сбросить SSH-сессию", callback_data=f"termssh:{target_key}:{sshd_pid}")]]
+                reply_markup = InlineKeyboardMarkup(inline_keyboard=kb)
+                
+            await send_alert_to_admins(msg, reply_markup=reply_markup)
 
     except Exception as e:
         logging.error(f"Ошибка парсинга лога авторизации: {e}")
