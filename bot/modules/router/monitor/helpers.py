@@ -117,6 +117,16 @@ async def is_local_bot_process(sport, dst_ip=None):
 
 async def check_is_bot_or_admin(src_ip, src_port, dst_host=None, dst_port=None):
     """Проверяет, является ли отправитель доверенным (администратором или легитимным процессом бота на хосте)."""
+    # 0. Проверяем, является ли это активной проверкой прокси ботом
+    if dst_host and dst_port:
+        try:
+            from modules.proxmox.monitor.state import active_proxy_checks
+            if active_proxy_checks.get((dst_host, dst_port), 0) > 0:
+                logging.debug(f"[check_is_bot_or_admin] Найдено совпадение в active_proxy_checks для {dst_host}:{dst_port}")
+                return True
+        except Exception as e:
+            logging.error(f"[check_is_bot_or_admin] Ошибка проверки active_proxy_checks: {e}")
+
     # 1. Проверяем белый список администраторов из настроек
     if hasattr(settings, 'trusted_admin_ips'):
         trusted_ips = settings.trusted_admin_ips

@@ -33,17 +33,6 @@ class SocksProxyRotator:
         logger.info("Начинаем скрапинг свежих списков бесплатных SOCKS5 прокси...")
         unique_proxies = set()
         
-        # Получаем список чувствительных портов для фильтрации
-        from core.config import settings
-        sensitive_ports = settings.monitor_lxc_ports_sensitive
-        if isinstance(sensitive_ports, str):
-            try:
-                sensitive_ports = [int(x.strip()) for x in sensitive_ports.split(',') if x.strip()]
-            except Exception:
-                sensitive_ports = []
-        elif not isinstance(sensitive_ports, list):
-            sensitive_ports = []
-        
         loop = asyncio.get_running_loop()
         
         for url in PROXY_SOURCES:
@@ -59,21 +48,10 @@ class SocksProxyRotator:
                 
                 # Ищем паттерны IP:Port
                 found = re.findall(r'\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\s*:\s*\d{2,5}\b', content)
-                filtered_count = 0
                 for p in found:
-                    p_clean = p.strip().replace(" ", "")
-                    try:
-                        parts = p_clean.split(':')
-                        if len(parts) == 2:
-                            port = int(parts[1])
-                            if port in sensitive_ports:
-                                filtered_count += 1
-                                continue
-                    except Exception:
-                        pass
-                    unique_proxies.add(p_clean)
+                    unique_proxies.add(p.strip().replace(" ", ""))
                     
-                logger.info(f"Успешно загружено {len(found)} прокси из {url} (отфильтровано чувствительных портов: {filtered_count})")
+                logger.info(f"Успешно загружено {len(found)} прокси из {url}")
             except Exception as e:
                 logger.warning(f"Не удалось загрузить список прокси из {url}: {e}")
                 
@@ -87,6 +65,32 @@ class SocksProxyRotator:
         Проверяет доступность api.telegram.org через указанный прокси.
         Возвращает (is_alive, latency)
         """
+        # Извлекаем хост и порт прокси для динамического белого списка
+        proxy_key = None
+        try:
+            from urllib.parse import urlparse
+            parsed = urlparse(proxy_url)
+            netloc = parsed.netloc
+            if '@' in netloc:
+                netloc = netloc.split('@')[1]
+            if ':' in netloc:
+                proxy_host, proxy_port = netloc.split(':')
+                proxy_port = int(proxy_port)
+            else:
+                proxy_host = netloc
+                proxy_port = 1080 if parsed.scheme == 'socks5' else 80
+            if proxy_host and proxy_port:
+                proxy_key = (proxy_host, proxy_port)
+        except Exception:
+            pass
+
+        if proxy_key:
+            try:
+                from modules.proxmox.monitor.state import active_proxy_checks
+                active_proxy_checks[proxy_key] += 1
+            except Exception:
+                pass
+
         url = "https://api.telegram.org"
         start = time.monotonic()
         try:
@@ -104,6 +108,15 @@ class SocksProxyRotator:
         except Exception as e:
             if verbose:
                 logger.warning(f"[Proxy Monitor] Сбой проверки прокси {proxy_url}: {e!r}")
+        finally:
+            if proxy_key:
+                try:
+                    from modules.proxmox.monitor.state import active_proxy_checks
+                    active_proxy_checks[proxy_key] -= 1
+                    if active_proxy_checks[proxy_key] <= 0:
+                        active_proxy_checks.pop(proxy_key, None)
+                except Exception:
+                    pass
         return False, 0
 
     async def get_working_proxy(self, max_to_check=200, batch_size=40):

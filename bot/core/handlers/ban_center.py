@@ -66,27 +66,50 @@ async def render_ban_center(message_or_query) -> tuple[str, InlineKeyboardMarkup
                 'label': get_target_label(row['server_ip'])
             })
 
+    # Получаем заблокированные ключи из БД
+    from core.db import get_state
+    banned_keys = await get_state("banned_ssh_keys", [])
+
     text = "🛑 <b>Центр блокировок Aegis IPS</b>\n"
     text += "━━━━━━━━━━━━━━━━━━━━━━━━\n"
     
     kb_buttons = []
     
-    if not active_bans:
+    if not active_bans and not banned_keys:
         text += "Активных блокировок в системе нет.\n\n"
         text += "<i>Вся сетевая активность находится под контролем Active IPS Engine.</i>"
     else:
-        text += "Список активных временных блокировок IP:\n\n"
-        for idx, ban in enumerate(active_bans, 1):
-            text += f"{idx}. 👤 <code>{ban['dst_ip']}</code>\n"
-            text += f"   └ {ban['label']} • Истекает через: <b>{ban['remaining']}</b>\n\n"
-            
-            # Кнопка разблокировки для каждого IP
-            kb_buttons.append([
-                InlineKeyboardButton(
-                    text=f"🔓 Разблокировать {ban['dst_ip']}",
-                    callback_data=f"ban_center_unban:{ban['server_ip']}:{ban['dst_ip']}"
-                )
-            ])
+        if active_bans:
+            text += "Список активных временных блокировок IP:\n\n"
+            for idx, ban in enumerate(active_bans, 1):
+                text += f"{idx}. 👤 <code>{ban['dst_ip']}</code>\n"
+                text += f"   └ {ban['label']} • Истекает через: <b>{ban['remaining']}</b>\n\n"
+                
+                # Кнопка разблокировки для каждого IP
+                kb_buttons.append([
+                    InlineKeyboardButton(
+                        text=f"🔓 Разблокировать {ban['dst_ip']}",
+                        callback_data=f"ban_center_unban:{ban['server_ip']}:{ban['dst_ip']}"
+                    )
+                ])
+                
+        if banned_keys:
+            if active_bans:
+                text += "━━━━━━━━━━━━━━━━━━━━━━━━\n"
+            text += "Список заблокированных SSH-ключей:\n\n"
+            for idx, key in enumerate(banned_keys, 1):
+                short_fp = key['fingerprint'][-12:] if len(key['fingerprint']) > 12 else key['fingerprint']
+                target_lbl = get_target_label(key['target'])
+                text += f"{idx}. 👤 <code>{key['username']}</code> ({target_lbl})\n"
+                text += f"   └ Ключ: <code>...{short_fp}</code> • Забанен: <b>{key['banned_at']}</b>\n\n"
+                
+                # Кнопка разблокировки ключа
+                kb_buttons.append([
+                    InlineKeyboardButton(
+                        text=f"🔓 Восстановить ключ (...{short_fp})",
+                        callback_data=f"ban_center_unbankey:{key['id']}"
+                    )
+                ])
             
     # Добавляем кнопку возврата в главное меню
     kb_buttons.append([
@@ -161,3 +184,88 @@ async def process_ban_center_unban(callback: CallbackQuery):
     except Exception as e:
         logging.error(f"[Ban Center] Исключение при ручном разбане: {e}")
         await callback.answer(f"❌ Ошибка при снятии блокировки: {e}", show_alert=True)
+
+
+@router.callback_query(F.data.startswith("ban_center_unbankey:"))
+async def process_ban_center_unbankey(callback: CallbackQuery):
+    """Восстановление (разблокировка) SSH-ключа из Центра блокировок."""
+    try:
+        parts = callback.data.split(":")
+        if len(parts) < 2:
+            await callback.answer("❌ Ошибка: Неверный формат callback.", show_alert=True)
+            return
+            
+        key_id = parts[1]
+        
+        from core.db import get_state, set_state
+        banned_keys = await get_state("banned_ssh_keys", [])
+        
+        # Находим запись ключа
+        key = next((k for k in banned_keys if k['id'] == key_id), None)
+        if not key:
+            await callback.answer("❌ Ошибка: Ключ не найден в БД или уже разблокирован.", show_alert=True)
+            return
+            
+        await callback.answer("⏳ Восстановление ключа...", show_alert=False)
+        
+        success = False
+        desc = ""
+        
+        target = key['target']
+        username = key['username']
+        keys_path = key['keys_path']
+        key_body = key['key_body']
+        
+        # Скрипт восстановления
+        cmd_unban = (
+            "import sys, os; path, k_body = sys.argv[1], sys.argv[2]; "
+            "os.makedirs(os.path.dirname(path), exist_ok=True); "
+            "open(path, 'a', encoding='utf-8').write(k_body.strip() + '\\n')"
+        )
+        
+        if target == "local" or target.startswith("lxc_"):
+            import asyncio
+            proc = await asyncio.create_subprocess_exec(
+                "python3", "-c", cmd_unban, keys_path, key_body,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+            await proc.wait()
+            success = proc.returncode == 0
+            if not success:
+                _, stderr = await proc.communicate()
+                desc = stderr.decode().strip() or f"exit code {proc.returncode}"
+        else:
+            # Remote VPS
+            from core.config import settings
+            server = next((s for s in settings.remote_servers if s['ip'] == target), None)
+            if not server:
+                success = False
+                desc = f"VPS {target} не найден в настройках"
+            else:
+                from modules.proxmox.monitor.remote.ssh import run_remote_ssh_cmd
+                success, stdout, stderr = await run_remote_ssh_cmd(
+                    server,
+                    ["python3", "-c", f'"{cmd_unban}"', f'"{keys_path}"', f'"{key_body}"']
+                )
+                if not success:
+                    desc = stderr or stdout
+                    
+        if success:
+            # Удаляем запись из БД
+            new_banned_keys = [k for k in banned_keys if k['id'] != key_id]
+            await set_state("banned_ssh_keys", new_banned_keys)
+            await callback.answer("🟢 SSH-ключ успешно восстановлен!", show_alert=True)
+        else:
+            await callback.answer(f"❌ Ошибка восстановления: {desc}", show_alert=True)
+            
+        # Обновляем сообщение Центра блокировок
+        text, reply_markup = await render_ban_center(callback)
+        try:
+            await callback.message.edit_text(text, parse_mode="HTML", reply_markup=reply_markup)
+        except Exception:
+            pass
+            
+    except Exception as e:
+        logging.error(f"[Ban Center] Исключение при ручном разбане ключа: {e}")
+        await callback.answer(f"❌ Ошибка при восстановлении: {e}", show_alert=True)
