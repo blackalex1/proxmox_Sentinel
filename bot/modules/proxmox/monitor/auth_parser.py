@@ -121,4 +121,66 @@ def parse_auth_line(line: str, vmid: int, timestamp: str, container_name: str):
                f"🕒 Время: <code>{timestamp}</code>")
         return event, msg
 
+    # 5. SSH сессия закрыта (Connection closed / session closed / Received disconnect)
+    if "sshd" in line and "[preauth]" not in line:
+        # 5.1 Connection closed
+        conn_close = re.search(r"sshd(?:-session)?\[(\d+)\]: Connection closed by (?:user (\S+) )?(\S+) port (\d+)", line)
+        if conn_close:
+            pid_str, user, ip, port = conn_close.groups()
+            pid = int(pid_str)
+            user = user or "root"
+            event = {
+                'time': timestamp,
+                'type': 'CLOSE',
+                'user': user,
+                'ip': ip,
+                'pid': pid,
+                'msg': f"SSH соединение закрыто (порт {port})"
+            }
+            target_str = "Хост Proxmox VE" if vmid == 0 else f"LXC {vmid} ({container_name})"
+            msg = (f"🚪 <b>SSH сессия завершена</b>\n\n"
+                   f"📦 Назначение: <b>{target_str}</b>\n"
+                   f"👤 Пользователь: <code>{user}</code>\n"
+                   f"🌐 IP-адрес: <code>{ip}</code>\n"
+                   f"🕒 Время: <code>{timestamp}</code>")
+            return event, msg
+
+        # 5.2 pam_unix session closed
+        pam_close = re.search(r"sshd(?:-session)?\[(\d+)\]: pam_unix\(sshd:session\): session closed for user (\S+)", line)
+        if pam_close:
+            pid_str, user = pam_close.groups()
+            pid = int(pid_str)
+            event = {
+                'time': timestamp,
+                'type': 'CLOSE',
+                'user': user,
+                'pid': pid,
+                'msg': f"SSH сессия закрыта для {user}"
+            }
+            target_str = "Хост Proxmox VE" if vmid == 0 else f"LXC {vmid} ({container_name})"
+            msg = (f"🚪 <b>SSH сессия завершена</b>\n\n"
+                   f"📦 Назначение: <b>{target_str}</b>\n"
+                   f"👤 Пользователь: <code>{user}</code>\n"
+                   f"🕒 Время: <code>{timestamp}</code>")
+            return event, msg
+
+        # 5.3 Received disconnect
+        recv_disc = re.search(r"sshd(?:-session)?\[(\d+)\]: Received disconnect from (\S+) port (\d+)", line)
+        if recv_disc:
+            pid_str, ip, port = recv_disc.groups()
+            pid = int(pid_str)
+            event = {
+                'time': timestamp,
+                'type': 'CLOSE',
+                'ip': ip,
+                'pid': pid,
+                'msg': f"SSH сессия отключена (порт {port})"
+            }
+            target_str = "Хост Proxmox VE" if vmid == 0 else f"LXC {vmid} ({container_name})"
+            msg = (f"🚪 <b>SSH сессия завершена</b>\n\n"
+                   f"📦 Назначение: <b>{target_str}</b>\n"
+                   f"🌐 IP-адрес: <code>{ip}</code>\n"
+                   f"🕒 Время: <code>{timestamp}</code>")
+            return event, msg
+
     return None, None
