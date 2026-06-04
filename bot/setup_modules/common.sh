@@ -51,10 +51,10 @@ setup_install_proxy() {
 
         if [ -z "${INSTALL_PROXY}" ]; then
             echo -e "${YELLOW}Хотите ли вы указать прокси-сервер вручную? (y/n) [n]${NC}"
-            read -p ">> " use_install_proxy
+            read -rp ">> " use_install_proxy
             if [ "${use_install_proxy}" = "y" ] || [ "${use_install_proxy}" = "Y" ]; then
                 echo -e "\n${BLUE}Введите URL прокси (например, socks5://127.0.0.1:10808 или http://127.0.0.1:10809):${NC}"
-                read -p ">> " INSTALL_PROXY
+                read -rp ">> " INSTALL_PROXY
                 if [ -n "${INSTALL_PROXY}" ]; then
                     echo -e "${GREEN}✓ Установочный прокси настроен: ${INSTALL_PROXY}${NC}"
                 fi
@@ -84,20 +84,28 @@ prompt_var() {
     if [ -n "${current_val}" ]; then
         echo -e "   ${CYAN}[Текущее значение / По умолчанию: ${YELLOW}${current_val}${CYAN}]${NC}"
     fi
-    read -p "   Введите значение (нажмите Enter для сохранения текущего): " user_input
+    read -rp "   Введите значение (нажмите Enter для сохранения текущего): " user_input
 
     if [ -z "${user_input}" ]; then
         user_input="${current_val}"
     fi
 
-    # Экранируем слеши и спецсимволы для корректной замены в sed
-    local escaped_input=$(echo "${user_input}" | sed 's/\//\\\//g' | sed 's/\&/\\\&/g')
-
-    if grep -q "^${var_name}=" "${ENV_FILE}"; then
-        sed -i "s/^${var_name}=.*/${var_name}=${escaped_input}/" "${ENV_FILE}"
-    else
-        echo "${var_name}=${user_input}" >> "${ENV_FILE}"
+    local tmp_file="${ENV_FILE}.tmp"
+    touch "${ENV_FILE}"
+    > "$tmp_file"
+    local found=0
+    while IFS= read -r line || [ -n "$line" ]; do
+        if [[ "$line" =~ ^${var_name}= ]]; then
+            printf "%s\n" "${var_name}=${user_input}" >> "$tmp_file"
+            found=1
+        else
+            printf "%s\n" "$line" >> "$tmp_file"
+        fi
+    done < "${ENV_FILE}"
+    if [ $found -eq 0 ]; then
+        printf "%s\n" "${var_name}=${user_input}" >> "$tmp_file"
     fi
+    mv "$tmp_file" "${ENV_FILE}"
     echo -e "   ${GREEN}✓ Успешно сохранено: ${var_name}=${user_input}${NC}"
 }
 
@@ -125,7 +133,7 @@ prompt_bool() {
     fi
 
     echo -e "\n${BLUE}👉 ${prompt_text} (y/n) [по умолчанию: ${default_yn}]${NC}"
-    read -p "   Введите значение (y/n): " user_input
+    read -rp "   Введите значение (y/n): " user_input
 
     if [ -z "${user_input}" ]; then
         user_input="${default_yn}"
@@ -138,7 +146,7 @@ prompt_bool() {
         final_val="True"
     fi
 
-    # Экранируем и сохраняем
+    # Для булевых значений sed полностью безопасен
     if grep -q "^${var_name}=" "${ENV_FILE}"; then
         sed -i "s/^${var_name}=.*/${var_name}=${final_val}/" "${ENV_FILE}"
     else

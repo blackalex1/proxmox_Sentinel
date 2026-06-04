@@ -12,6 +12,25 @@ def load_env(env_path):
     if not os.path.exists(env_path):
         print(f"[WARNING] Файл конфигурации не найден по пути: {env_path}")
         return {}
+
+    # Сначала обеспечим UTF-8 кодировку
+    try:
+        with open(env_path, 'r', encoding='utf-8') as f:
+            f.read()
+    except UnicodeDecodeError:
+        try:
+            with open(env_path, 'r', encoding='cp1251') as f:
+                content = f.read()
+            with open(env_path, 'w', encoding='utf-8') as f:
+                f.write(content)
+        except Exception:
+            try:
+                with open(env_path, 'r', encoding='utf-8', errors='replace') as f:
+                    content = f.read()
+                with open(env_path, 'w', encoding='utf-8') as f:
+                    f.write(content)
+            except Exception:
+                pass
     
     env_vars = {}
     try:

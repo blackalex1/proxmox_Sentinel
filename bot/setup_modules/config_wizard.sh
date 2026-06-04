@@ -8,6 +8,7 @@ run_config_wizard() {
     ENV_CREATED=0
 
     ENV_EXISTS=0
+    ENV_WAS_PRESENT=0
     if [ ! -f "${ENV_FILE}" ]; then
         if [ -f "${SCRIPT_DIR}/config/.env.example" ]; then
             cp "${SCRIPT_DIR}/config/.env.example" "${ENV_FILE}"
@@ -20,9 +21,10 @@ run_config_wizard() {
     else
         echo -e "${GREEN}✓ Файл конфигурации .env уже существует.${NC}"
         echo -e "Хотите перезапустить интерактивный мастер настройки и обновить .env? (y/n) [n]"
-        read -p ">> " rerun_wizard
+        read -rp ">> " rerun_wizard
         if [ "${rerun_wizard}" = "y" ] || [ "${rerun_wizard}" = "Y" ]; then
             ENV_EXISTS=0
+            ENV_WAS_PRESENT=1
         else
             ENV_EXISTS=1
         fi
@@ -60,7 +62,7 @@ run_config_wizard() {
         if [ -n "${DETECTED_SSH_IP}" ]; then
             echo -e "\n${CYAN}Обнаружен ваш IP-адрес подключения по SSH: ${YELLOW}${DETECTED_SSH_IP}${NC}"
             echo -e "Добавить его в белый список доверенных IP (TRUSTED_ADMIN_IPS)? (y/n) [y]"
-            read -p ">> " add_ssh_ip
+            read -rp ">> " add_ssh_ip
             if [ -z "${add_ssh_ip}" ] || [ "${add_ssh_ip}" = "y" ] || [ "${add_ssh_ip}" = "Y" ]; then
                 TRUSTED_IPS_DEFAULT="${DETECTED_SSH_IP}"
             fi
@@ -87,7 +89,7 @@ run_config_wizard() {
                 echo -e "  $(( ${#token_array[@]} + 1 ))) [Создать новый API-токен]"
                 
                 echo -e "\n${YELLOW}Выберите номер токена для использования (или создайте новый):${NC}"
-                read -p ">> " user_token_selection
+                read -rp ">> " user_token_selection
                 
                 # Проверяем корректность выбора
                 if [[ "$user_token_selection" =~ ^[0-9]+$ ]] && [ "$user_token_selection" -ge 1 ] && [ "$user_token_selection" -le "${#token_array[@]}" ]; then
@@ -95,7 +97,7 @@ run_config_wizard() {
                     AUTO_TOKEN_ID="root@pam!${selected_token_name}"
                     echo -e "${GREEN}✓ Выбран существующий токен: ${AUTO_TOKEN_ID}${NC}"
                     echo -e "${BLUE}👉 Введите секретный код (Secret Value) для этого токена:${NC}"
-                    read -p ">> " AUTO_TOKEN_SECRET
+                    read -rp ">> " AUTO_TOKEN_SECRET
                     token_choice="existing"
                 else
                     token_choice="new"
@@ -104,10 +106,10 @@ run_config_wizard() {
             
             if [ "${token_choice}" = "new" ]; then
                 echo -e "\nХотите ли вы автоматически сгенерировать новый выделенный API-токен для работы бота? (y/n) [y]"
-                read -p ">> " generate_token_pve
+                read -rp ">> " generate_token_pve
                 if [ -z "${generate_token_pve}" ] || [ "${generate_token_pve}" = "y" ] || [ "${generate_token_pve}" = "Y" ]; then
                     echo -e "Введите имя нового токена [по умолчанию: aegis-ips]:"
-                    read -p ">> " new_token_name
+                    read -rp ">> " new_token_name
                     if [ -z "${new_token_name}" ]; then
                         new_token_name="aegis-ips"
                     fi
@@ -179,7 +181,7 @@ run_config_wizard() {
                     fi
                     
                     echo -e "\n${YELLOW}Выберите порядковый номер из списка (1, 2...) или введите ID контейнера (например, 101) для VPN_VMID [по умолчанию: ${default_option:-ID вручную}]:${NC}"
-                    read -p ">> " user_lxc_selection
+                    read -rp ">> " user_lxc_selection
                     
                     if [ -z "$user_lxc_selection" ] && [ -n "$default_option" ]; then
                         user_lxc_selection=$default_option
@@ -205,8 +207,11 @@ run_config_wizard() {
             fi
         fi
         
-        echo -e "\n${YELLOW}Хотите ли вы настроить параметры .env интерактивно? (y/n) [y]${NC}"
-        read -p ">> " run_wizard
+        local run_wizard="y"
+        if [ ${ENV_WAS_PRESENT} -eq 0 ]; then
+            echo -e "\n${YELLOW}Хотите ли вы настроить параметры .env интерактивно? (y/n) [y]${NC}"
+            read -rp ">> " run_wizard
+        fi
         if [ -z "${run_wizard}" ] || [ "${run_wizard}" = "y" ] || [ "${run_wizard}" = "Y" ]; then
             # Запускаем интерактивный мастер
             prompt_var "BOT_TOKEN" "Токен вашего Telegram-бота (BOT_TOKEN)" ""
@@ -280,7 +285,7 @@ run_config_wizard() {
                     else
                         echo -e "${RED}❌ Не удалось подключиться к роутеру по SSH.${NC}"
                         echo -e "Хотите скорректировать параметры подключения по SSH и попробовать снова? (y/n) [y]"
-                        read -p ">> " retry_ssh
+                        read -rp ">> " retry_ssh
                         if [ -z "${retry_ssh}" ] || [ "${retry_ssh}" = "y" ] || [ "${retry_ssh}" = "Y" ]; then
                             echo -e "${YELLOW}Повторный ввод параметров SSH...${NC}"
                             continue
