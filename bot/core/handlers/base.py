@@ -155,7 +155,6 @@ def get_ban_key_tree_cmd(fp: str) -> str:
         f"removed_any=1; "
         f"echo \"DELETED_KEY:$path:$line\"; "
         f"continue; "
-        f";; "
         f"fi; "
         f"echo \"$line\" >> \"$temp_out\"; "
         f"done < \"$path\"; "
