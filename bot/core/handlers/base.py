@@ -307,45 +307,50 @@ async def process_ban_ssh_key(callback: CallbackQuery):
     except Exception as e:
         logging.error(f"Ошибка при сбросе сессии перед баном ключа: {e}")
 
-    # Разрешаем путь к authorized_keys
-    keys_path = ""
-    if target == "local":
-        if username == "root":
-            keys_path = "/root/.ssh/authorized_keys"
-        else:
-            keys_path = f"/home/{username}/.ssh/authorized_keys"
-    elif target.startswith("lxc_"):
-        vmid = int(target.split("_")[1])
-        if username == "root":
-            keys_path = f"/var/lib/lxc/{vmid}/rootfs/root/.ssh/authorized_keys"
-        else:
-            keys_path = f"/var/lib/lxc/{vmid}/rootfs/home/{username}/.ssh/authorized_keys"
-    else:
-        # Remote VPS
-        if username == "root":
-            keys_path = "/root/.ssh/authorized_keys"
-        else:
-            keys_path = f"/home/{username}/.ssh/authorized_keys"
+    # Определяем префикс путей для поиска ключей
+    root_prefix = ""
+    if target.startswith("lxc_"):
+        try:
+            vmid = int(target.split("_")[1])
+            root_prefix = f"/var/lib/lxc/{vmid}/rootfs"
+        except Exception:
+            pass
 
     PYTHON_BAN_SCRIPT_ESCAPED = (
-        "import sys,os,subprocess\n"
-        "fp,path=sys.argv[1],sys.argv[2]\n"
-        "if not os.path.exists(path):print('NOT_FOUND');sys.exit(0)\n"
-        "lines=open(path,'r',encoding='utf-8',errors='ignore').readlines()\n"
-        "new_lines,removed,temp_path=[],False,f'/tmp/tkey_{os.getpid()}'\n"
-        "for l in lines:\n"
-        "  if not l.strip() or l.strip().startswith('#'):new_lines.append(l);continue\n"
-        "  open(temp_path,'w',encoding='utf-8').write(l)\n"
-        "  res=subprocess.run(['ssh-keygen','-l','-f',temp_path],capture_output=True,text=True)\n"
-        "  if res.returncode==0 and fp in res.stdout:\n"
-        "    removed=True\n"
-        "    print('DELETED_KEY:' + l.strip())\n"
-        "    continue\n"
-        "  new_lines.append(l)\n"
-        "if os.path.exists(temp_path):os.remove(temp_path)\n"
-        "if removed:\n"
-        "  open(path,'w',encoding='utf-8').writelines(new_lines)\n"
-        "  print('SUCCESS')\n"
+        "import sys,os,glob,subprocess\n"
+        "fp,root_prefix=sys.argv[1],sys.argv[2]\n"
+        "paths=[]\n"
+        "r_k=os.path.join(root_prefix,'root','.ssh','authorized_keys')\n"
+        "if os.path.exists(r_k):paths.append(r_k)\n"
+        "h_k=os.path.join(root_prefix,'home','*','.ssh','authorized_keys')\n"
+        "paths.extend(glob.glob(h_k))\n"
+        "removed_any,temp_path=False,f'/tmp/tkey_{os.getpid()}'\n"
+        "for path in paths:\n"
+        "  if not os.path.exists(path):continue\n"
+        "  try:\n"
+        "    lines=open(path,'r',encoding='utf-8',errors='ignore').readlines()\n"
+        "  except:continue\n"
+        "  new_lines,removed_from_file=[],False\n"
+        "  for l in lines:\n"
+        "    if not l.strip() or l.strip().startswith('#'):new_lines.append(l);continue\n"
+        "    try:\n"
+        "      open(temp_path,'w',encoding='utf-8').write(l)\n"
+        "      res=subprocess.run(['ssh-keygen','-l','-f',temp_path],capture_output=True,text=True)\n"
+        "      if res.returncode==0 and fp in res.stdout:\n"
+        "        removed_from_file=True\n"
+        "        print(f'DELETED_KEY:{path}:{l.strip()}')\n"
+        "        continue\n"
+        "    except:pass\n"
+        "    new_lines.append(l)\n"
+        "  if removed_from_file:\n"
+        "    try:\n"
+        "      open(path,'w',encoding='utf-8').writelines(new_lines)\n"
+        "      removed_any=True\n"
+        "    except:pass\n"
+        "if os.path.exists(temp_path):\n"
+        "  try:os.remove(temp_path)\n"
+        "  except:pass\n"
+        "if removed_any:print('SUCCESS')\n"
         "else:print('NOT_FOUND')\n"
     )
 
@@ -357,7 +362,7 @@ async def process_ban_ssh_key(callback: CallbackQuery):
         if target == "local" or target.startswith("lxc_"):
             import asyncio
             proc = await asyncio.create_subprocess_exec(
-                "python3", "-c", PYTHON_BAN_SCRIPT_ESCAPED, fingerprint, keys_path,
+                "python3", "-c", PYTHON_BAN_SCRIPT_ESCAPED, fingerprint, root_prefix,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE
             )
@@ -380,7 +385,7 @@ async def process_ban_ssh_key(callback: CallbackQuery):
                 from modules.proxmox.monitor.remote.ssh import run_remote_ssh_cmd
                 run_success, stdout_str, stderr_str = await run_remote_ssh_cmd(
                     server,
-                    ["python3", "-c", f'"{PYTHON_BAN_SCRIPT_ESCAPED}"', f'"{fingerprint}"', f'"{keys_path}"']
+                    ["python3", "-c", f'"{PYTHON_BAN_SCRIPT_ESCAPED}"', f'"{fingerprint}"', '""']
                 )
                 if run_success and "SUCCESS" in stdout_str:
                     success_ban = True
@@ -393,33 +398,48 @@ async def process_ban_ssh_key(callback: CallbackQuery):
         error_msg = str(e)
 
     if success_ban:
-        # Извлекаем тело удаленного ключа из stdout_str
-        key_body = ""
+        # Извлекаем пути и тела удаленных ключей из stdout_str
+        deleted_entries = []
         for line in stdout_str.splitlines():
             if line.startswith("DELETED_KEY:"):
-                key_body = line.split(":", 1)[1].strip()
-                break
+                parts = line.split(":", 2)
+                if len(parts) == 3:
+                    _, path, k_body = parts
+                    deleted_entries.append((path.strip(), k_body.strip()))
         
-        # Сохраняем заблокированный ключ в БД для Центра блокировок
-        if key_body:
+        # Сохраняем заблокированные ключи в БД для Центра блокировок
+        if deleted_entries:
             try:
                 import uuid
+                import re
                 from core.db import get_state, set_state
                 banned_keys = await get_state("banned_ssh_keys", [])
                 
-                # Добавляем запись о забаненном ключе
-                key_id = str(uuid.uuid4())[:8]
-                banned_keys.append({
-                    "id": key_id,
-                    "target": target,
-                    "username": username,
-                    "fingerprint": fingerprint,
-                    "key_body": key_body,
-                    "keys_path": keys_path,
-                    "banned_at": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                })
+                for path, k_body in deleted_entries:
+                    key_id = str(uuid.uuid4())[:8]
+                    
+                    # Извлекаем имя пользователя из пути для красивого отображения в панели
+                    match = re.search(r'/home/([^/]+)/', path)
+                    entry_username = "root"
+                    if match:
+                        entry_username = match.group(1)
+                    elif "/root/" in path:
+                        entry_username = "root"
+                    else:
+                        entry_username = username or "root"
+                    
+                    banned_keys.append({
+                        "id": key_id,
+                        "target": target,
+                        "username": entry_username,
+                        "fingerprint": fingerprint,
+                        "key_body": k_body,
+                        "keys_path": path,
+                        "banned_at": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    })
+                    logging.info(f"Забаненный ключ {fingerprint} для {entry_username} на {target} сохранен в БД. ID: {key_id}, путь: {path}")
+                    
                 await set_state("banned_ssh_keys", banned_keys)
-                logging.info(f"Забаненный ключ {fingerprint} для {username} на {target} сохранен в БД. ID: {key_id}")
             except Exception as e:
                 logging.error(f"Ошибка сохранения забаненного ключа в БД: {e}")
 
