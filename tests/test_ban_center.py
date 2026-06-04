@@ -20,7 +20,7 @@ async def test_verify_env_configuration():
          patch('core.config.settings.proxmox_host', ''), \
          patch('core.config.settings.xui_host', ''), \
          patch('core.config.settings.ansible_playbooks_dir', ''), \
-         patch('core.config.settings.router_ssh_enable', False), \
+         patch('core.config.settings.router_monitor_enable', False), \
          patch('core.config.settings.remote_monitor_enable', False), \
          patch('logging.warning') as mock_warn, \
          patch('logging.info') as mock_info:

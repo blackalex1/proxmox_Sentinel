@@ -12,7 +12,7 @@ from .remote import monitor_remote_server
 
 async def start_all_lxc_monitors():
     """Инициализация и запуск всех фоновых асинхронных задач мониторинга LXC и удаленных серверов."""
-    from modules.mihomo.monitor.core import monitor_mihomo_connections
+    from modules.router.monitor.core import monitor_router_connections
     # 0. Запускаем фоновый Garbage Collector для очистки просроченных временных блокировок
     asyncio.create_task(monitor_expired_bans(), name="monitor_expired_bans")
     
@@ -36,12 +36,10 @@ async def start_all_lxc_monitors():
         asyncio.create_task(monitor_remote_server(), name="monitor_remote_server")
         logging.info("Мониторинг удаленного сервера запущен!")
         
-    # 6. Запускаем мониторинг роутера (Mihomo API или SSH conntrack/syslog), если включен в конфиге
-    mode = getattr(settings, 'mihomo_monitor_mode', 'polling').lower()
-    is_ssh_mode = mode in ('conntrack', 'iptables')
-    if settings.mihomo_monitor_enable or (is_ssh_mode and settings.router_ssh_enable) or mode == 'mihomo':
-        asyncio.create_task(monitor_mihomo_connections(), name="monitor_mihomo_connections")
-        logging.info(f"Мониторинг роутера запущен (режим: {mode})!")
+    # 6. Запускаем мониторинг роутера (SSH conntrack/syslog), если включен в конфиге
+    if settings.router_monitor_enable:
+        asyncio.create_task(monitor_router_connections(), name="monitor_router_connections")
+        logging.info(f"Мониторинг роутера запущен (режим: {settings.router_monitor_mode})!")
         
     logging.info("Все службы LXC мониторинга успешно запущены в фоне!")
 
