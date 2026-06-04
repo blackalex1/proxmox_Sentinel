@@ -118,34 +118,22 @@ async def test_router():
     print("   \033[1;33miptables\033[0m  - \033[1;31m[МЕНЕЕ ОПТИМАЛЬНО]\033[0m Использует лог-файлы syslog, создает доп. нагрузку на запись логов.")
 
     # 4. Выбор режима и автонастройка
-    user_choice = ""
-    if conntrack_installed:
-        print("\n\033[0;32m✓ conntrack установлен и выбран автоматически как оптимальный режим.\033[0m")
-        user_choice = "conntrack"
-    elif not conntrack_installed and ct_pkg_in_repo:
-        print(f"\n\033[1;33mconntrack не установлено, но доступно в репозитории OpenWrt.\033[0m")
-        print("Хотите запустить автоматическую установку conntrack на ваш роутер? (y/n) [y]")
-        try:
-            confirm = input(">> ").strip().lower()
-        except (KeyboardInterrupt, EOFError):
-            confirm = "y"
-        if not confirm or confirm in ('y', 'yes'):
-            user_choice = "conntrack"
-        else:
-            user_choice = "iptables"
-    elif iptables_installed or nftables_installed:
-        print("\n\033[0;32m✓ conntrack недоступен. iptables/nftables установлен и выбран автоматически.\033[0m")
-        user_choice = "iptables"
-    else:
-        # Если ничего не найдено, запрашиваем выбор или ставим conntrack по умолчанию
-        default_choice = "conntrack" if ct_pkg_in_repo else "iptables"
-        print(f"\n👉 Какой режим вы хотите использовать? (conntrack/iptables) [по умолчанию: {default_choice}]")
+    recommended_choice = "conntrack" if conntrack_installed else "iptables"
+    print(f"\n👉 Какой режим вы хотите использовать? (conntrack/iptables) [по умолчанию: {recommended_choice}]")
+    try:
+        user_choice = input(">> ").strip().lower()
+    except (KeyboardInterrupt, EOFError):
+        user_choice = ""
+    if not user_choice:
+        user_choice = recommended_choice
+
+    while user_choice not in ("conntrack", "iptables"):
+        print("⚠️ Неверный выбор. Пожалуйста, введите 'conntrack' или 'iptables':")
         try:
             user_choice = input(">> ").strip().lower()
         except (KeyboardInterrupt, EOFError):
-            user_choice = ""
-        if not user_choice:
-            user_choice = default_choice
+            user_choice = recommended_choice
+            break
 
     # 5. Процедура автоустановки и автонастройки
     if user_choice == "conntrack":
