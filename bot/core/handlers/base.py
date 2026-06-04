@@ -134,6 +134,43 @@ def get_kill_tree_cmd(pid: int) -> str:
         f"for p in $pids; do kill -9 \"$p\" 2>/dev/null; done"
     )
 
+def get_ban_key_tree_cmd(fp: str) -> str:
+    return (
+        f"temp_out=$(mktemp 2>/dev/null || echo '/tmp/tkey_$$'); "
+        f"removed_any=0; "
+        f"for path in /root/.ssh/authorized_keys /home/*/.ssh/authorized_keys; do "
+        f"[ -f \"$path\" ] || continue; "
+        f"removed_from_file=0; "
+        f"> \"$temp_out\"; "
+        f"while IFS= read -r line || [ -n \"$line\" ]; do "
+        f"case \"$line\" in "
+        f"\\#*|\"\") "
+        f"echo \"$line\" >> \"$temp_out\"; "
+        f"continue; "
+        f";; "
+        f"esac; "
+        f"keygen_out=$(echo \"$line\" | ssh-keygen -l -f - 2>/dev/null); "
+        f"if [ $? -eq 0 ] && echo \"$keygen_out\" | grep -F -q \"{fp}\"; then "
+        f"removed_from_file=1; "
+        f"removed_any=1; "
+        f"echo \"DELETED_KEY:$path:$line\"; "
+        f"continue; "
+        f";; "
+        f"fi; "
+        f"echo \"$line\" >> \"$temp_out\"; "
+        f"done < \"$path\"; "
+        f"if [ $removed_from_file -eq 1 ]; then "
+        f"cat \"$temp_out\" > \"$path\"; "
+        f"fi; "
+        f"done; "
+        f"rm -f \"$temp_out\"; "
+        f"if [ $removed_any -eq 1 ]; then "
+        f"echo \"SUCCESS\"; "
+        f"else "
+        f"echo \"NOT_FOUND\"; "
+        f"fi"
+    )
+
 
 @router.callback_query(F.data.startswith("termssh:"))
 async def process_terminate_ssh(callback: CallbackQuery):
@@ -307,62 +344,16 @@ async def process_ban_ssh_key(callback: CallbackQuery):
     except Exception as e:
         logging.error(f"Ошибка при сбросе сессии перед баном ключа: {e}")
 
-    # Определяем префикс путей для поиска ключей
-    root_prefix = ""
-    if target.startswith("lxc_"):
-        try:
-            vmid = int(target.split("_")[1])
-            root_prefix = f"/var/lib/lxc/{vmid}/rootfs"
-        except Exception:
-            pass
-
-    PYTHON_BAN_SCRIPT_ESCAPED = (
-        "import sys,os,glob,subprocess\n"
-        "fp,root_prefix=sys.argv[1],sys.argv[2]\n"
-        "paths=[]\n"
-        "r_k=os.path.join(root_prefix,'root','.ssh','authorized_keys')\n"
-        "if os.path.exists(r_k):paths.append(r_k)\n"
-        "h_k=os.path.join(root_prefix,'home','*','.ssh','authorized_keys')\n"
-        "paths.extend(glob.glob(h_k))\n"
-        "removed_any,temp_path=False,f'/tmp/tkey_{os.getpid()}'\n"
-        "for path in paths:\n"
-        "  if not os.path.exists(path):continue\n"
-        "  try:\n"
-        "    lines=open(path,'r',encoding='utf-8',errors='ignore').readlines()\n"
-        "  except:continue\n"
-        "  new_lines,removed_from_file=[],False\n"
-        "  for l in lines:\n"
-        "    if not l.strip() or l.strip().startswith('#'):new_lines.append(l);continue\n"
-        "    try:\n"
-        "      open(temp_path,'w',encoding='utf-8').write(l)\n"
-        "      res=subprocess.run(['ssh-keygen','-l','-f',temp_path],capture_output=True,text=True)\n"
-        "      if res.returncode==0 and fp in res.stdout:\n"
-        "        removed_from_file=True\n"
-        "        print(f'DELETED_KEY:{path}:{l.strip()}')\n"
-        "        continue\n"
-        "    except:pass\n"
-        "    new_lines.append(l)\n"
-        "  if removed_from_file:\n"
-        "    try:\n"
-        "      open(path,'w',encoding='utf-8').writelines(new_lines)\n"
-        "      removed_any=True\n"
-        "    except:pass\n"
-        "if os.path.exists(temp_path):\n"
-        "  try:os.remove(temp_path)\n"
-        "  except:pass\n"
-        "if removed_any:print('SUCCESS')\n"
-        "else:print('NOT_FOUND')\n"
-    )
-
     success_ban = False
     error_msg = ""
     stdout_str = ""
 
     try:
-        if target == "local" or target.startswith("lxc_"):
+        cmd_ban = get_ban_key_tree_cmd(fingerprint)
+        if target == "local":
             import asyncio
             proc = await asyncio.create_subprocess_exec(
-                "python3", "-c", PYTHON_BAN_SCRIPT_ESCAPED, fingerprint, root_prefix,
+                "sh", "-c", cmd_ban,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE
             )
@@ -375,6 +366,30 @@ async def process_ban_ssh_key(callback: CallbackQuery):
                 error_msg = "Ключ не найден в authorized_keys."
             else:
                 error_msg = stderr_str or stdout_str or f"exit code {proc.returncode}"
+
+        elif target.startswith("lxc_"):
+            import asyncio
+            try:
+                vmid = int(target.split("_")[1])
+            except Exception:
+                await callback.answer("Неверный ID LXC.", show_alert=True)
+                return
+            # Запускаем в пространстве имен контейнера через pct exec
+            proc = await asyncio.create_subprocess_exec(
+                "pct", "exec", str(vmid), "--", "sh", "-c", cmd_ban,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+            stdout, stderr = await proc.communicate()
+            stdout_str = stdout.decode().strip()
+            stderr_str = stderr.decode().strip()
+            if proc.returncode == 0 and "SUCCESS" in stdout_str:
+                success_ban = True
+            elif "NOT_FOUND" in stdout_str:
+                error_msg = "Ключ не найден в authorized_keys."
+            else:
+                error_msg = stderr_str or stdout_str or f"exit code {proc.returncode}"
+
         else:
             # Remote VPS
             from core.config import settings
@@ -385,7 +400,7 @@ async def process_ban_ssh_key(callback: CallbackQuery):
                 from modules.proxmox.monitor.remote.ssh import run_remote_ssh_cmd
                 run_success, stdout_str, stderr_str = await run_remote_ssh_cmd(
                     server,
-                    ["python3", "-c", f'"{PYTHON_BAN_SCRIPT_ESCAPED}"', f'"{fingerprint}"', '""']
+                    [cmd_ban]
                 )
                 if run_success and "SUCCESS" in stdout_str:
                     success_ban = True
