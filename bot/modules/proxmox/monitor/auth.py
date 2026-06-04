@@ -3,9 +3,14 @@ import logging
 import os
 import re
 import datetime
+import time
+from collections import deque
 
 from .state import lxc_auth_history, lxc_name_cache, lxc_state_cache, auth_tailers
 from .utils import LogTailer, send_alert_to_admins
+
+# rolling-буфер для дедупликации закрытия SSH сессий: (vmid, key_type, value, timestamp)
+recent_closed_events = deque(maxlen=200)
 
 def find_auth_log_path(vmid):
     """Определение пути к файлу логов авторизации контейнера на хосте (если они пишутся в файл)."""
@@ -32,14 +37,36 @@ async def handle_auth_log_line(line, vmid):
         if event and msg:
             if event.get('type') == 'CLOSE':
                 pid = event.get('pid')
-                if pid:
-                    from .state import recent_closed_sessions
-                    cache_key = (vmid, pid)
-                    if cache_key in recent_closed_sessions:
-                        return
-                    recent_closed_sessions.append(cache_key)
+                user = event.get('user')
+                ip = event.get('ip')
+                now = time.time()
                 
-                user_str = event.get('user', 'unknown')
+                # Проверяем на дубликаты за последние 3 секунды
+                is_duplicate = False
+                for v, ktype, val, ts in list(recent_closed_events):
+                    if v == vmid and now - ts < 3.0:
+                        if pid and ktype == 'pid' and val == pid:
+                            is_duplicate = True
+                            break
+                        if user and user != 'root' and ktype == 'user' and val == user:
+                            is_duplicate = True
+                            break
+                        if ip and ktype == 'ip' and val == ip:
+                            is_duplicate = True
+                            break
+                            
+                if is_duplicate:
+                    return
+                
+                # Добавляем в буфер
+                if pid:
+                    recent_closed_events.append((vmid, 'pid', pid, now))
+                if user and user != 'root':
+                    recent_closed_events.append((vmid, 'user', user, now))
+                if ip:
+                    recent_closed_events.append((vmid, 'ip', ip, now))
+                
+                user_str = user or 'unknown'
                 target_key = "local" if vmid == 0 else f"lxc_{vmid}"
                 logging.info(f"[SSH Close] SSH-сессия для {user_str} на {target_key} (pid={pid}) успешно завершена.")
                 
