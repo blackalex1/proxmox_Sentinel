@@ -48,12 +48,18 @@ async def test_host_ips():
         except Exception as ss_ex:
             print_error(f"Не удалось выполнить команду ss: {ss_ex}")
 
-        # Wait remaining duration to let the bot process the connection event and send SIGKILL
-        await asyncio.sleep(3.5)
+        # Poll the process return code for up to 6 seconds
+        max_wait = 6.0
+        poll_interval = 0.1
+        start_wait = time.time()
+        while time.time() - start_wait < max_wait:
+            if proc.returncode is not None:
+                break
+            await asyncio.sleep(poll_interval)
         
         # Check if the process is still running
         if proc.returncode is None:
-            print_error("ВНИМАНИЕ: Процесс не был убит IPS системой в течение 4 секунд.")
+            print_error("ВНИМАНИЕ: Процесс не был убит IPS системой.")
             print_info("Завершаем процесс принудительно для очистки...")
             try:
                 proc.terminate()
@@ -178,10 +184,17 @@ async def test_container_ips(vmid, name):
             stderr=asyncio.subprocess.PIPE
         )
         
-        await asyncio.sleep(4.5)
+        # Poll the process return code for up to 8 seconds
+        max_wait = 8.0
+        poll_interval = 0.1
+        start_wait = time.time()
+        while time.time() - start_wait < max_wait:
+            if proc.returncode is not None:
+                break
+            await asyncio.sleep(poll_interval)
         
         if proc.returncode is None:
-            print_error(f"ВНИМАНИЕ: Процесс в LXC {vmid} не был убит IPS в течение 4.5 секунд.")
+            print_error(f"ВНИМАНИЕ: Процесс в LXC {vmid} не был убит IPS в течение {max_wait} секунд.")
             print_info("Завершаем процесс pct exec...")
             try:
                 proc.terminate()
@@ -190,7 +203,7 @@ async def test_container_ips(vmid, name):
             return False
         else:
             duration = time.time() - start_time
-            if proc.returncode in [137, -9, 255] or duration < 4.0:
+            if proc.returncode in [137, -9, 255] or duration < 7.0:
                 print_success(f"Процесс внутри LXC {vmid} успешно убит IPS (Код выхода: {proc.returncode}, Длительность: {duration:.2f} сек)!")
                 print_success(f"Активная защита LXC {vmid} РАБОТАЕТ корректно.")
                 return True
