@@ -137,7 +137,7 @@ run_config_wizard() {
         AUTO_VPN_VMID=""
         if command -v pct >/dev/null 2>&1; then
             echo -e "\n${CYAN}Поиск контейнеров LXC на хосте Proxmox VE...${NC}"
-            LXC_LIST=$(pct list 2>/dev/null | tail -n +2 || true)
+            LXC_LIST=$(pct list 2>/dev/null | tail -n +2 | awk '{print $1, $2, $NF}' || true)
             
             if [ -n "$LXC_LIST" ]; then
                 declare -a vmid_array
@@ -146,7 +146,7 @@ run_config_wizard() {
                 
                 idx=0
                 auto_idx=-1
-                while read -r vmid status type name rest; do
+                while read -r vmid status name; do
                     if [ -n "$vmid" ]; then
                         vmid_array[idx]=$vmid
                         name_array[idx]=$name
