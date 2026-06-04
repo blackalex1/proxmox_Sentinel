@@ -266,9 +266,11 @@ async def process_terminate_ssh(callback: CallbackQuery):
 
     if success:
         if is_dead:
+            logging.info(f"[SSH Drop] SSH-сессия {pid} на {target} уже была закрыта или не найдена.")
             await callback.answer("Сессия уже закрыта или не найдена.", show_alert=True)
             status_text = "🔒 Сессия уже была закрыта или не найдена"
         else:
+            logging.info(f"[SSH Drop] SSH-сессия {pid} на {target} успешно завершена (сброшена).")
             await callback.answer("SSH-сессия успешно сброшена!", show_alert=True)
             status_text = "❌ SSH-сессия сброшена пользователем через Telegram"
         
@@ -329,17 +331,20 @@ async def process_ban_ssh_key(callback: CallbackQuery):
             import asyncio
             proc = await asyncio.create_subprocess_exec("sh", "-c", cmd)
             await proc.wait()
+            logging.info(f"[SSH Drop] SSH-сессия {pid} на {target} перед баном сброшена. Exit code: {proc.returncode}")
         elif target.startswith("lxc_"):
             import asyncio
             vmid = int(target.split("_")[1])
             proc = await asyncio.create_subprocess_exec("pct", "exec", str(vmid), "--", "sh", "-c", cmd)
             await proc.wait()
+            logging.info(f"[SSH Drop] SSH-сессия {pid} в LXC {vmid} перед баном сброшена. Exit code: {proc.returncode}")
         else:
             from core.config import settings
             server = next((s for s in settings.remote_servers if s['ip'] == target), None)
             if server:
                 from modules.proxmox.monitor.remote.ssh import run_remote_ssh_cmd
-                await run_remote_ssh_cmd(server, [cmd])
+                run_success, stdout, stderr = await run_remote_ssh_cmd(server, [cmd])
+                logging.info(f"[SSH Drop] SSH-сессия {pid} на VPS {target} перед баном сброшена. Успешно: {run_success}")
     except Exception as e:
         logging.error(f"Ошибка при сбросе сессии перед баном ключа: {e}")
 
