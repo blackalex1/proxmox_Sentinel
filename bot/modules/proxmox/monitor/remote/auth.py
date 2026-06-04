@@ -86,7 +86,8 @@ async def handle_remote_ssh_auth_line(line, server=None):
                     if client_port is not None:
                         # Получаем список портов, которые реально открыл наш бот для соединений к VPS
                         bot_active_ports = get_active_ssh_ports_for_vps(server['ip'])
-                        if client_port in bot_active_ports:
+                        from modules.proxmox.monitor.state import recent_bot_ports
+                        if client_port in bot_active_ports or client_port in recent_bot_ports:
                             is_verified_bot = True
                         else:
                             is_verified_bot = False
