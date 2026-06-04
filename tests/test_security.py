@@ -481,6 +481,16 @@ def test_parse_auth_line_ssh_close():
     assert event_pam['type'] == 'CLOSE'
     assert event_pam['user'] == 'alex'
 
+    # 4. Connection closed without user (should be ignored)
+    line_nouser = "Jun 04 21:28:15 server sshd[17820]: Connection closed by 192.168.1.92 port 54305"
+    event_nouser, msg_nouser = parse_auth_line(line_nouser, vmid=109, timestamp="2026-06-04 21:28:15", container_name="Gleb")
+    assert event_nouser is None
+
+    # 5. Received disconnect (should be ignored)
+    line_disc = "Jun 04 21:28:15 server sshd[17820]: Received disconnect from 192.168.1.92 port 54305"
+    event_disc, msg_disc = parse_auth_line(line_disc, vmid=109, timestamp="2026-06-04 21:28:15", container_name="Gleb")
+    assert event_disc is None
+
 
 
 
