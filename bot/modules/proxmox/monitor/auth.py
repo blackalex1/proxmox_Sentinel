@@ -30,6 +30,19 @@ async def handle_auth_log_line(line, vmid):
         from .auth_parser import parse_auth_line
         event, msg = parse_auth_line(line, vmid, timestamp, container_name)
         if event and msg:
+            if event.get('type') == 'CLOSE':
+                pid = event.get('pid')
+                if pid:
+                    from .state import recent_closed_sessions
+                    cache_key = (vmid, pid)
+                    if cache_key in recent_closed_sessions:
+                        return
+                    recent_closed_sessions.append(cache_key)
+                
+                user_str = event.get('user', 'unknown')
+                target_key = "local" if vmid == 0 else f"lxc_{vmid}"
+                logging.info(f"[SSH Close] SSH-сессия для {user_str} на {target_key} (pid={pid}) успешно завершена.")
+                
             lxc_auth_history[vmid].append(event)
             
             # Если это успешный вход по SSH, добавляем кнопку сброса сессии
