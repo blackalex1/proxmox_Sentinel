@@ -186,7 +186,7 @@ async def test_render_ban_center_with_ssh_keys():
 
 @pytest.mark.asyncio
 async def test_process_ban_center_unbankey_success():
-    from core.handlers.ban_center import process_ban_center_unbankey
+    from core.handlers.ban_center import process_ban_center_unbankey, get_unban_key_cmd
     from core.db import get_state, set_state
     from aiogram.types import CallbackQuery
     
@@ -208,7 +208,7 @@ async def test_process_ban_center_unbankey_success():
     mock_callback.answer = AsyncMock()
     
     mock_proc = AsyncMock()
-    mock_proc.wait = AsyncMock(return_value=0)
+    mock_proc.communicate = AsyncMock(return_value=(b"", b""))
     mock_proc.returncode = 0
     
     with patch("asyncio.create_subprocess_exec", AsyncMock(return_value=mock_proc)) as mock_exec:
@@ -216,7 +216,7 @@ async def test_process_ban_center_unbankey_success():
         
         # Проверяем, что ключ был дописан
         mock_exec.assert_called_once_with(
-            "python3", "-c", ANY, "/home/alex/.ssh/authorized_keys", "ssh-ed25519 AAA... alex@pc",
+            "sh", "-c", get_unban_key_cmd("/home/alex/.ssh/authorized_keys", "ssh-ed25519 AAA... alex@pc"),
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE
         )
