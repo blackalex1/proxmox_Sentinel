@@ -77,18 +77,13 @@ class Settings(BaseSettings):
     # Временный белый список командной строки процессов (для авто-тестов)
     ips_temp_whitelist_cmdline: str = Field(default='', validation_alias='IPS_TEMP_WHITELIST_CMDLINE')
 
-    # Mihomo (Clash.Meta) мониторинг роутера
-    mihomo_monitor_enable: bool = Field(default=False, validation_alias='MIHOMO_MONITOR_ENABLE')
-    mihomo_api_host: str = Field(default='192.168.1.1', validation_alias='MIHOMO_API_HOST')
-    mihomo_api_port: int = Field(default=9090, validation_alias='MIHOMO_API_PORT')
-    mihomo_api_secret: str = Field(default='', validation_alias='MIHOMO_API_SECRET')
-    mihomo_auto_ban: bool = Field(default=False, validation_alias='MIHOMO_AUTO_BAN')
-    mihomo_max_violations: int = Field(default=3, validation_alias='MIHOMO_MAX_VIOLATIONS')
-    mihomo_monitor_mode: str = Field(default='polling', validation_alias='MIHOMO_MONITOR_MODE')
-    mihomo_poll_interval: float = Field(default=2.0, validation_alias='MIHOMO_POLL_INTERVAL')
+    # Мониторинг роутера через SSH conntrack/iptables
+    router_monitor_enable: bool = Field(default=False, validation_alias='ROUTER_MONITOR_ENABLE')
+    router_monitor_mode: str = Field(default='conntrack', validation_alias='ROUTER_MONITOR_MODE')
+    router_auto_ban: bool = Field(default=False, validation_alias='ROUTER_AUTO_BAN')
+    router_max_violations: int = Field(default=3, validation_alias='ROUTER_MAX_VIOLATIONS')
 
-    # Настройки SSH для роутера (для банов)
-    router_ssh_enable: bool = Field(default=False, validation_alias='ROUTER_SSH_ENABLE')
+    # Настройки SSH для роутера
     router_ssh_host: str = Field(default='192.168.1.1', validation_alias='ROUTER_SSH_HOST')
     router_ssh_port: int = Field(default=22, validation_alias='ROUTER_SSH_PORT')
     router_ssh_user: str = Field(default='root', validation_alias='ROUTER_SSH_USER')
@@ -136,9 +131,7 @@ class Settings(BaseSettings):
             return []
         return [x.strip() for x in str(v).split(',') if x.strip()]
 
-    @property
-    def mihomo_api_url(self) -> str:
-        return f"http://{self.mihomo_api_host}:{self.mihomo_api_port}"
+    # (Совместимость обеспечивается полями AliasChoices выше)
 
     # Пост-валидация для генерации структуры remote_servers
     @model_validator(mode='after')

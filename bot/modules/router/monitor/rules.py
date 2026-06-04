@@ -1,11 +1,11 @@
 import logging
 from core.config import settings
-from modules.mihomo.router import run_router_ssh_cmd
+from modules.router.router import run_router_ssh_cmd
 
 async def setup_router_logging_rules():
     """Настраивает правила логирования чувствительных портов на роутере через SSH."""
-    if not settings.router_ssh_enable:
-        logging.warning("[Router IPS] Настройки SSH роутера отключены, не удается настроить правила логирования.")
+    if not settings.router_monitor_enable:
+        logging.warning("[Router IPS] Мониторинг роутера отключен в настройках, не удается настроить правила логирования.")
         return False
         
     ports_str = ",".join(str(p) for p in settings.monitor_lxc_ports_sensitive)
@@ -66,7 +66,7 @@ async def setup_router_logging_rules():
 
 async def remove_router_logging_rules():
     """Удаляет настроенные правила логирования на роутере."""
-    if not settings.router_ssh_enable:
+    if not settings.router_monitor_enable:
         return
         
     ports_str = ",".join(str(p) for p in settings.monitor_lxc_ports_sensitive)

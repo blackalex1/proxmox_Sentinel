@@ -270,8 +270,8 @@ async def main():
     dp.include_router(xui_router)
     dp.include_router(ansible_router)
     
-    from modules.mihomo.handlers import router as mihomo_router
-    dp.include_router(mihomo_router)
+    from modules.router.handlers import router as router_handlers_router
+    dp.include_router(router_handlers_router)
     
     # Запускаем фоновые задачи (Proxmox Alert System)
     if settings.admin_ids:

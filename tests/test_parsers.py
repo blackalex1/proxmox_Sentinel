@@ -172,7 +172,7 @@ async def test_watcher_host_ssh_verification():
 
     # Mock is_local_bot_process to return False
     with patch("modules.proxmox.monitor.traffic.watcher.send_alert_to_admins", AsyncMock()) as mock_alert, \
-         patch("modules.mihomo.monitor.helpers.is_local_bot_process", AsyncMock(return_value=False)), \
+         patch("modules.router.monitor.helpers.is_local_bot_process", AsyncMock(return_value=False)), \
          patch("modules.proxmox.monitor.traffic.watcher.get_and_kill_local_or_lxc_process", AsyncMock(return_value=("ssh", 9999))):
         await handle_traffic_log_line(log_line)
         # Must be classified as CRITICAL, alert sent immediately!
@@ -208,7 +208,7 @@ async def test_watcher_lxc_inbound_ssh_verification():
         # A) Simulate legitimate connection by the bot / child process (e.g. Ansible):
         # is_local_bot_process returns True
         with patch("modules.proxmox.monitor.traffic.watcher.send_alert_to_admins", AsyncMock()) as mock_alert, \
-             patch("modules.mihomo.monitor.helpers.is_local_bot_process", AsyncMock(return_value=True)):
+             patch("modules.router.monitor.helpers.is_local_bot_process", AsyncMock(return_value=True)):
             
             await handle_traffic_log_line(log_line)
             # Should be classified as INFO, no alerts sent
@@ -222,7 +222,7 @@ async def test_watcher_lxc_inbound_ssh_verification():
         lxc_traffic_history[109].clear()
 
         with patch("modules.proxmox.monitor.traffic.watcher.send_alert_to_admins", AsyncMock()) as mock_alert, \
-             patch("modules.mihomo.monitor.helpers.is_local_bot_process", AsyncMock(return_value=False)), \
+             patch("modules.router.monitor.helpers.is_local_bot_process", AsyncMock(return_value=False)), \
              patch("modules.proxmox.monitor.traffic.watcher.get_and_kill_local_or_lxc_process", AsyncMock(return_value=(None, None))):
             
             await handle_traffic_log_line(log_line)

@@ -27,8 +27,8 @@ def verify_env_configuration():
         missing.append("ANSIBLE_PLAYBOOKS_DIR (запуск плейбуков автоматизации)")
         
     # 5. Блокировки на роутере
-    if not settings.router_ssh_enable:
-        missing.append("ROUTER_SSH_ENABLE=True (блокировки вредоносного трафика на уровне роутера)")
+    if not settings.router_monitor_enable:
+        missing.append("ROUTER_MONITOR_ENABLE=True (блокировки вредоносного трафика на уровне роутера)")
     elif not all([settings.router_ssh_host, settings.router_ssh_user]):
         missing.append("ROUTER_SSH_* (ROUTER_SSH_HOST, ROUTER_SSH_USER - авторизация на роутере по SSH)")
         
