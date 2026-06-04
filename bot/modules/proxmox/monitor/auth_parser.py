@@ -49,14 +49,16 @@ def parse_auth_line(line: str, vmid: int, timestamp: str, container_name: str):
         return event, msg
     
     # 1. Успешный вход по SSH
-    ssh_ok_match = re.search(r"sshd(?:-session)?\[\d+\]: Accepted (password|publickey) for (\S+) from (\S+) port (\d+)", line)
+    ssh_ok_match = re.search(r"sshd(?:-session)?\[(\d+)\]: Accepted (password|publickey) for (\S+) from (\S+) port (\d+)", line)
     if ssh_ok_match:
-        method, user, ip, port = ssh_ok_match.groups()
+        pid_str, method, user, ip, port = ssh_ok_match.groups()
+        pid = int(pid_str)
         event = {
             'time': timestamp,
             'type': 'SUCCESS',
             'user': user,
             'ip': ip,
+            'pid': pid,
             'msg': f"Вход через {method} (порт {port})"
         }
         
