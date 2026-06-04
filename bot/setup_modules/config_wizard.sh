@@ -248,24 +248,36 @@ run_config_wizard() {
             prompt_var "ROUTER_MONITOR_ENABLE" "Включить мониторинг трафика роутера через SSH? (True/False)" "False"
             router_enabled=$(grep -E "^ROUTER_MONITOR_ENABLE=" "${ENV_FILE}" | cut -d'=' -f2- | tr '[:upper:]' '[:lower:]')
             if [ "${router_enabled}" = "true" ] || [ "${router_enabled}" = "1" ] || [ "${router_enabled}" = "y" ] || [ "${router_enabled}" = "yes" ]; then
-                # 1. Сначала опрашиваем параметры подключения для проведения теста
-                prompt_var "ROUTER_SSH_HOST" "IP-адрес SSH роутера (ROUTER_SSH_HOST)" "192.168.1.1"
-                prompt_var "ROUTER_SSH_PORT" "Порт SSH роутера (ROUTER_SSH_PORT)" "22"
-                prompt_var "ROUTER_SSH_USER" "Имя пользователя SSH роутера (ROUTER_SSH_USER)" "root"
-                prompt_var "ROUTER_SSH_PASSWORD" "Пароль SSH роутера (ROUTER_SSH_PASSWORD, если пустой - будет использоваться ключ)" ""
-                prompt_var "ROUTER_SSH_KEY" "Путь к приватному SSH ключу роутера (ROUTER_SSH_KEY)" "config/id_rsa_router"
-                prompt_var "ROUTER_TYPE" "Тип операционной системы роутера (openwrt/keenetic/generic)" "openwrt"
-                
-                # Временно записываем ROUTER_MONITOR_ENABLE=True для корректного считывания тестовым скриптом
-                sed -i "s/^ROUTER_MONITOR_ENABLE=.*/ROUTER_MONITOR_ENABLE=True/" "${ENV_FILE}"
-    
-                # 2. Выполняем предварительное автотестирование, выбор режима и автоустановку
-                echo -e "\n${YELLOW}Запуск диагностики доступности роутера и выбора режима мониторинга...${NC}"
-                if "${SCRIPT_DIR}/venv/bin/python" "${SCRIPT_DIR}/setup_modules/test_router_only.py"; then
-                    echo -e "${GREEN}✓ Диагностика, выбор режима и настройка роутера завершены успешно!${NC}"
-                else
-                    echo -e "${YELLOW}⚠️ Не удалось выполнить диагностику или настройку роутера. Отредактируйте параметры мониторинга в .env вручную.${NC}"
-                fi
+                while true; do
+                    # 1. Сначала опрашиваем параметры подключения для проведения теста
+                    prompt_var "ROUTER_SSH_HOST" "IP-адрес SSH роутера (ROUTER_SSH_HOST)" "192.168.1.1"
+                    prompt_var "ROUTER_SSH_PORT" "Порт SSH роутера (ROUTER_SSH_PORT)" "22"
+                    prompt_var "ROUTER_SSH_USER" "Имя пользователя SSH роутера (ROUTER_SSH_USER)" "root"
+                    prompt_var "ROUTER_SSH_PASSWORD" "Пароль SSH роутера (ROUTER_SSH_PASSWORD, если пустой - будет использоваться ключ)" ""
+                    prompt_var "ROUTER_SSH_KEY" "Путь к приватному SSH ключу роутера (ROUTER_SSH_KEY)" "config/id_rsa_router"
+                    prompt_var "ROUTER_TYPE" "Тип операционной системы роутера (openwrt/keenetic/generic)" "openwrt"
+                    
+                    # Временно записываем ROUTER_MONITOR_ENABLE=True для корректного считывания тестовым скриптом
+                    sed -i "s/^ROUTER_MONITOR_ENABLE=.*/ROUTER_MONITOR_ENABLE=True/" "${ENV_FILE}"
+        
+                    # 2. Выполняем предварительное автотестирование, выбор режима и автоустановку
+                    echo -e "\n${YELLOW}Запуск диагностики доступности роутера и выбора режима мониторинга...${NC}"
+                    if "${SCRIPT_DIR}/venv/bin/python" "${SCRIPT_DIR}/setup_modules/test_router_only.py"; then
+                        echo -e "${GREEN}✓ Диагностика, выбор режима и настройка роутера завершены успешно!${NC}"
+                        break
+                    else
+                        echo -e "${RED}❌ Не удалось подключиться к роутеру по SSH.${NC}"
+                        echo -e "Хотите скорректировать параметры подключения по SSH и попробовать снова? (y/n) [y]"
+                        read -p ">> " retry_ssh
+                        if [ -z "${retry_ssh}" ] || [ "${retry_ssh}" = "y" ] || [ "${retry_ssh}" = "Y" ]; then
+                            echo -e "${YELLOW}Повторный ввод параметров SSH...${NC}"
+                            continue
+                        else
+                            echo -e "${YELLOW}⚠️ Вы решили пропустить перенастройку. Вы можете отредактировать параметры мониторинга в .env вручную.${NC}"
+                            break
+                        fi
+                    fi
+                done
                 
                 prompt_var "ROUTER_AUTO_BAN" "Включить автоматический бан нарушителей на роутере? (True/False)" "False"
                 prompt_var "ROUTER_MAX_VIOLATIONS" "Лимит попыток доступа до автоблокировки (ROUTER_MAX_VIOLATIONS)" "3"
