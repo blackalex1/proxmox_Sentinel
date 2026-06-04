@@ -24,3 +24,7 @@ recent_bot_ports = deque(maxlen=200)
 
 # Реестр активных проверок прокси: (host, port) -> count
 active_proxy_checks = defaultdict(int)
+
+# Rolling буфер для регистрации недавних закрытых SSH сессий
+recent_closed_sessions = deque(maxlen=200)
+
