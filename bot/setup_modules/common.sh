@@ -100,3 +100,49 @@ prompt_var() {
     fi
     echo -e "   ${GREEN}✓ Успешно сохранено: ${var_name}=${user_input}${NC}"
 }
+
+# Функция для интерактивного опроса булевой переменной (y/n)
+prompt_bool() {
+    local var_name=$1
+    local prompt_text=$2
+    local default_val=$3 # "True" или "False"
+    local current_val=""
+
+    # Пытаемся извлечь текущее значение из существующего .env
+    if [ -f "${ENV_FILE}" ]; then
+        current_val=$(grep -E "^${var_name}=" "${ENV_FILE}" | cut -d'=' -f2- | tr '[:upper:]' '[:lower:]')
+    fi
+
+    # Если текущего значения нет, используем значение по умолчанию
+    if [ -z "${current_val}" ]; then
+        current_val=$(echo "${default_val}" | tr '[:upper:]' '[:lower:]')
+    fi
+
+    # Переводим в формат y/n для отображения дефолта
+    local default_yn="n"
+    if [ "${current_val}" = "true" ] || [ "${current_val}" = "1" ] || [ "${current_val}" = "y" ] || [ "${current_val}" = "yes" ]; then
+        default_yn="y"
+    fi
+
+    echo -e "\n${BLUE}👉 ${prompt_text} (y/n) [по умолчанию: ${default_yn}]${NC}"
+    read -p "   Введите значение (y/n): " user_input
+
+    if [ -z "${user_input}" ]; then
+        user_input="${default_yn}"
+    fi
+
+    user_input=$(echo "${user_input}" | tr '[:upper:]' '[:lower:]')
+
+    local final_val="False"
+    if [ "${user_input}" = "y" ] || [ "${user_input}" = "yes" ] || [ "${user_input}" = "true" ] || [ "${user_input}" = "1" ]; then
+        final_val="True"
+    fi
+
+    # Экранируем и сохраняем
+    if grep -q "^${var_name}=" "${ENV_FILE}"; then
+        sed -i "s/^${var_name}=.*/${var_name}=${final_val}/" "${ENV_FILE}"
+    else
+        echo "${var_name}=${final_val}" >> "${ENV_FILE}"
+    fi
+    echo -e "   ${GREEN}✓ Успешно сохранено: ${var_name}=${final_val}${NC}"
+}
