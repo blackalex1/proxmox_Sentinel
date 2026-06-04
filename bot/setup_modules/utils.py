@@ -25,10 +25,43 @@ def print_error(text):
 def print_info(text):
     print(f"{CYAN}i {text}{NC}")
 
+def ensure_utf8_env(path):
+    if not os.path.exists(path):
+        return
+    # Try reading as UTF-8
+    try:
+        with open(path, 'r', encoding='utf-8') as f:
+            f.read()
+        return  # Already valid UTF-8
+    except UnicodeDecodeError:
+        pass
+        
+    # Try reading as CP1251
+    try:
+        with open(path, 'r', encoding='cp1251') as f:
+            content = f.read()
+        # Write back as UTF-8
+        with open(path, 'w', encoding='utf-8') as f:
+            f.write(content)
+        return
+    except Exception:
+        pass
+        
+    # Final fallback: UTF-8 with replace
+    try:
+        with open(path, 'r', encoding='utf-8', errors='replace') as f:
+            content = f.read()
+        with open(path, 'w', encoding='utf-8') as f:
+            f.write(content)
+    except Exception:
+        pass
+
 def modify_env_value(env_path, key, value, remove=False):
     if not os.path.exists(env_path):
         print_error(f"Файл конфигурации не найден по пути: {env_path}")
         return False
+
+    ensure_utf8_env(env_path)
 
     try:
         with open(env_path, 'r', encoding='utf-8') as f:
