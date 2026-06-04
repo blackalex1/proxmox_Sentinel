@@ -49,9 +49,9 @@ def parse_auth_line(line: str, vmid: int, timestamp: str, container_name: str):
         return event, msg
     
     # 1. Успешный вход по SSH
-    ssh_ok_match = re.search(r"sshd(?:-session)?\[(\d+)\]: Accepted (password|publickey) for (\S+) from (\S+) port (\d+)", line)
+    ssh_ok_match = re.search(r"sshd(?:-session)?\[(\d+)\]: Accepted (password|publickey) for (\S+) from (\S+) port (\d+)(?: ssh2: \S+ (\S+))?", line)
     if ssh_ok_match:
-        pid_str, method, user, ip, port = ssh_ok_match.groups()
+        pid_str, method, user, ip, port, fingerprint = ssh_ok_match.groups()
         pid = int(pid_str)
         event = {
             'time': timestamp,
@@ -61,6 +61,8 @@ def parse_auth_line(line: str, vmid: int, timestamp: str, container_name: str):
             'pid': pid,
             'msg': f"Вход через {method} (порт {port})"
         }
+        if fingerprint:
+            event['fingerprint'] = fingerprint
         
         target_str = "Хост Proxmox VE" if vmid == 0 else f"LXC {vmid} ({container_name})"
         title_str = "🖥 <b>Успешная SSH авторизация на Хосте!</b>" if vmid == 0 else "🔒 <b>Успешная SSH авторизация в LXC!</b>"

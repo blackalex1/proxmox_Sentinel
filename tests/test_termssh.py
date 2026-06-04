@@ -1,7 +1,7 @@
 import pytest
 import asyncio
-from unittest.mock import AsyncMock, patch, MagicMock
-from core.handlers.base import process_terminate_ssh
+from unittest.mock import AsyncMock, patch, MagicMock, ANY
+from core.handlers.base import process_terminate_ssh, process_ban_ssh_key
 
 @pytest.mark.asyncio
 async def test_process_terminate_ssh_local_success():
@@ -97,4 +97,92 @@ async def test_process_terminate_ssh_remote_vps():
         mock_remote_ssh.assert_called_once_with(mock_server, ["kill", "-9", "3322"])
         # Verify success alerts
         mock_callback.answer.assert_called_once_with("SSH-сессия успешно сброшена!", show_alert=True)
+        mock_message.edit_text.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_process_ban_ssh_key_local_success():
+    # Setup mock CallbackQuery and Message
+    mock_message = AsyncMock()
+    mock_message.html_text = "🖥 <b>Успешная SSH авторизация на Хосте!</b>"
+    mock_message.text = "🖥 Успешная SSH авторизация на Хосте!"
+    
+    mock_callback = AsyncMock()
+    mock_callback.data = "bankey:local:98765"
+    mock_callback.message = mock_message
+    mock_callback.answer = AsyncMock()
+    
+    # Mock cache in database
+    mock_db_cache = {"local:98765": ["SHA256:targetfingerprint", "root"]}
+    
+    # Mock subprocess runs (first kill, then ban script)
+    mock_proc_kill = AsyncMock()
+    mock_proc_kill.wait = AsyncMock(return_value=0)
+    
+    mock_proc_ban = AsyncMock()
+    mock_proc_ban.communicate.return_value = (b"SUCCESS", b"")
+    mock_proc_ban.returncode = 0
+    
+    with patch("core.db.get_state", AsyncMock(return_value=mock_db_cache)), \
+         patch("asyncio.create_subprocess_exec") as mock_exec:
+         
+        mock_exec.side_effect = [mock_proc_kill, mock_proc_ban]
+        
+        await process_ban_ssh_key(mock_callback)
+        
+        # Verify it called kill first
+        mock_exec.assert_any_call("kill", "-9", "98765")
+        
+        # Verify it called python3 ban script with fingerprint and keys path
+        mock_exec.assert_any_call(
+            "python3", "-c", ANY, "SHA256:targetfingerprint", "/root/.ssh/authorized_keys",
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
+        
+        # Verify success alert and text edits
+        mock_callback.answer.assert_called_once_with("SSH-ключ успешно заблокирован и удален!", show_alert=True)
+        mock_message.edit_text.assert_called_once()
+        args, kwargs = mock_message.edit_text.call_args
+        assert "🚫 SSH-ключ (...tfingerprint) удален из authorized_keys и сессия сброшена" in kwargs["text"]
+        assert kwargs["reply_markup"] is None
+
+
+@pytest.mark.asyncio
+async def test_process_ban_ssh_key_remote_vps():
+    # Setup mock CallbackQuery and Message
+    mock_message = AsyncMock()
+    mock_message.html_text = "🖥 <b>[VPS SSH Security: 194.87.29.14] Успешный вход по SSH!</b>"
+    mock_message.text = "🖥 [VPS SSH Security: 194.87.29.14] Успешный вход по SSH!"
+    
+    mock_callback = AsyncMock()
+    mock_callback.data = "bankey:194.87.29.14:3322"
+    mock_callback.message = mock_message
+    mock_callback.answer = AsyncMock()
+    
+    # Mock cache in database
+    mock_db_cache = {"194.87.29.14:3322": ["SHA256:targetfingerprint", "root"]}
+    mock_server = {'ip': '194.87.29.14', 'user': 'root', 'key': 'config/id_rsa_remote'}
+    
+    with patch("core.db.get_state", AsyncMock(return_value=mock_db_cache)), \
+         patch("core.config.settings.remote_servers", [mock_server]), \
+         patch("modules.proxmox.monitor.remote.ssh.run_remote_ssh_cmd") as mock_remote_ssh:
+         
+        mock_remote_ssh.side_effect = [
+            (True, "", ""),  # Result of kill
+            (True, "SUCCESS", "")  # Result of ban script
+        ]
+        
+        await process_ban_ssh_key(mock_callback)
+        
+        # Verify remote ssh command run
+        mock_remote_ssh.assert_any_call(mock_server, ["kill", "-9", "3322"])
+        # Verify ban script was run remotely
+        mock_remote_ssh.assert_any_call(
+            mock_server,
+            ["python3", "-c", ANY, '"SHA256:targetfingerprint"', '"/root/.ssh/authorized_keys"']
+        )
+        
+        # Verify success notifications
+        mock_callback.answer.assert_called_once_with("SSH-ключ успешно заблокирован и удален!", show_alert=True)
         mock_message.edit_text.assert_called_once()
