@@ -86,6 +86,54 @@ async def callback_noop(callback: CallbackQuery):
     except Exception:
         pass
 
+def get_kill_tree_cmd(pid: int) -> str:
+    return (
+        f"if [ ! -d '/proc/{pid}' ]; then echo 'No such process' >&2; exit 1; fi; "
+        f"pids='{pid}'; "
+        f"if command -v pgrep >/dev/null 2>&1; then "
+        f"to_check='{pid}'; "
+        f"while [ -n \"$to_check\" ]; do "
+        f"next_check=''; "
+        f"for p in $to_check; do "
+        f"children=$(pgrep -P \"$p\" 2>/dev/null | tr '\\n' ' '); "
+        f"if [ -n \"$children\" ]; then "
+        f"pids=\"$pids $children\"; "
+        f"next_check=\"$next_check $children\"; "
+        f"fi; "
+        f"done; "
+        f"to_check=\"$next_check\"; "
+        f"done; "
+        f"else "
+        f"to_check='{pid}'; "
+        f"while [ -n \"$to_check\" ]; do "
+        f"next_check=''; "
+        f"for p in /proc/[0-9]*; do "
+        f"curr_pid=${{p##*/}}; "
+        f"[ -f \"$p/status\" ] || continue; "
+        f"ppid=''; "
+        f"while read -r label value; do "
+        f"if [ \"$label\" = \"PPid:\" ]; then ppid=\"$value\"; break; fi; "
+        f"done < \"$p/status\"; "
+        f"if [ -n \"$ppid\" ]; then "
+        f"case \" $to_check \" in "
+        f"*\" $ppid \"*) "
+        f"case \" $pids \" in "
+        f"*\" $curr_pid \"*) ;; "
+        f"*) "
+        f"pids=\"$pids $curr_pid\"; "
+        f"next_check=\"$next_check $curr_pid\"; "
+        f";; "
+        f"esac; "
+        f";; "
+        f"esac; "
+        f"fi; "
+        f"done; "
+        f"to_check=\"$next_check\"; "
+        f"done; "
+        f"fi; "
+        f"for p in $pids; do kill -9 \"$p\" 2>/dev/null; done"
+    )
+
 
 @router.callback_query(F.data.startswith("termssh:"))
 async def process_terminate_ssh(callback: CallbackQuery):
@@ -119,10 +167,11 @@ async def process_terminate_ssh(callback: CallbackQuery):
     is_dead = False
 
     try:
+        cmd = get_kill_tree_cmd(pid)
         if target == "local":
             import asyncio
             proc = await asyncio.create_subprocess_exec(
-                "kill", "-9", str(pid),
+                "sh", "-c", cmd,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE
             )
@@ -144,7 +193,7 @@ async def process_terminate_ssh(callback: CallbackQuery):
                 await callback.answer("Неверный ID LXC.", show_alert=True)
                 return
             proc = await asyncio.create_subprocess_exec(
-                "pct", "exec", str(vmid), "--", "kill", "-9", str(pid),
+                "pct", "exec", str(vmid), "--", "sh", "-c", cmd,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE
             )
@@ -166,7 +215,7 @@ async def process_terminate_ssh(callback: CallbackQuery):
                 error_msg = f"Сервер {target} не найден в настройках."
             else:
                 from modules.proxmox.monitor.remote.ssh import run_remote_ssh_cmd
-                run_success, stdout, stderr_str = await run_remote_ssh_cmd(server, ["kill", "-9", str(pid)])
+                run_success, stdout, stderr_str = await run_remote_ssh_cmd(server, [cmd])
                 if run_success:
                     success = True
                 elif "no such process" in stderr_str.lower() or "esrch" in stderr_str.lower():
@@ -239,21 +288,22 @@ async def process_ban_ssh_key(callback: CallbackQuery):
 
     # Сначала принудительно сбрасываем саму сессию
     try:
+        cmd = get_kill_tree_cmd(pid)
         if target == "local":
             import asyncio
-            proc = await asyncio.create_subprocess_exec("kill", "-9", str(pid))
+            proc = await asyncio.create_subprocess_exec("sh", "-c", cmd)
             await proc.wait()
         elif target.startswith("lxc_"):
             import asyncio
             vmid = int(target.split("_")[1])
-            proc = await asyncio.create_subprocess_exec("pct", "exec", str(vmid), "--", "kill", "-9", str(pid))
+            proc = await asyncio.create_subprocess_exec("pct", "exec", str(vmid), "--", "sh", "-c", cmd)
             await proc.wait()
         else:
             from core.config import settings
             server = next((s for s in settings.remote_servers if s['ip'] == target), None)
             if server:
                 from modules.proxmox.monitor.remote.ssh import run_remote_ssh_cmd
-                await run_remote_ssh_cmd(server, ["kill", "-9", str(pid)])
+                await run_remote_ssh_cmd(server, [cmd])
     except Exception as e:
         logging.error(f"Ошибка при сбросе сессии перед баном ключа: {e}")
 
