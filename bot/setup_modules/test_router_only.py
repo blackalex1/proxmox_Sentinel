@@ -69,7 +69,18 @@ async def test_router():
     
     # iptables
     ok_ipt, stdout_ipt, _ = await run_router_ssh_cmd(f"{path_prefix}which iptables")
-    iptables_installed = bool(ok_ipt and stdout_ipt.strip())
+    iptables_installed = False
+    iptables_has_log = False
+    if ok_ipt and stdout_ipt.strip():
+        # Дополнительно проверяем поддержку цели LOG в ядре
+        test_log_cmd = (
+            f"{path_prefix}iptables -I FORWARD -p tcp --dport 9999 -j LOG --log-prefix \"AEGIS_TEST: \" && "
+            f"{path_prefix}iptables -D FORWARD -p tcp --dport 9999 -j LOG --log-prefix \"AEGIS_TEST: \""
+        )
+        ok_test, _, _ = await run_router_ssh_cmd(test_log_cmd)
+        if ok_test:
+            iptables_installed = True
+            iptables_has_log = True
 
     # nftables
     ok_nft, stdout_nft, _ = await run_router_ssh_cmd(f"{path_prefix}which nft")
@@ -104,6 +115,8 @@ async def test_router():
 
     if iptables_installed:
         print(f" - iptables   : {status_installed}")
+    elif ok_ipt and stdout_ipt.strip() and not iptables_has_log:
+        print(f" - iptables   : {status_missing} \033[1;31m(НЕТ ПОДДЕРЖКИ LOG В ЯДРЕ)\033[0m")
     elif ipt_pkg_in_repo:
         print(f" - iptables   : {status_missing} \033[1;33m(НО ДОСТУПНО В РЕПОЗИТОРИИ)\033[0m")
     else:
