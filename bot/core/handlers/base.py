@@ -85,3 +85,116 @@ async def callback_noop(callback: CallbackQuery):
         await callback.answer()
     except Exception:
         pass
+
+
+@router.callback_query(F.data.startswith("termssh:"))
+async def process_terminate_ssh(callback: CallbackQuery):
+    if not callback.message or not hasattr(callback.message, "edit_text"):
+        try:
+            await callback.answer("Ошибка: сообщение недоступно.", show_alert=True)
+        except Exception:
+            pass
+        return
+
+    # Разбираем target и sshd_pid
+    # callback.data в формате: termssh:<target>:<pid>
+    try:
+        data_parts = callback.data.rsplit(":", 1)
+        if len(data_parts) != 2:
+            await callback.answer("Неверный формат callback-данных.", show_alert=True)
+            return
+        
+        term_part, pid_str = data_parts
+        _, target = term_part.split(":", 1)
+        pid = int(pid_str)
+    except Exception as e:
+        logging.error(f"Ошибка парсинга callback.data '{callback.data}': {e}")
+        await callback.answer("Ошибка при обработке запроса.", show_alert=True)
+        return
+
+    logging.info(f"Запрос на сброс SSH-сессии: target={target}, pid={pid}")
+
+    success = False
+    error_msg = ""
+    is_dead = False
+
+    try:
+        if target == "local":
+            import asyncio
+            proc = await asyncio.create_subprocess_exec(
+                "kill", "-9", str(pid),
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+            stdout, stderr = await proc.communicate()
+            stderr_str = stderr.decode('utf-8', errors='ignore')
+            if proc.returncode == 0:
+                success = True
+            elif "no such process" in stderr_str.lower() or "esrch" in stderr_str.lower():
+                success = True
+                is_dead = True
+            else:
+                error_msg = stderr_str.strip() or f"exit code {proc.returncode}"
+
+        elif target.startswith("lxc_"):
+            import asyncio
+            try:
+                vmid = int(target.split("_")[1])
+            except Exception:
+                await callback.answer("Неверный ID LXC.", show_alert=True)
+                return
+            proc = await asyncio.create_subprocess_exec(
+                "pct", "exec", str(vmid), "--", "kill", "-9", str(pid),
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+            stdout, stderr = await proc.communicate()
+            stderr_str = stderr.decode('utf-8', errors='ignore')
+            if proc.returncode == 0:
+                success = True
+            elif "no such process" in stderr_str.lower() or "esrch" in stderr_str.lower():
+                success = True
+                is_dead = True
+            else:
+                error_msg = stderr_str.strip() or f"exit code {proc.returncode}"
+
+        else:
+            # Удаленный VPS (target - это IP-адрес)
+            from core.config import settings
+            server = next((s for s in settings.remote_servers if s['ip'] == target), None)
+            if not server:
+                error_msg = f"Сервер {target} не найден в настройках."
+            else:
+                from modules.proxmox.monitor.remote.ssh import run_remote_ssh_cmd
+                run_success, stdout, stderr_str = await run_remote_ssh_cmd(server, ["kill", "-9", str(pid)])
+                if run_success:
+                    success = True
+                elif "no such process" in stderr_str.lower() or "esrch" in stderr_str.lower():
+                    success = True
+                    is_dead = True
+                else:
+                    error_msg = stderr_str.strip() or "Ошибка выполнения команды по SSH"
+
+    except Exception as e:
+        logging.error(f"Критическая ошибка при сбросе SSH-сессии: {e}")
+        error_msg = str(e)
+
+    if success:
+        if is_dead:
+            await callback.answer("Сессия уже закрыта или не найдена.", show_alert=True)
+            status_text = "🔒 Сессия уже была закрыта или не найдена"
+        else:
+            await callback.answer("SSH-сессия успешно сброшена!", show_alert=True)
+            status_text = "❌ SSH-сессия сброшена пользователем через Telegram"
+        
+        # Обновляем текст сообщения, убираем клавиатуру
+        orig_text = callback.message.html_text or callback.message.text or ""
+        new_text = f"{orig_text}\n\n🛑 <b>{status_text}</b>"
+        
+        try:
+            await callback.message.edit_text(text=new_text, parse_mode="HTML", reply_markup=None)
+        except Exception as e:
+            logging.error(f"Ошибка при обновлении сообщения SSH алерты: {e}")
+    else:
+        logging.warning(f"Не удалось сбросить SSH-сессию {pid} на {target}: {error_msg}")
+        await callback.answer(f"Не удалось сбросить сессию: {error_msg}", show_alert=True)

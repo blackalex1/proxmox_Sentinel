@@ -17,6 +17,8 @@ async def handle_remote_ssh_auth_line(line, server=None):
         return
     try:
         if "Accepted" in line:
+            pid_match = re.search(r"sshd\[(\d+)\]", line)
+            sshd_pid = int(pid_match.group(1)) if pid_match else None
             user_match = re.search(r"Accepted\s+(\S+)\s+for\s+(\S+)\s+from\s+(\S+)\s+port\s+(\d+)\s+ssh2(?::\s+(.*))?", line)
             has_port = True
             if not user_match:
@@ -161,7 +163,12 @@ async def handle_remote_ssh_auth_line(line, server=None):
                        f"🌐 IP-адрес: <code>{client_ip}</code>\n"
                        f"🔑 Метод: <code>{auth_method}</code>{key_info_str}\n"
                        f"🕒 Время: <code>{timestamp}</code>{security_warning_str}")
-                await send_alert_to_admins(msg)
+                reply_markup = None
+                if sshd_pid:
+                    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+                    kb = [[InlineKeyboardButton(text="❌ Сбросить SSH-сессию", callback_data=f"termssh:{server['ip']}:{sshd_pid}")]]
+                    reply_markup = InlineKeyboardMarkup(inline_keyboard=kb)
+                await send_alert_to_admins(msg, reply_markup=reply_markup)
                 logging.info(f"[Remote SSH Auth {server['ip']}] Successful login for {username} from {client_ip} via {auth_method} {key_details}")
 
         elif "Failed password" in line or ("Failed" in line and "ssh2" in line):
