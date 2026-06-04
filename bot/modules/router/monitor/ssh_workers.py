@@ -10,8 +10,8 @@ from .router_handlers import (
 
 async def monitor_router_conntrack():
     """Фоновый воркер для чтения событий conntrack роутера через SSH в реальном времени."""
-    if not settings.router_ssh_enable:
-        logging.warning("[Router IPS] SSH роутера отключен в настройках. Невозможно запустить мониторинг по conntrack.")
+    if not settings.router_monitor_enable:
+        logging.warning("[Router IPS] Мониторинг роутера отключен в настройках. Невозможно запустить мониторинг по conntrack.")
         return
         
     path_prefix = "export PATH=$PATH:/sbin:/usr/sbin:/opt/bin:/opt/sbin; "
@@ -69,8 +69,8 @@ async def monitor_router_conntrack():
 
 async def monitor_router_syslog():
     """Фоновый воркер для чтения логов роутера через SSH в реальном времени."""
-    if not settings.router_ssh_enable:
-        logging.warning("[Router IPS] SSH роутера отключен в настройках. Невозможно запустить мониторинг по syslog.")
+    if not settings.router_monitor_enable:
+        logging.warning("[Router IPS] Мониторинг роутера отключен в настройках. Невозможно запустить мониторинг по syslog.")
         return
         
     await setup_router_logging_rules()
@@ -135,8 +135,8 @@ async def monitor_router_syslog():
 
 async def monitor_router_syslog_v2():
     """Фоновый воркер для чтения логов роутера через SSH в реальном времени."""
-    if not settings.router_ssh_enable:
-        logging.warning("[Router IPS] SSH роутера отключен в настройках. Невозможно запустить мониторинг по syslog.")
+    if not settings.router_monitor_enable:
+        logging.warning("[Router IPS] Мониторинг роутера отключен в настройках. Невозможно запустить мониторинг по syslog.")
         return
         
     await setup_router_logging_rules()

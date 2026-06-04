@@ -2,217 +2,8 @@ import pytest
 from unittest.mock import AsyncMock, patch
 import datetime
 
-@pytest.mark.asyncio
-async def test_handle_mihomo_log_line_sensitive_ipv4():
-    from modules.mihomo.monitor.mihomo_handlers import handle_mihomo_log_line
-    from modules.proxmox.monitor.state import lxc_alert_throttle
-    
-    lxc_alert_throttle.clear()
-    
-    # TCP-соединение на sensitive порт 22
-    payload = "[TCP] 192.168.1.150:54321 --> 203.0.113.100:22 match Direct"
-    
-    with patch("modules.mihomo.monitor.mihomo_handlers.send_alert_to_admins", AsyncMock()) as mock_alert:
-        await handle_mihomo_log_line(payload)
-        
-        # Проверяем, что алерт безопасности БЫЛ вызван
-        mock_alert.assert_called_once()
-        alert_text = mock_alert.call_args[0][0]
-        assert "Router Security: Mihomo" in alert_text
-        assert "192.168.1.150:54321" in alert_text
-        assert "203.0.113.100:22" in alert_text
-
-@pytest.mark.asyncio
-async def test_handle_mihomo_log_line_sensitive_ipv6():
-    from modules.mihomo.monitor.mihomo_handlers import handle_mihomo_log_line
-    from modules.proxmox.monitor.state import lxc_alert_throttle
-    
-    lxc_alert_throttle.clear()
-    
-    # UDP-соединение на sensitive порт 8006 (Proxmox VE)
-    payload = "[UDP] [2001:db8::1]:12345 --> [2001:db8::2]:8006 match Rule"
-    
-    with patch("modules.mihomo.monitor.mihomo_handlers.send_alert_to_admins", AsyncMock()) as mock_alert:
-        await handle_mihomo_log_line(payload)
-        
-        # Проверяем, что IPv6 адрес корректно распарсен и алерт отправлен
-        mock_alert.assert_called_once()
-        alert_text = mock_alert.call_args[0][0]
-        assert "Router Security: Mihomo" in alert_text
-        assert "2001:db8::1:12345" in alert_text
-        assert "2001:db8::2:8006" in alert_text
-
-@pytest.mark.asyncio
-async def test_handle_mihomo_log_line_safe_port():
-    from modules.mihomo.monitor.mihomo_handlers import handle_mihomo_log_line
-    from modules.proxmox.monitor.state import lxc_alert_throttle
-    
-    lxc_alert_throttle.clear()
-    
-    # Соединение на безопасный порт 443
-    payload = "[TCP] 192.168.1.150:54321 --> 1.1.1.1:443 match Proxy"
-    
-    with patch("modules.mihomo.monitor.mihomo_handlers.send_alert_to_admins", AsyncMock()) as mock_alert:
-        await handle_mihomo_log_line(payload)
-        
-        # Проверяем, что алерт не отправлялся для безопасных портов
-        mock_alert.assert_not_called()
-    
-@pytest.mark.asyncio
-async def test_handle_mihomo_kill_connection_success():
-    from modules.mihomo.handlers import handle_mihomo_kill_connection
-    from unittest.mock import MagicMock
-    
-    # Мокаем CallbackQuery
-    mock_callback = AsyncMock()
-    mock_callback.data = "mihomo_kill:dummy-uuid-12345"
-    
-    mock_msg = MagicMock()
-    mock_msg.text = "🚨 [Router Security: Mihomo] Обнаружен доступ к чувствительному порту!"
-    mock_msg.edit_text = AsyncMock()
-    mock_callback.message = mock_msg
-    
-    # Мокаем close_mihomo_connection, возвращающий True
-    with patch("modules.mihomo.handlers.close_mihomo_connection", AsyncMock(return_value=True)) as mock_close:
-        await handle_mihomo_kill_connection(mock_callback)
-        
-        # Проверяем успешный вызов разрыва
-        mock_close.assert_called_once_with("dummy-uuid-12345")
-        # Проверяем, что callback-запрос был успешно отвечен
-        mock_callback.answer.assert_called_once_with("✅ Соединение успешно разорвано!", show_alert=True)
-        # Проверяем, что текст сообщения был обновлен
-        mock_msg.edit_text.assert_called_once()
-        new_text = mock_msg.edit_text.call_args[0][0]
-        assert "СОЕДИНЕНИЕ РАЗОРВАНО АДМИНИСТРАТОРОМ" in new_text
-
-
-@pytest.mark.asyncio
-async def test_handle_mihomo_block_ip_success():
-    from modules.mihomo.handlers import handle_mihomo_block_ip
-    from unittest.mock import MagicMock
-    
-    mock_callback = AsyncMock()
-    mock_callback.data = "mihomo_block:192.0.2.99"
-    
-    mock_msg = MagicMock()
-    mock_msg.text = "🚨 [Router Security: Mihomo] Обнаружен доступ к чувствительному порту!"
-    mock_msg.edit_text = AsyncMock()
-    mock_callback.message = mock_msg
-    
-    with patch("modules.mihomo.handlers.ban_router_ip", AsyncMock(return_value=(True, "Success"))) as mock_ban:
-        await handle_mihomo_block_ip(mock_callback)
-        
-        mock_ban.assert_called_once_with("192.0.2.99")
-        mock_callback.answer.assert_called_once_with("🛑 IP 192.0.2.99 успешно заблокирован на роутере!", show_alert=True)
-        mock_msg.edit_text.assert_called_once()
-        new_text = mock_msg.edit_text.call_args[0][0]
-        assert "УСТРОЙСТВО 192.0.2.99 ЗАБЛОКИРОВАНО НА РОУТЕРЕ" in new_text
- 
- 
-@pytest.mark.asyncio
-async def test_handle_mihomo_unblock_ip_success():
-    from modules.mihomo.handlers import handle_mihomo_unblock_ip
-    from unittest.mock import MagicMock
-    
-    mock_callback = AsyncMock()
-    mock_callback.data = "mihomo_unblock:192.0.2.99"
-    
-    mock_msg = MagicMock()
-    mock_msg.text = "🚨 [Router Security: Mihomo] Обнаружен доступ к чувствительному порту!\n\n🛑 <b>УСТРОЙСТВО 192.0.2.99 ЗАБЛОКИРОВАНО НА РОУТЕРЕ!</b>"
-    mock_msg.edit_text = AsyncMock()
-    mock_callback.message = mock_msg
-    
-    with patch("modules.mihomo.handlers.unban_router_ip", AsyncMock(return_value=(True, "Success"))) as mock_unban:
-        await handle_mihomo_unblock_ip(mock_callback)
-        
-        mock_unban.assert_called_once_with("192.0.2.99")
-        mock_callback.answer.assert_called_once_with("🟢 Блокировка с IP 192.0.2.99 снята!", show_alert=True)
-        mock_msg.edit_text.assert_called_once()
-        new_text = mock_msg.edit_text.call_args[0][0]
-        assert "ЗАБЛОКИРОВАНО" not in new_text
-
-
-@pytest.mark.asyncio
-async def test_handle_mihomo_log_line_auto_ban():
-    from modules.mihomo.monitor.mihomo_handlers import handle_mihomo_log_line, recent_mihomo_violations
-    from core.config import settings
-    
-    # Включаем auto-ban и SSH в моке настроек
-    original_ssh = settings.router_ssh_enable
-    original_auto = settings.mihomo_auto_ban
-    original_max = settings.mihomo_max_violations
-    
-    settings.router_ssh_enable = True
-    settings.mihomo_auto_ban = True
-    settings.mihomo_max_violations = 3
-    
-    recent_mihomo_violations.clear()
-    
-    payload = "[TCP] 192.168.1.150:54321 --> 203.0.113.100:22 match Direct"
-    
-    try:
-        with patch("modules.mihomo.monitor.mihomo_handlers.ban_router_ip", AsyncMock(return_value=(True, "Blocked"))) as mock_ban, \
-             patch("modules.mihomo.monitor.mihomo_handlers.send_alert_to_admins", AsyncMock()) as mock_alert:
-             
-            # Попытка 1: Просто предупреждение
-            await handle_mihomo_log_line(payload)
-            assert len(recent_mihomo_violations["192.168.1.150"]) == 1
-            mock_ban.assert_not_called()
-            
-            # Попытка 2: Предупреждение (но троттлинг алертов сработает на повторные вызовы одного хоста, счетчик нарушений увеличится)
-            # Вручную добавим в violations для симуляции
-            import time
-            recent_mihomo_violations["192.168.1.150"].append(time.time())
-            
-            # Попытка 3: Автобан срабатывает!
-            await handle_mihomo_log_line(payload)
-            
-            # Проверяем, что бан был вызван автоматически для этого IP
-            mock_ban.assert_called_once_with("192.168.1.150")
-            assert mock_alert.call_count == 2
-            alert_text = mock_alert.call_args[0][0]
-            assert "Auto-Block" in alert_text
-            assert "Устройство заблокировано автоматически" in alert_text
-            
-            # Нарушения сброшены после бана
-            assert len(recent_mihomo_violations.get("192.168.1.150", [])) == 0
-    finally:
-        settings.router_ssh_enable = original_ssh
-        settings.mihomo_auto_ban = original_auto
-        settings.mihomo_max_violations = original_max
-
-
-@pytest.mark.asyncio
-async def test_handle_new_mihomo_connection_sensitive():
-    from modules.mihomo.monitor.mihomo_handlers import handle_new_mihomo_connection
-    from modules.proxmox.monitor.state import lxc_alert_throttle
-    
-    lxc_alert_throttle.clear()
-    
-    conn = {
-        "id": "test-uuid-99999",
-        "metadata": {
-            "network": "tcp",
-            "sourceIP": "192.168.1.150",
-            "sourcePort": "54321",
-            "host": "203.0.113.100",
-            "destinationPort": "22"
-        }
-    }
-    
-    with patch("modules.mihomo.monitor.mihomo_handlers.send_alert_to_admins", AsyncMock()) as mock_alert:
-        await handle_new_mihomo_connection(conn)
-        
-        # Проверяем, что алерт безопасности БЫЛ вызван
-        mock_alert.assert_called_once()
-        alert_text = mock_alert.call_args[0][0]
-        assert "Router Security: Mihomo" in alert_text
-        assert "192.168.1.150:54321" in alert_text
-        assert "203.0.113.100:22" in alert_text
-
-
 def test_parse_router_iptables_line():
-    from modules.mihomo.monitor.parser import parse_router_iptables_line
+    from modules.router.monitor.parser import parse_router_iptables_line
     
     line = "May 29 23:25:35 router kernel: [12345.678] ROUTER-IPS: IN=br-lan OUT= SRC=192.168.1.150 DST=203.0.113.100 PROTO=TCP SPT=54321 DPT=22"
     event = parse_router_iptables_line(line)
@@ -227,14 +18,14 @@ def test_parse_router_iptables_line():
 
 @pytest.mark.asyncio
 async def test_handle_router_iptables_log_line_sensitive():
-    from modules.mihomo.monitor.router_handlers import handle_router_iptables_log_line
+    from modules.router.monitor.router_handlers import handle_router_iptables_log_line
     from modules.proxmox.monitor.state import lxc_alert_throttle
     
     lxc_alert_throttle.clear()
     
     line = "ROUTER-IPS: IN=br-lan OUT= SRC=192.168.1.150 DST=203.0.113.100 PROTO=TCP SPT=54321 DPT=22"
     
-    with patch("modules.mihomo.monitor.router_handlers.send_alert_to_admins", AsyncMock()) as mock_alert:
+    with patch("modules.router.monitor.router_handlers.send_alert_to_admins", AsyncMock()) as mock_alert:
         await handle_router_iptables_log_line(line)
         
         # Проверяем, что алерт безопасности БЫЛ вызван
@@ -247,18 +38,18 @@ async def test_handle_router_iptables_log_line_sensitive():
 
 @pytest.mark.asyncio
 async def test_setup_router_logging_rules():
-    from modules.mihomo.monitor.rules import setup_router_logging_rules
+    from modules.router.monitor.rules import setup_router_logging_rules
     from core.config import settings
     
-    original_ssh = settings.router_ssh_enable
+    original_ssh = settings.router_monitor_enable
     original_type = settings.router_type
     
-    settings.router_ssh_enable = True
+    settings.router_monitor_enable = True
     settings.router_type = 'openwrt'
     
     try:
-        with patch("modules.mihomo.monitor.rules.run_router_ssh_cmd", AsyncMock(return_value=(True, "", ""))) as mock_cmd, \
-             patch("modules.mihomo.monitor.rules.remove_router_logging_rules", AsyncMock()) as mock_remove:
+        with patch("modules.router.monitor.rules.run_router_ssh_cmd", AsyncMock(return_value=(True, "", ""))) as mock_cmd, \
+             patch("modules.router.monitor.rules.remove_router_logging_rules", AsyncMock()) as mock_remove:
             
             success = await setup_router_logging_rules()
             assert success is True
@@ -269,44 +60,44 @@ async def test_setup_router_logging_rules():
             assert "nft add rule inet fw4 forward tcp dport" in cmd_arg
             assert "log prefix \"ROUTER-IPS: \"" in cmd_arg
     finally:
-        settings.router_ssh_enable = original_ssh
+        settings.router_monitor_enable = original_ssh
         settings.router_type = original_type
 
 
 @pytest.mark.asyncio
 async def test_remove_router_logging_rules():
-    from modules.mihomo.monitor.rules import remove_router_logging_rules
+    from modules.router.monitor.rules import remove_router_logging_rules
     from core.config import settings
     
-    original_ssh = settings.router_ssh_enable
+    original_ssh = settings.router_monitor_enable
     original_type = settings.router_type
     
-    settings.router_ssh_enable = True
+    settings.router_monitor_enable = True
     settings.router_type = 'openwrt'
     
     try:
-        with patch("modules.mihomo.monitor.rules.run_router_ssh_cmd", AsyncMock(return_value=(True, "", ""))) as mock_cmd:
+        with patch("modules.router.monitor.rules.run_router_ssh_cmd", AsyncMock(return_value=(True, "", ""))) as mock_cmd:
             await remove_router_logging_rules()
             
             assert mock_cmd.call_count > 0
             calls = [c[0][0] for c in mock_cmd.call_args_list]
             assert any("/etc/init.d/firewall reload" in cmd for cmd in calls)
     finally:
-        settings.router_ssh_enable = original_ssh
+        settings.router_monitor_enable = original_ssh
         settings.router_type = original_type
 
 
 @pytest.mark.asyncio
 async def test_monitor_router_syslog_execution():
     import asyncio
-    from modules.mihomo.monitor.core import monitor_router_syslog
+    from modules.router.monitor.core import monitor_router_syslog
     from core.config import settings
     from unittest.mock import MagicMock
     
-    original_ssh = settings.router_ssh_enable
+    original_ssh = settings.router_monitor_enable
     original_type = settings.router_type
     
-    settings.router_ssh_enable = True
+    settings.router_monitor_enable = True
     settings.router_type = 'openwrt'
     
     try:
@@ -342,9 +133,9 @@ async def test_monitor_router_syslog_execution():
                 pass
                 
         with patch("asyncssh.connect", MockSSHConnect), \
-             patch("modules.mihomo.monitor.ssh_workers.setup_router_logging_rules", AsyncMock()) as mock_setup, \
-             patch("modules.mihomo.monitor.ssh_workers.remove_router_logging_rules", AsyncMock()) as mock_remove, \
-             patch("modules.mihomo.monitor.ssh_workers.handle_router_iptables_log_line", AsyncMock()) as mock_handler:
+             patch("modules.router.monitor.ssh_workers.setup_router_logging_rules", AsyncMock()) as mock_setup, \
+             patch("modules.router.monitor.ssh_workers.remove_router_logging_rules", AsyncMock()) as mock_remove, \
+             patch("modules.router.monitor.ssh_workers.handle_router_iptables_log_line", AsyncMock()) as mock_handler:
              
             # Запускаем как задачу, чтобы можно было прервать бесконечный цикл переподключений
             task = asyncio.create_task(monitor_router_syslog())
@@ -367,13 +158,13 @@ async def test_monitor_router_syslog_execution():
             mock_remove.assert_called_once()
             
     finally:
-        settings.router_ssh_enable = original_ssh
+        settings.router_monitor_enable = original_ssh
         settings.router_type = original_type
 
 
 @pytest.mark.asyncio
 async def test_parse_router_conntrack_line():
-    from modules.mihomo.monitor.parser import parse_router_conntrack_line
+    from modules.router.monitor.parser import parse_router_conntrack_line
     
     # Realistic conntrack -E output line (IPv4)
     line = "[NEW] tcp      6 120 SYN_SENT src=192.168.1.69 dst=5.255.255.242 sport=33296 dport=22 [UNREPLIED] src=5.255.255.242 dst=89.110.53.137 sport=443 dport=33296"
@@ -393,7 +184,7 @@ async def test_parse_router_conntrack_line():
 
 @pytest.mark.asyncio
 async def test_handle_router_conntrack_log_line():
-    from modules.mihomo.monitor.router_handlers import handle_router_conntrack_log_line
+    from modules.router.monitor.router_handlers import handle_router_conntrack_log_line
     from modules.proxmox.monitor.state import lxc_alert_throttle
     from core.config import settings
     
@@ -402,7 +193,7 @@ async def test_handle_router_conntrack_log_line():
     # Sensitive port 22
     line = "[NEW] tcp      6 120 SYN_SENT src=192.168.1.69 dst=192.168.1.1 sport=33296 dport=22 [UNREPLIED]"
     
-    with patch("modules.mihomo.monitor.router_handlers.send_alert_to_admins", AsyncMock()) as mock_alert:
+    with patch("modules.router.monitor.router_handlers.send_alert_to_admins", AsyncMock()) as mock_alert:
         await handle_router_conntrack_log_line(line)
         mock_alert.assert_called_once()
         alert_text = mock_alert.call_args[0][0]
@@ -414,7 +205,7 @@ async def test_handle_router_conntrack_log_line():
     lxc_alert_throttle.clear()
     safe_line = "[NEW] tcp      6 120 SYN_SENT src=192.168.1.69 dst=8.8.8.8 sport=33296 dport=443 [UNREPLIED]"
     
-    with patch("modules.mihomo.monitor.router_handlers.send_alert_to_admins", AsyncMock()) as mock_alert:
+    with patch("modules.router.monitor.router_handlers.send_alert_to_admins", AsyncMock()) as mock_alert:
         await handle_router_conntrack_log_line(safe_line)
         mock_alert.assert_not_called()
 
@@ -422,12 +213,12 @@ async def test_handle_router_conntrack_log_line():
 @pytest.mark.asyncio
 async def test_monitor_router_conntrack_execution():
     import asyncio
-    from modules.mihomo.monitor.core import monitor_router_conntrack
+    from modules.router.monitor.core import monitor_router_conntrack
     from core.config import settings
     from unittest.mock import MagicMock
     
-    original_ssh = settings.router_ssh_enable
-    settings.router_ssh_enable = True
+    original_ssh = settings.router_monitor_enable
+    settings.router_monitor_enable = True
     
     try:
         mock_conn = MagicMock()
@@ -461,7 +252,7 @@ async def test_monitor_router_conntrack_execution():
                 pass
                 
         with patch("asyncssh.connect", MockSSHConnect), \
-             patch("modules.mihomo.monitor.ssh_workers.handle_router_conntrack_log_line", AsyncMock()) as mock_handler:
+             patch("modules.router.monitor.ssh_workers.handle_router_conntrack_log_line", AsyncMock()) as mock_handler:
              
             task = asyncio.create_task(monitor_router_conntrack())
             await asyncio.sleep(0.1)
@@ -477,55 +268,13 @@ async def test_monitor_router_conntrack_execution():
             mock_handler.assert_called_once()
             
     finally:
-        settings.router_ssh_enable = original_ssh
+        settings.router_monitor_enable = original_ssh
 
-
-@pytest.mark.asyncio
-async def test_monitor_router_mihomo_mode_alias():
-    from modules.mihomo.monitor.core import monitor_mihomo_connections
-    from core.config import settings
-    from unittest.mock import MagicMock, AsyncMock
-    import asyncio
-    
-    original_mode = settings.mihomo_monitor_mode
-    original_enable = settings.mihomo_monitor_enable
-    
-    settings.mihomo_monitor_mode = 'mihomo'
-    settings.mihomo_monitor_enable = True
-    
-    try:
-        # Mock ClientSession.get as an async context manager to exit early
-        mock_ctx = MagicMock()
-        mock_ctx.__aenter__ = AsyncMock(side_effect=asyncio.CancelledError())
-        mock_get = MagicMock(return_value=mock_ctx)
-        mock_session = MagicMock()
-        mock_session.get = mock_get
-        
-        class MockClientSession:
-            async def __aenter__(self):
-                return mock_session
-            async def __aexit__(self, exc_type, exc_val, exc_tb):
-                pass
-                
-        with patch("aiohttp.ClientSession", MagicMock(return_value=MockClientSession())):
-            task = asyncio.create_task(monitor_mihomo_connections())
-            await asyncio.sleep(0.05)
-            task.cancel()
-            try:
-                await task
-            except asyncio.CancelledError:
-                pass
-            
-            # If 'mihomo' mode was correctly mapped to polling, it should have initiated the HTTP request
-            mock_get.assert_called()
-    finally:
-        settings.mihomo_monitor_mode = original_mode
-        settings.mihomo_monitor_enable = original_enable
 
 
 @pytest.mark.asyncio
 async def test_check_is_bot_or_admin():
-    from modules.mihomo.monitor.helpers import check_is_bot_or_admin
+    from modules.router.monitor.helpers import check_is_bot_or_admin
     from core.config import settings
     
     original_trusted = settings.trusted_admin_ips
@@ -545,11 +294,11 @@ async def test_check_is_bot_or_admin():
         assert await check_is_bot_or_admin("192.168.1.1", 12345) is True
         
         # Proxmox host IP with mocked local process check
-        with patch("modules.mihomo.monitor.helpers.is_local_bot_process", AsyncMock(return_value=True)) as mock_local:
+        with patch("modules.router.monitor.helpers.is_local_bot_process", AsyncMock(return_value=True)) as mock_local:
             assert await check_is_bot_or_admin("192.168.1.120", 47278) is True
             mock_local.assert_called_once_with(47278)
             
-        with patch("modules.mihomo.monitor.helpers.is_local_bot_process", AsyncMock(return_value=False)) as mock_local:
+        with patch("modules.router.monitor.helpers.is_local_bot_process", AsyncMock(return_value=False)) as mock_local:
             assert await check_is_bot_or_admin("192.168.1.120", 47278) is False
             mock_local.assert_called_once_with(47278)
             
@@ -563,7 +312,7 @@ async def test_check_is_bot_or_admin():
             # Proxmox host connecting to remote VPS SSH port (194.87.29.14:22)
             assert await check_is_bot_or_admin("192.168.1.120", 47278, "194.87.29.14", 22) is True
             # Proxmox host connecting to some random IP on port 22 (should fall back to is_local_bot_process, returning False)
-            with patch("modules.mihomo.monitor.helpers.is_local_bot_process", AsyncMock(return_value=False)):
+            with patch("modules.router.monitor.helpers.is_local_bot_process", AsyncMock(return_value=False)):
                 assert await check_is_bot_or_admin("192.168.1.120", 47278, "8.8.8.8", 22) is False
         finally:
             settings.remote_servers = original_remote_servers

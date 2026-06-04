@@ -6,7 +6,7 @@ from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQu
 
 from core.db import execute_read_all, execute_write
 from core.config import settings
-from modules.mihomo.router import unban_router_ip
+from modules.router.router import unban_router_ip
 from modules.proxmox.monitor.traffic.firewall import unban_local_ip
 from modules.proxmox.monitor.remote.traffic.firewall import unban_remote_ip
 

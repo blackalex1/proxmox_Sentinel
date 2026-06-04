@@ -5,7 +5,7 @@ import re
 from core.config import settings
 from core.db import execute_read_all, execute_write
 from modules.proxmox.monitor.remote.ssh import run_remote_ssh_cmd
-from modules.mihomo.router import run_router_ssh_cmd, unban_router_ip
+from modules.router.router import run_router_ssh_cmd, unban_router_ip
 from modules.proxmox.monitor.utils import send_alert_to_admins
 
 async def reconcile_router_bans():
@@ -126,7 +126,7 @@ async def monitor_expired_bans():
     logging.info("[Garbage Collector] Запущен фоновый воркер проверки просроченных блокировок...")
     
     # Сверяем правила на роутере ОДИН РАЗ при старте воркера
-    if settings.router_ssh_enable:
+    if settings.router_monitor_enable:
         try:
             await reconcile_router_bans()
         except Exception as e:

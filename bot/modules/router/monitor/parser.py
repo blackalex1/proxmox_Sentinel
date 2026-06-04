@@ -1,48 +1,5 @@
 import re
 import logging
-import aiohttp
-from core.config import settings
-
-async def find_mihomo_connection_id(src_ip, src_port, dst_port):
-    """Ищет ID активного соединения в Mihomo по IP/порту источника и порту назначения."""
-    try:
-        api_url = settings.mihomo_api_url
-        headers = {}
-        if settings.mihomo_api_secret:
-            headers["Authorization"] = f"Bearer {settings.mihomo_api_secret}"
-            
-        async with aiohttp.ClientSession() as session:
-            async with session.get(f"{api_url}/connections", headers=headers, timeout=2) as resp:
-                if resp.status == 200:
-                    data = await resp.json()
-                    connections = data.get("connections", [])
-                    for conn in connections:
-                        metadata = conn.get("metadata", {})
-                        conn_src_ip = metadata.get("sourceIP", "")
-                        conn_src_port = int(metadata.get("sourcePort", 0)) if str(metadata.get("sourcePort", "")).isdigit() else 0
-                        conn_dst_port = int(metadata.get("destinationPort", 0)) if str(metadata.get("destinationPort", "")).isdigit() else 0
-                        
-                        if conn_src_ip == src_ip and conn_src_port == src_port and conn_dst_port == dst_port:
-                            return conn.get("id")
-    except Exception as e:
-        logging.error(f"Ошибка при поиске ID соединения в Mihomo: {e}")
-    return None
-
-async def close_mihomo_connection(conn_id):
-    """Разрывает активное соединение в Mihomo по его ID."""
-    try:
-        api_url = settings.mihomo_api_url
-        headers = {}
-        if settings.mihomo_api_secret:
-            headers["Authorization"] = f"Bearer {settings.mihomo_api_secret}"
-            
-        async with aiohttp.ClientSession() as session:
-            async with session.delete(f"{api_url}/connections/{conn_id}", headers=headers, timeout=2) as resp:
-                if resp.status in (200, 204):
-                    return True
-    except Exception as e:
-        logging.error(f"Ошибка при разрыве соединения {conn_id} в Mihomo: {e}")
-    return False
 
 def parse_router_conntrack_line(line):
     """
