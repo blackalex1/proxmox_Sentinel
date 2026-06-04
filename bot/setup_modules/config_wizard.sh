@@ -178,16 +178,28 @@ run_config_wizard() {
                         default_option=$((auto_idx+1))
                     fi
                     
-                    echo -e "\n${YELLOW}Выберите номер контейнера для VPN_VMID (по умолчанию: ${default_option:-ID вручную}):${NC}"
+                    echo -e "\n${YELLOW}Выберите порядковый номер из списка (1, 2...) или введите ID контейнера (например, 101) для VPN_VMID [по умолчанию: ${default_option:-ID вручную}]:${NC}"
                     read -p ">> " user_lxc_selection
                     
                     if [ -z "$user_lxc_selection" ] && [ -n "$default_option" ]; then
                         user_lxc_selection=$default_option
                     fi
                     
-                    if [[ "$user_lxc_selection" =~ ^[0-9]+$ ]] && [ "$user_lxc_selection" -ge 1 ] && [ "$user_lxc_selection" -le "${#vmid_array[@]}" ]; then
-                        AUTO_VPN_VMID="${vmid_array[$((user_lxc_selection-1))]}"
-                        echo -e "${GREEN}✓ Выбран контейнер: ${AUTO_VPN_VMID} (${name_array[$((user_lxc_selection-1))]})${NC}"
+                    if [[ "$user_lxc_selection" =~ ^[0-9]+$ ]]; then
+                        # Сначала проверяем, не введен ли порядковый номер из списка
+                        if [ "$user_lxc_selection" -ge 1 ] && [ "$user_lxc_selection" -le "${#vmid_array[@]}" ]; then
+                            AUTO_VPN_VMID="${vmid_array[$((user_lxc_selection-1))]}"
+                            echo -e "${GREEN}✓ Выбран контейнер: ${AUTO_VPN_VMID} (${name_array[$((user_lxc_selection-1))]})${NC}"
+                        else
+                            # Иначе проверяем, не введен ли реальный VMID напрямую
+                            for i in "${!vmid_array[@]}"; do
+                                if [ "${vmid_array[i]}" -eq "$user_lxc_selection" ]; then
+                                    AUTO_VPN_VMID="$user_lxc_selection"
+                                    echo -e "${GREEN}✓ Выбран контейнер по прямому ID: ${AUTO_VPN_VMID} (${name_array[i]})${NC}"
+                                    break
+                                fi
+                            done
+                        fi
                     fi
                 fi
             fi
@@ -199,7 +211,7 @@ run_config_wizard() {
             # Запускаем интерактивный мастер
             prompt_var "BOT_TOKEN" "Токен вашего Telegram-бота (BOT_TOKEN)" ""
             prompt_var "ADMIN_IDS" "Telegram ID администраторов через запятую (ADMIN_IDS)" ""
-            prompt_var "TRUSTED_ADMIN_IPS" "Доверенные IP-адреса администраторов (TRUSTED_ADMIN_IPS)" "${TRUSTED_IPS_DEFAULT}"
+            prompt_var "TRUSTED_ADMIN_IPS" "Белый список IP-адресов администратора (вход с этих IP не будет вызывать тревогу, например: 192.168.1.50, через запятую)" "${TRUSTED_IPS_DEFAULT}"
             prompt_var "PROXMOX_HOST" "IP и порт вашего хоста Proxmox VE (PROXMOX_HOST)" "${PVE_HOST_DEFAULT}"
             prompt_var "PROXMOX_USER" "Имя пользователя Proxmox (PROXMOX_USER)" "root@pam"
             
@@ -225,7 +237,7 @@ run_config_wizard() {
             prompt_var "VPN_VMID" "Идентификатор контейнера с VPN (VPN_VMID)" "${AUTO_VPN_VMID:-101}"
             
             # Мониторинг VPS
-            prompt_var "REMOTE_MONITOR_ENABLE" "Включить мониторинг удаленного сервера VPS? (True/False)" "False"
+            prompt_bool "REMOTE_MONITOR_ENABLE" "Включить мониторинг удаленного сервера VPS?" "False"
             vps_enabled=$(grep -E "^REMOTE_MONITOR_ENABLE=" "${ENV_FILE}" | cut -d'=' -f2- | tr '[:upper:]' '[:lower:]')
             if [ "${vps_enabled}" = "true" ] || [ "${vps_enabled}" = "1" ] || [ "${vps_enabled}" = "y" ] || [ "${vps_enabled}" = "yes" ]; then
                 prompt_var "REMOTE_SERVER_IP" "IP-адрес удаленного сервера VPS (REMOTE_SERVER_IP)" ""
@@ -242,10 +254,10 @@ run_config_wizard() {
             
             # Настройки прокси для Telegram
             prompt_var "PROXY_URL" "Прокси для Telegram (PROXY_URL, оставьте пустым если не требуется)" "${INSTALL_PROXY}"
-            prompt_var "ENABLE_FREE_PROXY_ROTATION" "Включить автоматическую ротацию бесплатных прокси при сбое? (True/False)" "False"
+            prompt_bool "ENABLE_FREE_PROXY_ROTATION" "Включить автоматическую ротацию бесплатных прокси при сбое?" "False"
         
             # Мониторинг роутера через SSH conntrack/iptables
-            prompt_var "ROUTER_MONITOR_ENABLE" "Включить мониторинг трафика роутера через SSH? (True/False)" "False"
+            prompt_bool "ROUTER_MONITOR_ENABLE" "Включить мониторинг трафика роутера через SSH?" "False"
             router_enabled=$(grep -E "^ROUTER_MONITOR_ENABLE=" "${ENV_FILE}" | cut -d'=' -f2- | tr '[:upper:]' '[:lower:]')
             if [ "${router_enabled}" = "true" ] || [ "${router_enabled}" = "1" ] || [ "${router_enabled}" = "y" ] || [ "${router_enabled}" = "yes" ]; then
                 while true; do
@@ -279,7 +291,7 @@ run_config_wizard() {
                     fi
                 done
                 
-                prompt_var "ROUTER_AUTO_BAN" "Включить автоматический бан нарушителей на роутере? (True/False)" "False"
+                prompt_bool "ROUTER_AUTO_BAN" "Включить автоматический бан нарушителей на роутере?" "False"
                 prompt_var "ROUTER_MAX_VIOLATIONS" "Лимит попыток доступа до автоблокировки (ROUTER_MAX_VIOLATIONS)" "3"
             fi
         
