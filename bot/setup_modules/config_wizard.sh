@@ -317,9 +317,9 @@ run_config_wizard() {
             # Записываем в .env
             if [ "${SP_JSON}" != "[]" ]; then
                 if grep -q "^SPECTRE_PANELS=" "${ENV_FILE}"; then
-                    sed -i "s|^SPECTRE_PANELS=.*|SPECTRE_PANELS=${SP_JSON}|" "${ENV_FILE}"
+                    sed -i "s|^SPECTRE_PANELS=.*|SPECTRE_PANELS='${SP_JSON}'|" "${ENV_FILE}"
                 else
-                    echo "SPECTRE_PANELS=${SP_JSON}" >> "${ENV_FILE}"
+                    echo "SPECTRE_PANELS='${SP_JSON}'" >> "${ENV_FILE}"
                 fi
                 echo -e "${GREEN}✓ Настройки Spectre Panel успешно сохранены в .env файл.${NC}"
             fi
