@@ -57,11 +57,6 @@ class Settings(BaseSettings):
     proxmox_token_secret: str = Field(default='', validation_alias='PROXMOX_TOKEN_SECRET')
     proxmox_verify_ssl: bool = Field(default=False, validation_alias='PROXMOX_VERIFY_SSL')
 
-    # 3X-UI настройки
-    xui_host: str = Field(default='', validation_alias='XUI_HOST')
-    xui_username: str = Field(default='', validation_alias='XUI_USERNAME')
-    xui_password: str = Field(default='', validation_alias='XUI_PASSWORD')
-    xui_api_token: str = Field(default='', validation_alias='XUI_API_TOKEN')
 
     # Ansible настройки
     ansible_playbooks_dir: str = Field(default='', validation_alias='ANSIBLE_PLAYBOOKS_DIR')
@@ -125,12 +120,17 @@ class Settings(BaseSettings):
     router_type: str = Field(default='openwrt', validation_alias='ROUTER_TYPE')
 
     # Параметры удаленных серверов
+    # Параметры удаленных серверов
     remote_server_ip: str = Field(default='', validation_alias='REMOTE_SERVER_IP')
     remote_server_user: str = Field(default='root', validation_alias='REMOTE_SERVER_USER')
     remote_server_ssh_key: str = Field(default='config/id_rsa_remote', validation_alias='REMOTE_SERVER_SSH_KEY')
 
     # Сгенерированные сервера
     remote_servers: List[Dict[str, str]] = Field(default_factory=list)
+
+    # Ручные настройки панелей Spectre
+    spectre_panels_json: str = Field(default='[]', validation_alias='SPECTRE_PANELS')
+    spectre_panels: List[Dict[str, str]] = Field(default_factory=list)
 
     # Валидаторы полей
     @field_validator('bot_token')
@@ -166,9 +166,10 @@ class Settings(BaseSettings):
 
     # (Совместимость обеспечивается полями AliasChoices выше)
 
-    # Пост-валидация для генерации структуры remote_servers
+    # Пост-валидация для генерации структур remote_servers и spectre_panels
     @model_validator(mode='after')
-    def build_remote_servers(self) -> 'Settings':
+    def build_configs(self) -> 'Settings':
+        # 1. Построение remote_servers
         ips = [ip.strip() for ip in self.remote_server_ip.split(',') if ip.strip()]
         users = [u.strip() for u in self.remote_server_user.split(',') if u.strip()]
         keys = [k.strip() for k in self.remote_server_ssh_key.split(',') if k.strip()]
@@ -200,7 +201,18 @@ class Settings(BaseSettings):
                 'key': key_path
             })
         self.remote_servers = servers
+
+        # 2. Парсинг spectre_panels_json
+        import json
+        if self.spectre_panels_json:
+            try:
+                self.spectre_panels = json.loads(self.spectre_panels_json)
+            except Exception as e:
+                import logging
+                logging.error(f"Ошибка парсинга SPECTRE_PANELS JSON: {e}")
+                self.spectre_panels = []
         return self
 
 # Инициализируем настройки
 settings = Settings()
+

@@ -3,8 +3,7 @@ import asyncio
 from unittest.mock import AsyncMock, patch, MagicMock
 from modules.proxmox.monitor.traffic.killer import get_and_kill_local_or_lxc_process
 from modules.proxmox.monitor.traffic.firewall import block_local_ip
-from modules.proxmox.monitor.remote.hysteria import handle_remote_hysteria_line
-from modules.proxmox.monitor.remote.hysteria.alerts.state import recent_hysteria_violations
+
 
 @pytest.mark.asyncio
 async def test_get_and_kill_local_process():
@@ -98,53 +97,6 @@ async def test_block_local_ip():
             stderr=asyncio.subprocess.DEVNULL
         )
 
-@pytest.mark.asyncio
-async def test_hysteria_warning_accumulation_and_ban():
-    # Очищаем историю нарушений для чистоты теста
-    recent_hysteria_violations.clear()
-    
-    server = {
-        'ip': '192.168.1.99',
-        'user': 'root',
-        'key': 'config/dummy_key'
-    }
-    
-    # 1. Формируем тестовые TCP лог-линии на sensitive порты
-    tcp_error_line = (
-        "May 25 03:00:00 server hysteria-server[100]: "
-        "TCP error {\"id\": \"hacker_user\", \"addr\": \"203.0.113.5:54321\", "
-        "\"reqAddr\": \"10.0.0.5:22\", \"error\": \"connection timed out\"}"
-    )
-    
-    # Мокаем отправку алертов и функцию бана
-    with patch("modules.proxmox.monitor.remote.hysteria.send_alert_to_admins", AsyncMock()) as mock_alert, \
-         patch("modules.proxmox.monitor.remote.hysteria.block_remote_hysteria_user", AsyncMock(return_value=True)) as mock_block:
-         
-        # Попытка 1: Должен добавиться 1 варн
-        await handle_remote_hysteria_line(tcp_error_line, server=server)
-        assert len(recent_hysteria_violations.get("hacker_user", [])) == 1
-        mock_alert.assert_called_once()
-        mock_block.assert_not_called()
-        
-        mock_alert.reset_mock()
-        
-        # Попытка 2: Должен добавиться 2-й варн (но оповещение задросселировано)
-        await handle_remote_hysteria_line(tcp_error_line, server=server)
-        assert len(recent_hysteria_violations.get("hacker_user", [])) == 2
-        mock_alert.assert_not_called()  # Оповещение задросселировано
-        mock_block.assert_not_called()
-        
-        mock_alert.reset_mock()
-        
-        # Попытка 3: Должен сработать автоматический бан (3+ попытки)
-        await handle_remote_hysteria_line(tcp_error_line, server=server)
-        
-        # Проверяем, что была вызвана блокировка пользователя
-        mock_block.assert_called_once_with(server, "hacker_user")
-        # Проверяем, что админы получили уведомление о бане (не дросселируется)
-        mock_alert.assert_called_once()
-        # Проверяем, что после бана счетчик нарушений сброшен
-        assert len(recent_hysteria_violations.get("hacker_user", [])) == 0
 
 @pytest.mark.asyncio
 async def test_get_and_kill_self_defense_bot_itself():
@@ -422,38 +374,6 @@ async def test_handle_remote_ssh_auth_line_compromised_container():
         settings.remote_monitor_ignore_ips = original_ips
 
 
-@pytest.mark.asyncio
-async def test_hysteria_disconnect_silent_no_ssh():
-    from modules.proxmox.monitor.remote.hysteria.alerts.disconnect import handle_hysteria_disconnect
-    from modules.proxmox.monitor.remote.hysteria.alerts.state import active_activity_cards
-    import time as pytime
-    import datetime
-    
-    server = {'ip': '198.51.100.50'}
-    username = 'test_user'
-    client_ip = '198.51.100.99'
-    key = (server['ip'], username)
-    
-    # Создаем активную карточку в памяти
-    now = pytime.time()
-    active_activity_cards[key] = {
-        'admin_messages': [],
-        'started_at': now,
-        'last_activity_at': now,
-        'lines': [],
-        'connections': {client_ip: [datetime.datetime.now()]}
-    }
-    
-    with patch("modules.proxmox.monitor.remote.hysteria.alerts.disconnect.get_remote_hysteria_traffic", AsyncMock()) as mock_get_traffic, \
-         patch("modules.proxmox.monitor.remote.hysteria.alerts.disconnect.update_disconnection", AsyncMock()) as mock_db:
-         
-        # Запускаем в бесшумном режиме (silent=True)
-        await handle_hysteria_disconnect(server, username, client_ip, silent=True)
-        
-        # Убеждаемся, что запрос трафика к удаленному API Hysteria по SSH/curl НЕ вызывался
-        mock_get_traffic.assert_not_called()
-        # Но сессия в базе данных все равно закрылась
-        mock_db.assert_called_once()
 
 
 def test_parse_auth_line_ssh_close():

@@ -11,8 +11,7 @@ from .state import (
 from .utils import (
     LogTailer,
     send_alert_to_admins,
-    is_private_ip,
-    detect_xui_service
+    is_private_ip
 )
 from .firewall import (
     setup_vpn_container_rules,
@@ -35,7 +34,6 @@ from .traffic import (
     monitor_lxc_traffic
 )
 from .runner import start_all_lxc_monitors
-from .xui_connections import monitor_xui_connections
 from .remote import monitor_remote_server
 
 __all__ = [
@@ -50,7 +48,6 @@ __all__ = [
     'LogTailer',
     'send_alert_to_admins',
     'is_private_ip',
-    'detect_xui_service',
     'setup_vpn_container_rules',
     'cleanup_vpn_container_rules',
     'setup_iptables',
@@ -66,7 +63,6 @@ __all__ = [
     'handle_traffic_log_line',
     'monitor_lxc_traffic',
     'start_all_lxc_monitors',
-    'monitor_xui_connections',
     'monitor_remote_server'
 ]
 

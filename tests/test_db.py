@@ -43,35 +43,6 @@ async def test_sqlite_db_operations():
     assert updated_row['disconnect_time'] == "2026-05-25 00:10:00"
     assert updated_row['duration'] == "10 мин"
 
-@pytest.mark.asyncio
-async def test_hysteria_history_sqlite():
-    from modules.proxmox.monitor.remote.hysteria.history import log_connection, update_disconnection, load_history
-    
-    # Очищаем таблицу для тестов
-    from core.db import execute_write
-    await execute_write("DELETE FROM vpn_sessions")
-    
-    # Записываем первое подключение
-    session_id, recent_prev, is_new_ip = await log_connection("test_user", "1.1.1.1")
-    assert session_id == "0"
-    assert is_new_ip is False
-    assert len(recent_prev) == 0
-    
-    # Закрываем сессию с указанием байтов трафика (100 MB скачано, 50 MB загружено)
-    await update_disconnection("test_user", "1.1.1.1", "5 сек", 104857600, 52428800)
-    
-    # Загружаем историю и проверяем сохраненные байты трафика
-    history = await load_history()
-    assert history["test_user"][0]["download_bytes"] == 104857600
-    assert history["test_user"][0]["upload_bytes"] == 52428800
-    
-    # Записываем второе подключение с новым IP
-    session_id2, recent_prev2, is_new_ip2 = await log_connection("test_user", "2.2.2.2")
-    assert session_id2 == "1"
-    assert is_new_ip2 is True
-    assert len(recent_prev2) == 1
-    assert recent_prev2[0]['ip'] == '1.1.1.1'
-    assert recent_prev2[0]['duration'] == '5 сек'
 
 @pytest.mark.asyncio
 async def test_bot_state_and_temp_bans():
@@ -111,3 +82,57 @@ def teardown_module(module):
         pass
     core.db.DB_FILE = ORIGINAL_DB_FILE
     core.db.init_db()
+
+
+@pytest.mark.asyncio
+async def test_node_segregated_whitelists():
+    from core.db import save_node_whitelists, is_whitelisted
+    
+    # Инициализируем тестовый белый список с разделением по нодам
+    whitelists = {
+        "global": {
+            "processes": ["caddy"],
+            "ip_ports": ["1.1.1.1"]
+        },
+        "vps_1.2.3.4": {
+            "processes": ["xray"],
+            "ip_ports": ["5.6.7.8:22", "8.8.8.8:*"]
+        },
+        "lxc_100": {
+            "processes": ["nginx"],
+            "ip_ports": ["9.9.9.9:80"]
+        }
+    }
+    
+    # Сохраняем в БД
+    success = await save_node_whitelists(whitelists)
+    assert success is True
+    
+    # 1. Проверяем глобальный белый список
+    # Глобальный IP
+    assert await is_whitelisted(node="vps_1.2.3.4", ip="1.1.1.1") is True
+    assert await is_whitelisted(node="lxc_100", ip="1.1.1.1") is True
+    
+    # Глобальный процесс
+    assert await is_whitelisted(node="vps_1.2.3.4", process="caddy") is True
+    assert await is_whitelisted(node="lxc_100", process="caddy") is True
+    
+    # 2. Проверяем сегрегацию по нодам
+    # Процесс xray в белом списке vps_1.2.3.4, но не lxc_100
+    assert await is_whitelisted(node="vps_1.2.3.4", process="xray") is True
+    assert await is_whitelisted(node="lxc_100", process="xray") is False
+    
+    # IP 9.9.9.9 на порту 80 в белом списке lxc_100, но не vps_1.2.3.4
+    assert await is_whitelisted(node="lxc_100", ip="9.9.9.9", port=80) is True
+    assert await is_whitelisted(node="vps_1.2.3.4", ip="9.9.9.9", port=80) is False
+    
+    # 3. Проверяем разрешение портов (наш ключевой кейс)
+    # Доступ к 22 порту на vps_1.2.3.4 разрешен
+    assert await is_whitelisted(node="vps_1.2.3.4", ip="5.6.7.8", port=22) is True
+    # Доступ к 23 порту на vps_1.2.3.4 должен быть запрещен (забанится)
+    assert await is_whitelisted(node="vps_1.2.3.4", ip="5.6.7.8", port=23) is False
+    
+    # Проверяем wildcard порт (8.8.8.8:*)
+    assert await is_whitelisted(node="vps_1.2.3.4", ip="8.8.8.8", port=80) is True
+    assert await is_whitelisted(node="vps_1.2.3.4", ip="8.8.8.8", port=443) is True
+

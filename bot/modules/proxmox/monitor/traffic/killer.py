@@ -72,7 +72,9 @@ async def get_and_kill_local_or_lxc_process(vmid, spt):
                             logging.info(f"[Local IPS] Процесс {proc_name} (PID: {pid}) является самим ботом или его дочерним процессом. Завершение отменено.")
                             return proc_name, "WHITELISTED"
                             
-                        if proc_name.lower().strip() in settings.ips_process_whitelist:
+                        node = "local"
+                        from core.db import is_whitelisted
+                        if proc_name.lower().strip() in settings.ips_process_whitelist or await is_whitelisted(node, process=proc_name):
                             logging.info(f"[Local IPS] Процесс {proc_name} (PID: {pid}) на Хосте в белом списке. Завершение отменено.")
                             return proc_name, "WHITELISTED"
                         
@@ -108,7 +110,9 @@ async def get_and_kill_local_or_lxc_process(vmid, spt):
                     match = re.search(r'users:\(\("([^"]+)",(?:pid=)?(\d+)', line)
                     if match:
                         proc_name, pid = match.groups()
-                        if proc_name.lower().strip() in settings.ips_process_whitelist:
+                        node = f"lxc_{vmid}"
+                        from core.db import is_whitelisted
+                        if proc_name.lower().strip() in settings.ips_process_whitelist or await is_whitelisted(node, process=proc_name):
                             logging.info(f"[LXC IPS] Процесс {proc_name} (PID: {pid}) в LXC {vmid} в белом списке. Завершение отменено.")
                             return proc_name, "WHITELISTED"
                         

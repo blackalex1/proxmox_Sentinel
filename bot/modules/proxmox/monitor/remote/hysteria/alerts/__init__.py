@@ -1,1 +1,0 @@
-# Hysteria alerts package

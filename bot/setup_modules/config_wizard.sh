@@ -155,7 +155,7 @@ run_config_wizard() {
                         status_array[idx]=$status
                         
                         lower_name=$(echo "$name" | tr '[:upper:]' '[:lower:]')
-                        if [[ "$lower_name" =~ vpn || "$lower_name" =~ wg || "$lower_name" =~ wireguard || "$lower_name" =~ openvpn || "$lower_name" =~ xray || "$lower_name" =~ 3x-ui || "$lower_name" =~ xui ]]; then
+                        if [[ "$lower_name" =~ vpn || "$lower_name" =~ wg || "$lower_name" =~ wireguard || "$lower_name" =~ openvpn || "$lower_name" =~ xray || "$lower_name" =~ spectre ]]; then
                             if [ $auto_idx -eq -1 ]; then
                                 auto_idx=$idx
                             fi
@@ -252,11 +252,78 @@ run_config_wizard() {
                 prompt_var "REMOTE_MONITOR_IGNORE_IPS" "Игнорировать успешные входы по SSH с данных IP-адресов (через запятую)" ""
             fi
         
-            # Настройки 3X-UI
-            prompt_var "XUI_HOST" "URL-адрес панели 3X-UI (XUI_HOST, например: https://your_xui_ip:port/path/)" ""
-            prompt_var "XUI_USERNAME" "Имя пользователя 3X-UI (XUI_USERNAME)" ""
-            prompt_var "XUI_PASSWORD" "Пароль 3X-UI (XUI_PASSWORD)" ""
+            # Интерактивная настройка Spectre Panel (автоопределение с ручным вводом при необходимости)
+            echo -e "\n${BLUE}👉 Настройка Spectre Panel (управление VPN-клиентами):${NC}"
+            echo -e "${YELLOW}Запуск автоматического поиска установленных панелей...${NC}"
             
+            DETECTED_JSON=""
+            if [ -f "${SCRIPT_DIR}/venv/bin/python" ]; then
+                DETECTED_JSON=$(BOT_TOKEN="123:abc" "${SCRIPT_DIR}/venv/bin/python" "${SCRIPT_DIR}/setup_modules/detect_panels.py" 2>/dev/null || true)
+            else
+                DETECTED_JSON=$(BOT_TOKEN="123:abc" python3 "${SCRIPT_DIR}/setup_modules/detect_panels.py" 2>/dev/null || true)
+            fi
+            
+            PANELS_FOUND=0
+            if [ -n "${DETECTED_JSON}" ] && [ "${DETECTED_JSON}" != "[]" ]; then
+                PANELS_FOUND=1
+            fi
+            
+            USE_DETECTED="n"
+            if [ ${PANELS_FOUND} -eq 1 ]; then
+                echo -e "\n${GREEN}✓ Обнаружены следующие панели Spectre Panel:${NC}"
+                python3 -c "import sys, json; panels = json.loads(sys.argv[1]); [print(f'  - {p[\"name\"]} ({p[\"url\"]})') for p in panels]" "${DETECTED_JSON}" 2>/dev/null || echo -e "  (Не удалось отформатировать вывод)"
+                
+                echo -e "\nИспользовать обнаруженные панели? (y/n) [y]"
+                read -rp ">> " use_detected_input
+                if [ -z "${use_detected_input}" ] || [ "${use_detected_input}" = "y" ] || [ "${use_detected_input}" = "Y" ]; then
+                    USE_DETECTED="y"
+                fi
+            else
+                echo -e "\n${YELLOW}⚠️ Не удалось автоматически обнаружить установленные панели Spectre Panel.${NC}"
+            fi
+            
+            SP_JSON="[]"
+            if [ "${USE_DETECTED}" = "y" ]; then
+                SP_JSON="${DETECTED_JSON}"
+                echo -e "Хотите ли вы дополнительно настроить еще одну панель вручную? (y/n) [n]"
+                read -rp ">> " configure_spectre_manual
+            else
+                echo -e "Хотите ли вы настроить адрес и API-токен Spectre Panel вручную? (y/n) [y]"
+                read -rp ">> " configure_spectre_manual
+                if [ -z "${configure_spectre_manual}" ] || [ "${configure_spectre_manual}" = "y" ] || [ "${configure_spectre_manual}" = "Y" ]; then
+                    configure_spectre_manual="y"
+                fi
+            fi
+            
+            if [ "${configure_spectre_manual}" = "y" ] || [ "${configure_spectre_manual}" = "Y" ]; then
+                echo -e "\n${YELLOW}Введите параметры Spectre Panel:${NC}"
+                read -rp "Имя панели (например, Мой Сервер): " SP_NAME
+                read -rp "URL панели (например, http://10.10.10.101:2053): " SP_URL
+                read -rp "API Token панели: " SP_TOKEN
+                read -rp "Секретный путь панели (secret path, по умолчанию: ui): " SP_SECRET
+                if [ -z "${SP_SECRET}" ]; then
+                    SP_SECRET="ui"
+                fi
+                
+                if [ -n "${SP_URL}" ] && [ -n "${SP_TOKEN}" ]; then
+                    # Объединяем с помощью python
+                    SP_JSON=$(python3 -c "import sys, json; det = json.loads(sys.argv[1]); det.append({'name': sys.argv[2] or 'Manual Panel', 'url': sys.argv[3], 'token': sys.argv[4], 'secret_path': sys.argv[5]}); print(json.dumps(det))" "${SP_JSON}" "${SP_NAME}" "${SP_URL}" "${SP_TOKEN}" "${SP_SECRET}")
+                    echo -e "${GREEN}✓ Параметры сохранены!${NC}"
+                else
+                    echo -e "${RED}⚠️ Не заполнены URL или Токен. Пропускаем ручную настройку панели.${NC}"
+                fi
+            fi
+            
+            # Записываем в .env
+            if [ "${SP_JSON}" != "[]" ]; then
+                if grep -q "^SPECTRE_PANELS=" "${ENV_FILE}"; then
+                    sed -i "s|^SPECTRE_PANELS=.*|SPECTRE_PANELS=${SP_JSON}|" "${ENV_FILE}"
+                else
+                    echo "SPECTRE_PANELS=${SP_JSON}" >> "${ENV_FILE}"
+                fi
+                echo -e "${GREEN}✓ Настройки Spectre Panel успешно сохранены в .env файл.${NC}"
+            fi
+
             # Настройки прокси для Telegram
             prompt_var "PROXY_URL" "Прокси для Telegram (PROXY_URL, оставьте пустым если не требуется)" "${INSTALL_PROXY}"
             prompt_bool "ENABLE_FREE_PROXY_ROTATION" "Включить автоматическую ротацию бесплатных прокси при сбое?" "False"

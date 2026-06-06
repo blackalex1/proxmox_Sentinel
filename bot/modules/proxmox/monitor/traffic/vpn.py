@@ -3,7 +3,7 @@ import platform
 import subprocess
 import re
 import logging
-from modules.proxmox.monitor.utils import detect_xui_service
+# No imports from utils for detect_xui_service
 
 def find_real_vpn_client_ip(proto, container_ip, dst_ip, sport, dpt):
     """
@@ -82,24 +82,48 @@ def find_real_vpn_client_ip(proto, container_ip, dst_ip, sport, dpt):
         logging.error(f"Ошибка при поиске реального IP клиента в conntrack: {e}")
     return None
 
-def find_xray_client_email(vmid, dst_ip, dpt):
+async def find_xray_client_email(vmid, dst_ip, dpt, client_ip=None):
     """
-    Выполняет pct exec для поиска email клиента в access.log контейнера Xray.
+    Ищет email клиента Xray. Сначала опрашивает Spectre Panel через API, 
+    если не найдено - использует старый резервный метод поиска в access.log контейнера.
     """
+    # 1. Попытка получить через API автообнаруженной Spectre Panel
+    try:
+        from core.spectre_client import spectre_manager
+        res = await spectre_manager.get_client_by_connection(
+            client_ip=client_ip,
+            dst_ip=dst_ip,
+            port=dpt,
+            source_type='lxc',
+            source_id=str(vmid)
+        )
+        if res:
+            email, panel, *extra = res
+            logging.info(f"[VPN IPS] Успешно найден email '{email}' клиента через API панели '{panel.name}'")
+            return email
+    except Exception as e:
+        logging.error(f"Ошибка при обращении к API Spectre Panel: {e}")
+
+    # 2. Резервный метод (поиск в xray.log Spectre Panel напрямую в LXC)
     if platform.system() != 'Linux':
         return None
     try:
         target_conn = f"{dst_ip}:{dpt}"
+        # Возможные пути к бинарной папке и логу Xray в LXC контейнере
         log_paths = [
-            "/var/log/x-ui/access.log",
-            "/usr/local/x-ui/access.log",
-            "/var/log/xray/access.log",
-            "/etc/x-ui/xray-access.log"
+            "/opt/spectre-panel/bin/xray.log",
+            "/root/Spectre-panel/bin/xray.log",
+            "/home/spectre-panel/bin/xray.log",
+            "/app/bin/xray.log",
+            "/opt/Spectre-panel/bin/xray.log"
         ]
         
         for path in log_paths:
-            cmd = ["pct", "exec", str(vmid), "--", "tail", "-n", "50", path]
-            res = subprocess.run(cmd, capture_output=True, text=True, timeout=2)
+            cmd = ["pct", "exec", str(vmid), "--", "tail", "-n", "100", path]
+            # Запускаем в треде, чтобы не блокировать асинхронный цикл
+            def run_sync():
+                return subprocess.run(cmd, capture_output=True, text=True, timeout=2)
+            res = await asyncio.to_thread(run_sync)
             if res.returncode == 0 and res.stdout:
                 lines = res.stdout.splitlines()
                 for line in reversed(lines):
@@ -108,17 +132,6 @@ def find_xray_client_email(vmid, dst_ip, dpt):
                         if match:
                             return match.group(1)
                             
-        service_name = detect_xui_service(vmid)
-        cmd_journal = ["pct", "exec", str(vmid), "--", "journalctl", "-u", service_name, "-n", "50", "--no-pager"]
-        res_j = subprocess.run(cmd_journal, capture_output=True, text=True, timeout=2)
-        if res_j.returncode == 0 and res_j.stdout:
-            lines = res_j.stdout.splitlines()
-            for line in reversed(lines):
-                if target_conn in line and "email:" in line:
-                    match = re.search(r"email:\s*(\S+)", line)
-                    if match:
-                        return match.group(1)
-                        
     except Exception as e:
-        logging.error(f"Ошибка при поиске email клиента Xray: {e}")
+        logging.error(f"Ошибка при резервном поиске email клиента Xray в файле лога: {e}")
     return None

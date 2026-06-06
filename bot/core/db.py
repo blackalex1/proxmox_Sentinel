@@ -69,8 +69,18 @@ def init_db():
                     PRIMARY KEY (server_ip, dst_ip)
                 );
             """)
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS ips_incidents (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    attacker_ip TEXT,
+                    tunnel_name TEXT,
+                    attacker_email TEXT,
+                    reaction_time TEXT,
+                    timestamp TEXT
+                );
+            """)
             
-        logging.info("[Database] Таблицы базы данных успешно проверены/созданы с поддержкой трафика.")
+        logging.info("[Database] Таблицы базы данных успешно проверены/созданы с поддержкой трафика и инцидентов.")
         
         # Миграция из JSON файла при первом запуске
         if os.path.exists(JSON_FILE):
@@ -190,4 +200,59 @@ async def set_state(key: str, value) -> bool:
     except Exception as e:
         logging.error(f"[Database] Ошибка сериализации состояния для '{key}': {e}")
         return False
+
+async def log_ips_incident(attacker_ip: str, tunnel_name: str, attacker_email: str, reaction_time: str) -> bool:
+    """Записывает инцидент IPS в базу данных."""
+    import datetime
+    timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    return await execute_write(
+        "INSERT INTO ips_incidents (attacker_ip, tunnel_name, attacker_email, reaction_time, timestamp) VALUES (?, ?, ?, ?, ?)",
+        (attacker_ip, tunnel_name, attacker_email, reaction_time, timestamp)
+    )
+
+async def get_node_whitelists() -> dict:
+    """Возвращает все белые списки нод."""
+    return await get_state("ips_node_whitelists", {})
+
+async def save_node_whitelists(whitelists: dict) -> bool:
+    """Сохраняет все белые списки нод."""
+    return await set_state("ips_node_whitelists", whitelists)
+
+async def is_whitelisted(node: str, ip: Optional[str] = None, port: Optional[int] = None, process: Optional[str] = None) -> bool:
+    """
+    Проверяет, находится ли IP:Порт или Процесс в белом списке для данной ноды или глобально.
+    """
+    whitelists = await get_node_whitelists()
+    
+    # Проверяем конкретную ноду и глобальную ноду
+    nodes_to_check = ["global", node]
+    
+    for n in nodes_to_check:
+        wl = whitelists.get(n, {})
+        
+        # Проверяем процессы
+        if process:
+            proc_wl = wl.get("processes", [])
+            if process.lower().strip() in [p.lower().strip() for p in proc_wl]:
+                logging.info(f"[Whitelist Check] Процесс {process} находится в белом списке ноды {n}")
+                return True
+                
+        # Проверяем IP и Порт
+        if ip:
+            ip_port_wl = wl.get("ip_ports", [])
+            for entry in ip_port_wl:
+                entry = entry.strip()
+                if ":" in entry:
+                    entry_ip, entry_port = entry.rsplit(":", 1)
+                    if entry_ip == ip:
+                        if entry_port == "*" or (port is not None and str(entry_port) == str(port)):
+                            logging.info(f"[Whitelist Check] Соединение {ip}:{port} совпало с правилом {entry} на ноде {n}")
+                            return True
+                else:
+                    if entry == ip:
+                        logging.info(f"[Whitelist Check] IP {ip} совпал с правилом {entry} на ноде {n}")
+                        return True
+                        
+    return False
+
 
