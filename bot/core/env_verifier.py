@@ -17,10 +17,6 @@ def verify_env_configuration():
     if not all(proxmox_fields):
         missing.append("PROXMOX_* (PROXMOX_HOST, PROXMOX_USER, PROXMOX_TOKEN_ID, PROXMOX_TOKEN_SECRET - мониторинг Proxmox VE)")
         
-    # 3. Интеграция 3X-UI
-    xui_fields = [settings.xui_host, settings.xui_username, settings.xui_password]
-    if not all(xui_fields):
-        missing.append("XUI_* (XUI_HOST, XUI_USERNAME, XUI_PASSWORD - управление 3X-UI VPN панелью)")
         
     # 4. Ansible Playbooks
     if not settings.ansible_playbooks_dir:

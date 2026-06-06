@@ -12,3 +12,6 @@ asyncssh
 pytest
 pytest-asyncio
 pysocks
+qrcode
+pillow
+
