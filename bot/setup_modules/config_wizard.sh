@@ -241,6 +241,9 @@ run_config_wizard() {
             # Запрашиваем VPN_VMID
             prompt_var "VPN_VMID" "Идентификатор контейнера с VPN (VPN_VMID)" "${AUTO_VPN_VMID:-101}"
             
+            # Белый список назначений для IPS
+            prompt_var "IPS_DESTINATION_WHITELIST" "Белый список назначений IPS (IP или IP:порт через запятую, например: 1.2.3.4,5.6.7.8:22)" ""
+            
             # Мониторинг VPS
             prompt_bool "REMOTE_MONITOR_ENABLE" "Включить мониторинг удаленного сервера VPS?" "False"
             vps_enabled=$(grep -E "^REMOTE_MONITOR_ENABLE=" "${ENV_FILE}" | cut -d'=' -f2- | tr '[:upper:]' '[:lower:]')

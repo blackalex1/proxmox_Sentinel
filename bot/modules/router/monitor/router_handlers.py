@@ -27,6 +27,10 @@ async def handle_router_iptables_log_line(line):
         if not is_sensitive:
             return
             
+        # Проверяем, находится ли цель в белом списке назначений (IPS_DESTINATION_WHITELIST)
+        if settings.is_destination_whitelisted(dst_host, dst_port):
+            return
+            
         # Проверяем белый список IP (с детальной проверкой процессов на хосте)
         if await check_is_bot_or_admin(src_ip, src_port, dst_host, dst_port):
             return
@@ -108,6 +112,10 @@ async def handle_router_conntrack_log_line(line):
         # 1. Проверяем, идет ли запрос на чувствительный порт
         is_sensitive = dst_port in settings.monitor_lxc_ports_sensitive
         if not is_sensitive:
+            return
+            
+        # Проверяем, находится ли цель в белом списке назначений (IPS_DESTINATION_WHITELIST)
+        if settings.is_destination_whitelisted(dst_host, dst_port):
             return
             
         # Проверяем белый список IP (с детальной проверкой процессов на хосте)

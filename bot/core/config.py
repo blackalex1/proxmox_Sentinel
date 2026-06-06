@@ -107,6 +107,9 @@ class Settings(BaseSettings):
     # Белый список LXC контейнеров для IPS (им разрешены любые исходящие соединения)
     ips_lxc_whitelist: List[int] | str = Field(default_factory=list, validation_alias='IPS_LXC_WHITELIST')
 
+    # Белый список назначений для IPS (IP или IP:порт)
+    ips_destination_whitelist: List[str] | str = Field(default_factory=list, validation_alias='IPS_DESTINATION_WHITELIST')
+
     # Временный белый список командной строки процессов (для авто-тестов)
     ips_temp_whitelist_cmdline: str = Field(default='', validation_alias='IPS_TEMP_WHITELIST_CMDLINE')
 
@@ -133,6 +136,38 @@ class Settings(BaseSettings):
     remote_servers: List[Dict[str, str]] = Field(default_factory=list)
 
     # Валидаторы полей
+    def is_destination_whitelisted(self, ip: str, port: int) -> bool:
+        """
+        Проверяет, находится ли целевой IP или комбинация IP:порт в белом списке назначений.
+        """
+        if not ip:
+            return False
+        
+        whitelist = self.ips_destination_whitelist
+        if not whitelist:
+            return False
+            
+        if isinstance(whitelist, str):
+            whitelist = [x.strip() for x in whitelist.split(',') if x.strip()]
+            
+        for entry in whitelist:
+            entry = entry.strip()
+            if not entry:
+                continue
+            if ':' in entry:
+                # Формат ip:port
+                parts = entry.rsplit(':', 1)
+                if len(parts) == 2:
+                    w_ip, w_port = parts
+                    if w_ip == ip and w_port.isdigit() and int(w_port) == port:
+                        return True
+            else:
+                # Формат ip
+                if entry == ip:
+                    return True
+                    
+        return False
+
     @field_validator('bot_token')
     @classmethod
     def validate_bot_token(cls, v: str) -> str:
@@ -154,6 +189,7 @@ class Settings(BaseSettings):
 
     @field_validator(
         'trusted_admin_ips', 'vpn_ignore_users', 'ips_process_whitelist', 'remote_monitor_ignore_keys', 'remote_monitor_ignore_ips',
+        'ips_destination_whitelist',
         mode='before'
     )
     @classmethod

@@ -492,6 +492,137 @@ def test_parse_auth_line_ssh_close():
     assert event_disc is None
 
 
+def test_classify_connection_destination_whitelist():
+    from modules.proxmox.monitor.traffic.parser import classify_connection
+    from core.config import settings
+    
+    # Save original settings
+    original_whitelist = settings.ips_destination_whitelist
+    original_sensitive = settings.monitor_lxc_ports_sensitive
+    
+    settings.ips_destination_whitelist = ["1.1.1.1", "2.2.2.2:22"]
+    settings.monitor_lxc_ports_sensitive = [22]
+    
+    try:
+        # Outgoing connection to whitelisted IP (1.1.1.1) on sensitive port 22
+        event_ip_whitelisted = {
+            'vmid': 101,
+            'direction': 'OUT',
+            'proto': 'TCP',
+            'src': '192.168.1.150',
+            'dst': '1.1.1.1',
+            'spt': 12345,
+            'dpt': 22
+        }
+        risk, label, desc = classify_connection(event_ip_whitelisted)
+        assert risk == 'INFO'
+        assert '🟢' in label or 'Разрешенное назначение' in label
+        
+        # Outgoing connection to whitelisted IP:port (2.2.2.2:22)
+        event_ip_port_whitelisted = {
+            'vmid': 101,
+            'direction': 'OUT',
+            'proto': 'TCP',
+            'src': '192.168.1.150',
+            'dst': '2.2.2.2',
+            'spt': 12345,
+            'dpt': 22
+        }
+        risk, label, desc = classify_connection(event_ip_port_whitelisted)
+        assert risk == 'INFO'
+        
+        # Outgoing connection to whitelisted IP:port but wrong port (2.2.2.2:3389)
+        settings.monitor_lxc_ports_sensitive = [22, 3389]
+        event_wrong_port = {
+            'vmid': 101,
+            'direction': 'OUT',
+            'proto': 'TCP',
+            'src': '192.168.1.150',
+            'dst': '2.2.2.2',
+            'spt': 12345,
+            'dpt': 3389
+        }
+        risk, label, desc = classify_connection(event_wrong_port)
+        assert risk == 'WARNING' or risk == 'CRITICAL'
+        
+        # Outgoing connection to non-whitelisted IP (3.3.3.3) on sensitive port 22
+        event_not_whitelisted = {
+            'vmid': 101,
+            'direction': 'OUT',
+            'proto': 'TCP',
+            'src': '192.168.1.150',
+            'dst': '3.3.3.3',
+            'spt': 12345,
+            'dpt': 22
+        }
+        risk, label, desc = classify_connection(event_not_whitelisted)
+        assert risk == 'WARNING' or risk == 'CRITICAL'
+    finally:
+        settings.ips_destination_whitelist = original_whitelist
+        settings.monitor_lxc_ports_sensitive = original_sensitive
+
+
+@pytest.mark.asyncio
+async def test_remote_traffic_destination_whitelist():
+    from modules.proxmox.monitor.remote.traffic import handle_remote_traffic_line
+    from core.config import settings
+    
+    server = {'ip': '192.168.1.99'}
+    log_line = "REMOTE_CONN_OUT: SRC=192.168.1.99 DST=1.1.1.1 PROTO=TCP SPT=12345 DPT=22"
+    
+    original_whitelist = settings.ips_destination_whitelist
+    settings.ips_destination_whitelist = ["1.1.1.1"]
+    
+    try:
+        with patch("modules.proxmox.monitor.remote.traffic.send_alert_to_admins", AsyncMock()) as mock_alert, \
+             patch("modules.proxmox.monitor.remote.traffic.get_and_kill_remote_process", AsyncMock()) as mock_kill:
+             
+            await handle_remote_traffic_line(log_line, server=server)
+            
+            mock_alert.assert_not_called()
+            mock_kill.assert_not_called()
+    finally:
+        settings.ips_destination_whitelist = original_whitelist
+
+
+@pytest.mark.asyncio
+async def test_router_traffic_destination_whitelist():
+    from modules.router.monitor.router_handlers import handle_router_iptables_log_line, handle_router_conntrack_log_line
+    from core.config import settings
+    
+    iptables_line = "ROUTER-IPS: IN=br-lan OUT= SRC=192.168.1.150 DST=1.1.1.1 PROTO=TCP SPT=54321 DPT=22"
+    conntrack_line = "[NEW] tcp      6 120 SYN_SENT src=192.168.1.150 dst=1.1.1.1 sport=54321 dport=22 [UNREPLIED]"
+    
+    original_whitelist = settings.ips_destination_whitelist
+    original_sensitive = settings.monitor_lxc_ports_sensitive
+    
+    settings.ips_destination_whitelist = ["1.1.1.1"]
+    settings.monitor_lxc_ports_sensitive = [22]
+    
+    try:
+        # Test IPTables pathway
+        with patch("modules.router.monitor.router_handlers.send_alert_to_admins", AsyncMock()) as mock_alert, \
+             patch("modules.router.monitor.router_handlers.ban_router_ip", AsyncMock()) as mock_ban:
+             
+            await handle_router_iptables_log_line(iptables_line)
+            
+            mock_alert.assert_not_called()
+            mock_ban.assert_not_called()
+            
+        # Test Conntrack pathway
+        with patch("modules.router.monitor.router_handlers.send_alert_to_admins", AsyncMock()) as mock_alert, \
+             patch("modules.router.monitor.router_handlers.ban_router_ip", AsyncMock()) as mock_ban:
+             
+            await handle_router_conntrack_log_line(conntrack_line)
+            
+            mock_alert.assert_not_called()
+            mock_ban.assert_not_called()
+    finally:
+        settings.ips_destination_whitelist = original_whitelist
+        settings.monitor_lxc_ports_sensitive = original_sensitive
+
+
+
 
 
 

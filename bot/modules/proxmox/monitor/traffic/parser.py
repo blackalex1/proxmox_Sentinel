@@ -25,6 +25,11 @@ def classify_connection(event):
     spt = event['spt']
     dpt = event['dpt']
     
+    # Проверяем белый список назначений (IPS_DESTINATION_WHITELIST)
+    if direction == 'OUT' and settings.is_destination_whitelisted(dst, dpt):
+        return ('INFO', '🟢 Разрешенное назначение (Белый список IPS)', f'Информационное: Исходящее соединение на разрешенный узел {dst}:{dpt}')
+
+    
     # 0. Проверяем, является ли это хостом Proxmox VE
     if vmid == 0:
         if direction == 'IN':

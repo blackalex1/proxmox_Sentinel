@@ -96,7 +96,12 @@ async def handle_remote_traffic_line(line, server=None):
             
         is_sensitive = dpt in [22, 3389, 3306, 5432, 27017, 8006]
         
+        # Проверяем белый список назначений (IPS_DESTINATION_WHITELIST)
+        if direction == 'OUT' and is_sensitive and settings.is_destination_whitelisted(dst, dpt):
+            return
+        
         now = asyncio.get_event_loop().time()
+
         throttle_key = f"remote_traffic_{server['ip']}_{src}_{dst}_{dpt}"
         
         if direction == 'IN' and is_sensitive:
