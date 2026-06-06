@@ -147,20 +147,4 @@ def is_private_ip(ip):
         return False
 
 
-def detect_xui_service(vmid):
-    """Определяет имя системной службы X-UI (x-ui или 3x-ui) внутри контейнера."""
-    import subprocess
-    import platform
-    if platform.system() != 'Linux':
-        return "x-ui"
-    for svc in ["x-ui", "3x-ui"]:
-        try:
-            # Выполняем быструю проверку статуса службы в контейнере
-            cmd = ["pct", "exec", str(vmid), "--", "systemctl", "is-active", svc]
-            res = subprocess.run(cmd, capture_output=True, text=True, timeout=2)
-            if res.returncode == 0 or "active" in res.stdout or "inactive" in res.stdout:
-                return svc
-        except Exception:
-            pass
-    return "x-ui"
 

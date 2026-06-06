@@ -135,7 +135,7 @@ def generate_ansible_hosts_ini(directory: str) -> bool:
                             groups["control"].append(host_name)
                         elif "qwen" in host_name or "claw" in host_name or "ai" in host_name:
                             groups["ai"].append(host_name)
-                        elif "vpn" in host_name or "my_vps" in host_name or "yandex" in host_name or host_name == "xui":
+                        elif "vpn" in host_name or "my_vps" in host_name or "yandex" in host_name or host_name in ["xui", "spectre", "xray"]:
                             groups["vpn"].append(host_name)
                         else:
                             groups["services"].append(host_name)

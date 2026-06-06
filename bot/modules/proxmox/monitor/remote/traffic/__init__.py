@@ -6,6 +6,7 @@ from core.config import settings
 from modules.proxmox.monitor.utils import send_alert_to_admins
 from ..ssh import run_remote_ssh_cmd
 from .firewall import block_remote_ip, cleanup_remote_blocks_on_startup
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 # Память для троттлинга алертов трафика удаленного VPS (IP -> timestamp)
 recent_remote_traffic_alerts = {}
@@ -60,7 +61,9 @@ async def get_and_kill_remote_process(server, spt):
                 match = re.search(r'users:\(\("([^"]+)",(?:pid=)?(\d+)', line)
                 if match:
                     proc_name, pid = match.groups()
-                    if proc_name.lower().strip() in settings.ips_process_whitelist:
+                    node_name = f"vps_{server['ip']}"
+                    from core.db import is_whitelisted
+                    if proc_name.lower().strip() in settings.ips_process_whitelist or await is_whitelisted(node_name, process=proc_name):
                         logging.info(f"[Remote IPS {server['ip']}] Процесс {proc_name} (PID: {pid}) в белом списке. Завершение отменено.")
                         return proc_name, "WHITELISTED"
                     
@@ -74,6 +77,105 @@ async def get_and_kill_remote_process(server, spt):
     except Exception as e:
         logging.error(f"[Remote IPS {server['ip']}] Ошибка при поиске и убийстве процесса: {e}")
     return None, None
+
+async def investigate_and_resolve_remote_attack(server, dst_ip, dpt, tunnel_email, proto, src_ip, spt):
+    """
+    Асинхронная задача расследования атаки:
+    1. Ждет 2 секунды, чтобы логи Xray на локальных LXC записались.
+    2. Опрашивает все панели в поисках Xray-клиента по IP/порту назначения.
+    3. Если виновник найден: перманентно банит его везде, разбанивает туннель, шлет отчет.
+    4. Если виновник не найден: оставляет туннель заблокированным, собирает логи и шлет кнопку ручного разбана.
+    """
+    from core.spectre_client import spectre_manager
+    
+    # 1. Ждем запись логов
+    await asyncio.sleep(2.0)
+    
+    xray_client = None
+    target_panel = None
+    
+    # 2. Ищем виновника в Xray на всех панелях
+    for p in spectre_manager.panels.values():
+        params = {"port": dpt, "dst_ip": dst_ip}
+        success, res = await p.request("GET", "/api/security/client-by-connection", params=params)
+        if success and res.get("success") and res.get("source") == "xray":
+            xray_client = res["email"]
+            target_panel = p
+            break
+            
+    timestamp = datetime.datetime.now().strftime("%H:%M:%S")
+    
+    if xray_client:
+        # Фаза 2: Нарушитель найден!
+        # Глобальный бан нарушителя
+        block_res = await spectre_manager.disable_client_everywhere(xray_client)
+        block_details = []
+        for panel_name, success, msg in block_res:
+            status_str = "🟢 Успешно" if success else "🔴 Ошибка"
+            block_details.append(f"  • {panel_name}: {status_str} ({msg})")
+        block_details_str = "\n".join(block_details)
+        
+        # Разбан туннеля Hysteria
+        unblock_res = await spectre_manager.enable_client_everywhere(tunnel_email)
+        unblock_details = []
+        for panel_name, success, msg in unblock_res:
+            status_str = "🟢 Успешно" if success else "🔴 Ошибка"
+            unblock_details.append(f"  • {panel_name}: {status_str} ({msg})")
+        unblock_details_str = "\n".join(unblock_details)
+        
+        msg = (f"✅ <b>[IPS: Расследование завершено] Нарушитель найден!</b>\n\n"
+               f"👤 <b>Заблокирован нарушитель (Xray):</b> <code>{xray_client}</code>\n"
+               f"🔓 <b>Снята временная блокировка с туннеля Hysteria:</b> <code>{tunnel_email}</code>\n\n"
+               f"🌐 <b>Маршрут атаки:</b>\n"
+               f"  • Вход: <code>{target_panel.name if target_panel else 'LXC'}</code> (Xray)\n"
+               f"  • Транзит: <code>{tunnel_email}</code> (Hysteria2)\n"
+               f"  • Выход: VPS <code>{server['ip']}</code> → <code>{dst_ip}:{dpt}</code>\n\n"
+               f"📋 <b>Детали глобального бана нарушителя:</b>\n{block_details_str}\n\n"
+               f"📋 <b>Детали разблокировки туннеля Hysteria:</b>\n{unblock_details_str}\n\n"
+               f"🕒 Время: <code>{timestamp}</code>\n"
+               f"✨ Все остальные пользователи туннеля снова в сети!")
+        await send_alert_to_admins(msg)
+    else:
+        # Фаза 2: Виновник не найден
+        xray_logs_summary = ""
+        hysteria_logs_summary = ""
+        
+        # Сбор логов Xray с LXC контейнеров
+        for p in spectre_manager.panels.values():
+            if p.source_type == 'lxc':
+                try:
+                    cmd = ["pct", "exec", str(p.identifier), "--", "tail", "-n", "10", "/var/log/xray/access.log"]
+                    proc = await asyncio.create_subprocess_exec(*cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+                    stdout, _ = await proc.communicate()
+                    if proc.returncode == 0 and stdout:
+                        xray_logs_summary += f"\n<b>Логи Xray ({p.name}):</b>\n<code>" + stdout.decode('utf-8', errors='ignore')[-400:] + "</code>\n"
+                except Exception as e:
+                    logging.error(f"Failed to gather LXC logs: {e}")
+                    
+        # Сбор логов Hysteria с VPS
+        try:
+            success, stdout, stderr = await run_remote_ssh_cmd(server, ["tail", "-n", "10", "/var/log/hysteria.log"])
+            if success and stdout:
+                hysteria_logs_summary += f"\n<b>Логи Hysteria (VPS {server['ip']}):</b>\n<code>" + stdout[-400:] + "</code>\n"
+        except Exception as e:
+            logging.error(f"Failed to gather VPS logs: {e}")
+            
+        logs_text = xray_logs_summary + hysteria_logs_summary
+        if not logs_text.strip():
+            logs_text = "<i>(Не удалось собрать фрагменты логов)</i>"
+            
+        # Формируем клавиатуру с callback_data
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🔓 Разблокировать туннель", callback_data=f"unban_tunnel:{tunnel_email}")]
+        ])
+        
+        msg = (f"⚠️ <b>[IPS: Расследование не удалось] Виновник не обнаружен!</b>\n\n"
+               f"🚨 <b>Туннель Hysteria оставлен в бане:</b> <code>{tunnel_email}</code>\n"
+               f"🎯 Цель атаки: <code>{dst_ip}:{dpt}</code>\n"
+               f"🕒 Время: <code>{timestamp}</code>\n\n"
+               f"🔍 <b>Собранные фрагменты логов:</b>\n{logs_text}\n"
+               f"👇 Вы можете разблокировать туннель вручную в один клик:")
+        await send_alert_to_admins(msg, reply_markup=keyboard)
 
 async def handle_remote_traffic_line(line, server=None):
     """Парсинг сетевых алертов iptables удаленного VPS."""
@@ -101,6 +203,12 @@ async def handle_remote_traffic_line(line, server=None):
         
         if direction == 'IN' and is_sensitive:
             if src not in settings.trusted_admin_ips:
+                node_name = f"vps_{server['ip']}"
+                from core.db import is_whitelisted
+                if await is_whitelisted(node_name, ip=src, port=dpt):
+                    logging.info(f"[Remote IPS {server['ip']}] Входящее соединение с {src} на {dpt} в белом списке. Игнорируем.")
+                    return
+                    
                 last_alert = recent_remote_traffic_alerts.get(throttle_key, 0)
                 if now - last_alert < 30:
                     return
@@ -114,14 +222,99 @@ async def handle_remote_traffic_line(line, server=None):
                        f"🕒 Время: <code>{timestamp}</code>")
                 await send_alert_to_admins(msg)
         elif direction == 'OUT' and is_sensitive:
+            node_name = f"vps_{server['ip']}"
+            from core.db import is_whitelisted
+            if await is_whitelisted(node_name, ip=dst, port=dpt):
+                logging.info(f"[Remote IPS {server['ip']}] Исходящее соединение на {dst}:{dpt} в белом списке. Игнорируем.")
+                return
+                
             last_alert = recent_remote_traffic_alerts.get(throttle_key, 0)
             if now - last_alert < 30:
                 return
             recent_remote_traffic_alerts[throttle_key] = now
             
-            proc_name, killed_pid = await get_and_kill_remote_process(server, spt)
-            
+            # Попытка найти email клиента на панели этого VPS
+            res_connection = None
+            try:
+                from core.spectre_client import spectre_manager
+                res_connection = await spectre_manager.get_client_by_connection(
+                    client_ip=None,
+                    dst_ip=dst,
+                    port=dpt,
+                    source_type='vps',
+                    source_id=server['ip']
+                )
+            except Exception as e:
+                logging.error(f"Error resolving remote traffic client: {e}")
+
             timestamp = datetime.datetime.now().strftime("%H:%M:%S")
+
+            if res_connection:
+                email, panel, source = res_connection
+                
+                # Если атака идет из Hysteria-туннеля:
+                if source == "hysteria":
+                    # Фаза 1: Мгновенно блокируем Hysteria-туннель
+                    from core.spectre_client import spectre_manager
+                    start_time = asyncio.get_event_loop().time()
+                    block_res = await spectre_manager.disable_client_everywhere(email)
+                    reaction_time = f"{asyncio.get_event_loop().time() - start_time:.3f}s"
+                    
+                    from core.db import log_ips_incident
+                    await log_ips_incident(attacker_ip=src, tunnel_name="Hysteria2", attacker_email=email, reaction_time=reaction_time)
+                    
+                    block_details = []
+                    for panel_name, success, msg in block_res:
+                        status_str = "🟢 Успешно" if success else "🔴 Ошибка"
+                        block_details.append(f"  • {panel_name}: {status_str} ({msg})")
+                    block_details_str = "\n".join(block_details)
+                    
+                    # Пишем админам о временном бане и начале расследования
+                    msg = (f"🚨 <b>[VPS Traffic IPS: {server['ip']}] Обнаружена атака через Hysteria-туннель!</b>\n\n"
+                           f"🔥 <b>Временная блокировка туннеля активирована:</b> <code>{email}</code>\n"
+                           f"🌐 Протокол: <code>{proto}</code>\n"
+                           f"👤 Источник: <code>{src}:{spt}</code>\n"
+                           f"🎯 Назначение: <code>{dst}:{dpt}</code>\n"
+                           f"🕒 Время: <code>{timestamp}</code>\n\n"
+                           f"📋 <b>Статус блокировки туннеля:</b>\n{block_details_str}\n\n"
+                           f"🔍 <b>Запущено асинхронное расследование для поиска конкретного виновника внутри туннеля...</b>")
+                    await send_alert_to_admins(msg)
+                    
+                    # Запускаем расследование в фоновом таске
+                    asyncio.create_task(investigate_and_resolve_remote_attack(server, dst, dpt, email, proto, src, spt))
+                    return
+                else:
+                    # Если атака идет напрямую от Xray клиента (source == "xray")
+                    # Сразу баним его
+                    from core.spectre_client import spectre_manager
+                    start_time = asyncio.get_event_loop().time()
+                    block_res = await spectre_manager.disable_client_everywhere(email)
+                    reaction_time = f"{asyncio.get_event_loop().time() - start_time:.3f}s"
+                    
+                    from core.db import log_ips_incident
+                    await log_ips_incident(attacker_ip=src, tunnel_name="Xray", attacker_email=email, reaction_time=reaction_time)
+                    
+                    block_details = []
+                    for panel_name, success, msg in block_res:
+                        status_str = "🟢 Успешно" if success else "🔴 Ошибка"
+                        block_details.append(f"  • {panel_name}: {status_str} ({msg})")
+                    block_details_str = "\n".join(block_details)
+                    
+                    proc_name, killed_pid = await get_and_kill_remote_process(server, spt)
+                    
+                    proc_info = f"\n📁 Процесс: <code>{proc_name}</code> (PID: <code>{killed_pid}</code>)" if proc_name and killed_pid else ""
+                    msg = (f"🚨 <b>[VPS Traffic IPS: {server['ip']}] Блокировка сетевой атаки!</b>\n\n"
+                           f"👤 <b>Нарушитель (Xray):</b> <code>{email}</code>\n"
+                           f"🌐 Протокол: <code>{proto}</code>\n"
+                           f"👤 Источник: <code>{src}:{spt}</code>{proc_info}\n"
+                           f"🎯 Назначение: <code>{dst}:{dpt}</code>\n"
+                           f"🕒 Время: <code>{timestamp}</code>\n\n"
+                           f"🚨 <b>Статус авто-блокировки аккаунта нарушителя:</b>\n{block_details_str}\n")
+                    await send_alert_to_admins(msg)
+                    return
+            
+            # Если клиент не определен, пытаемся найти и завершить процесс по порту
+            proc_name, killed_pid = await get_and_kill_remote_process(server, spt)
             
             if proc_name and killed_pid:
                 if killed_pid == "WHITELISTED":
@@ -133,6 +326,10 @@ async def handle_remote_traffic_line(line, server=None):
                            f"🎯 Назначение: <code>{dst}:{dpt}</code>\n"
                            f"🕒 Время: <code>{timestamp}</code>")
                 else:
+                    # Процесс убит
+                    from core.db import log_ips_incident
+                    await log_ips_incident(attacker_ip=src, tunnel_name="Process", attacker_email=f"Process: {proc_name}", reaction_time="< 1.0s")
+                    
                     msg = (f"🚨 <b>[VPS Traffic IPS: {server['ip']}] Заблокирована сетевая атака!</b>\n\n"
                            f"🔥 <b>Процесс автоматически уничтожен (kill -9)!</b>\n\n"
                            f"📁 Процесс: <code>{proc_name}</code> (PID: <code>{killed_pid}</code>)\n"
@@ -147,7 +344,7 @@ async def handle_remote_traffic_line(line, server=None):
                        f"👤 Источник: <code>{src}:{spt}</code>{proc_info}\n"
                        f"🎯 Назначение: <code>{dst}:{dpt}</code>\n"
                        f"🕒 Время: <code>{timestamp}</code>\n"
-                       f"ℹ️ <i>Примечание: Процесс уже завершил работу.</i>")
+                       f"ℹ️ <i>Примечание: Процесс уже завершил работу или не найден.</i>")
             await send_alert_to_admins(msg)
     except Exception as e:
         logging.error(f"Ошибка в обработчике логов трафика удаленного сервера {server['ip']}: {e}")

@@ -129,6 +129,19 @@ async def handle_traffic_log_line(line):
         
         # 2. Отправляем уведомления только для WARNING и CRITICAL угроз
         if risk_level in ['WARNING', 'CRITICAL']:
+            # Проверка белых списков
+            node = "local" if vmid == 0 else f"lxc_{vmid}"
+            from core.db import is_whitelisted
+            whitelisted = False
+            if direction == 'IN':
+                whitelisted = await is_whitelisted(node, ip=src, port=dpt)
+            else:
+                whitelisted = await is_whitelisted(node, ip=dst, port=dpt)
+                
+            if whitelisted:
+                logging.info(f"[Traffic Monitor] Соединение ({src} -> {dst}:{dpt}) находится в белом списке ноды {node} или global. Игнорируем.")
+                return
+
             is_transit_vpn = (vmid == settings.vpn_vmid and not is_local)
             proc_name, killed_pid = None, None
             if direction == 'OUT' and dpt in settings.monitor_lxc_ports_sensitive:
@@ -151,7 +164,7 @@ async def handle_traffic_log_line(line):
                 # Пауза 1.2 секунды, чтобы conntrack обновился и Xray успел сбросить буфер в access.log
                 await asyncio.sleep(1.2)
                 real_client_ip = find_real_vpn_client_ip(proto, src, dst, spt, dpt)
-                xray_client_email = find_xray_client_email(vmid, dst, dpt)
+                xray_client_email = await find_xray_client_email(vmid, dst, dpt, real_client_ip)
 
             if killed_pid:
                 if killed_pid == "WHITELISTED":
@@ -172,8 +185,20 @@ async def handle_traffic_log_line(line):
                 desc_with_client += f" (Реальный IP VPN-клиента: {real_client_ip})"
             
             if xray_client_email:
-                client_info += f"\n👤 <b>Пользователь Xray (3X-UI):</b> <code>{xray_client_email}</code>\n"
-                desc_with_client += f" (Клиент Xray: {xray_client_email})"
+                client_info += f"\n👤 <b>Пользователь VPN (Spectre/Xray):</b> <code>{xray_client_email}</code>\n"
+                desc_with_client += f" (Клиент: {xray_client_email})"
+                
+                # Авто-блокировка вредоносного клиента при критической угрозе
+                if risk_level == 'CRITICAL':
+                    from core.spectre_client import spectre_manager
+                    block_res = await spectre_manager.disable_client_everywhere(xray_client_email)
+                    block_details = []
+                    for panel_name, success, msg in block_res:
+                        status_str = "🟢 Успешно" if success else "🔴 Ошибка"
+                        block_details.append(f"  • {panel_name}: {status_str} ({msg})")
+                    block_details_str = "\n".join(block_details)
+                    client_info += f"\n🚨 <b>Статус авто-блокировки аккаунта:</b>\n{block_details_str}\n"
+                    desc_with_client += " [АККАУНТ АВТОБЛОКИРОВАН И СЕССИЯ СБРОШЕНА]"
             
             msg = (f"{title}\n\n"
                    f"📦 Контейнер: <b>{vmid} ({container_name})</b>\n"

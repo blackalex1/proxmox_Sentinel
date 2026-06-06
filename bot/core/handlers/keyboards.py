@@ -4,8 +4,7 @@ from core.config import settings
 def get_main_menu_keyboard() -> InlineKeyboardMarkup:
     buttons = [
         [
-            InlineKeyboardButton(text="🖥️ Proxmox VE", callback_data="proxmox_main"),
-            InlineKeyboardButton(text="🌍 3X-UI Panel", callback_data="xui_main")
+            InlineKeyboardButton(text="🖥️ Proxmox VE", callback_data="proxmox_main")
         ],
         [
             InlineKeyboardButton(text="🛠️ Ansible Playbooks", callback_data="ansible_main")
@@ -54,7 +53,7 @@ def get_help_text() -> str:
     return (
         "ℹ️ <b>Справка по командам PVE Aegis:</b>\n\n"
         "• /start — Показать интерактивную панель управления (Главное меню)\n"
-        "• /status — Быстрый аудит и статус всех систем (Proxmox, 3X-UI, фоновые службы)\n"
+        "• /status — Быстрый аудит и статус всех систем (Proxmox, фоновые службы)\n"
         "• /bans — Центр управления активными временными блокировками IP\n"
         "• /help — Показать это справочное сообщение\n"
         "• /id — Показать ваш Telegram ID / ID чата\n\n"

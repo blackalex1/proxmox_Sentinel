@@ -53,7 +53,6 @@ from core.middlewares import AdminFilter
 from core.handlers import router as core_router
 from modules.proxmox.handlers import router as proxmox_router
 from modules.proxmox.tasks import monitor_nodes as proxmox_monitor
-from modules.xui.handlers import router as xui_router
 from modules.ansible.handlers.playbooks import router as ansible_router
 import modules.ansible.handlers.setup
 import modules.ansible.handlers.setup_lxc
@@ -267,7 +266,6 @@ async def main():
     # Подключаем роутеры
     dp.include_router(core_router)
     dp.include_router(proxmox_router)
-    dp.include_router(xui_router)
     dp.include_router(ansible_router)
     
     from modules.router.handlers import router as router_handlers_router

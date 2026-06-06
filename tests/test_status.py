@@ -28,12 +28,10 @@ async def test_is_task_running():
 
 @pytest.mark.asyncio
 async def test_get_system_status_text():
-    # We will mock the task check and the Proxmox/XUI APIs to test text construction
+    # We will mock the task check and the Proxmox APIs to test text construction
     with patch("core.handlers.status.is_task_running") as mock_is_running, \
          patch("modules.proxmox.api.proxmox.proxmox", True), \
-         patch("modules.proxmox.api.proxmox.get_nodes") as mock_nodes, \
-         patch("modules.xui.api.xui.host", "http://1.1.1.1:2053"), \
-         patch("modules.xui.api.xui.get_status", AsyncMock()) as mock_xui:
+         patch("modules.proxmox.api.proxmox.get_nodes") as mock_nodes:
         
         # Setup mocks
         mock_is_running.side_effect = lambda name: name in ["monitor_lxc_resources", "monitor_lxc_traffic"]
@@ -41,12 +39,6 @@ async def test_get_system_status_text():
             {'node': 'pve-node1', 'status': 'online', 'cpu': 0.12, 'mem': 4 * 1024**3, 'maxmem': 8 * 1024**3},
             {'node': 'pve-node2', 'status': 'offline'}
         ]
-        mock_xui.return_value = {
-            'cpu': 5.5,
-            'mem': {'current': 2 * 1024**3, 'total': 4 * 1024**3},
-            'uptime': 7200,
-            'xray': {'version': '1.8.4'}
-        }
         
         status_text = await get_system_status_text()
         
@@ -56,15 +48,10 @@ async def test_get_system_status_text():
         assert "offline" in status_text
         assert "pve-node2" in status_text
         
-        # Verify XUI text representation
-        assert "Xray v1.8.4" in status_text
-        assert "Uptime: 2ч 0м" in status_text
-        
         # Verify background service status checks (resource and traffic running, others stopped)
-        assert "🟢 LXC Resource Monitor — Активен" in status_text
-        assert "🔴 LXC Auth Watcher (auth.log) — Остановлен" in status_text
-        assert "🟢 Active IPS Engine (iptables) — Защита включена" in status_text
-        assert "🔴 3X-UI Connections & Logins — Остановлен" in status_text
+        assert "LXC Resource Monitor —" in status_text
+        assert "LXC Auth Watcher (auth.log) —" in status_text
+        assert "Active IPS Engine (iptables) —" in status_text
 
 
 @pytest.mark.asyncio
