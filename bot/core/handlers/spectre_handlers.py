@@ -13,7 +13,7 @@ router = Router(name="core_spectre_router")
 @router.message(Command("panel"))
 async def cmd_panel(message: types.Message):
     """
-    Открывает WebApp Spectre Panel. Если панелей несколько, предлагает выбор.
+    Открывает меню управления Spectre Panel.
     """
     panels = spectre_manager.panels
     if not panels:
@@ -21,11 +21,15 @@ async def cmd_panel(message: types.Message):
         return
         
     if len(panels) == 1:
+        panel_key = list(panels.keys())[0]
         panel = list(panels.values())[0]
-        # http://<ip>:<port>/<secret_path>/
         webapp_url = f"{panel.url}/{panel.secret_path}/"
         kb = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text=f"📱 Открыть {panel.name}", web_app=WebAppInfo(url=webapp_url))]
+            [InlineKeyboardButton(text=f"📱 Открыть {panel.name}", web_app=WebAppInfo(url=webapp_url))],
+            [
+                InlineKeyboardButton(text="➕ Добавить слейв", callback_data=f"spectre_add_slave:{panel_key}"),
+                InlineKeyboardButton(text="➕ Добавить мастер", callback_data="spectre_add_master")
+            ]
         ])
         await message.reply(
             f"🚀 <b>Панель управления Spectre Panel</b>\n\nСервер: <code>{panel.name}</code>",
@@ -33,12 +37,10 @@ async def cmd_panel(message: types.Message):
             parse_mode="HTML"
         )
     else:
-        # Рисуем список кнопок для выбора панели
         buttons = []
         for p_key, p in panels.items():
-            webapp_url = f"{p.url}/{p.secret_path}/"
-            buttons.append([InlineKeyboardButton(text=f"📱 {p.name}", web_app=WebAppInfo(url=webapp_url))])
-            
+            buttons.append([InlineKeyboardButton(text=f"📱 {p.name}", callback_data=f"spectre_menu:{p_key}")])
+        buttons.append([InlineKeyboardButton(text="➕ Добавить мастер ноду", callback_data="spectre_add_master")])
         kb = InlineKeyboardMarkup(inline_keyboard=buttons)
         await message.reply(
             "🚀 <b>Выберите Spectre Panel для управления:</b>",
@@ -521,6 +523,299 @@ async def cb_tg_2fa_block(callback: CallbackQuery):
         await callback.message.edit_text(f"🛑 <b>IP {ip} заблокирован.</b>", parse_mode="HTML")
     else:
         await callback.answer(f"❌ Ошибка: {error_msg or 'Не удалось заблокировать ни на одной панели'}", show_alert=True)
+
+
+@router.message(Command("audit", "logs"))
+async def cmd_audit(message: types.Message):
+    """
+    Выводит последние 10 действий администраторов из лога аудита.
+    """
+    panels = spectre_manager.panels
+    if not panels:
+        await message.reply("❌ <b>Панели Spectre Panel не обнаружены.</b>")
+        return
+        
+    if len(panels) == 1:
+        panel_key = list(panels.keys())[0]
+        await run_audit_for_panel(message, panel_key)
+    else:
+        buttons = []
+        for p_key, p in panels.items():
+            buttons.append([InlineKeyboardButton(text=p.name, callback_data=f"spectre_audit:{p_key}")])
+        kb = InlineKeyboardMarkup(inline_keyboard=buttons)
+        await message.reply("📋 <b>Выберите панель для просмотра лога аудита:</b>", reply_markup=kb, parse_mode="HTML")
+
+
+@router.callback_query(F.data.startswith("spectre_audit:"))
+async def cb_audit(callback: CallbackQuery):
+    panel_key = callback.data.split(":", 1)[1]
+    await callback.message.delete()
+    await run_audit_for_panel(callback.message, panel_key)
+    await callback.answer()
+
+
+async def run_audit_for_panel(message: types.Message, panel_key: str):
+    panel = spectre_manager.panels.get(panel_key)
+    if not panel:
+        await message.answer("❌ Панель не найдена.")
+        return
+        
+    status_msg = await message.answer(f"⏳ Получение логов аудита от <b>{panel.name}</b>...")
+    success, res = await panel.get_audit_logs(limit=10)
+    
+    if success and res.get("success"):
+        logs = res.get("logs", [])
+        if not logs:
+            await status_msg.edit_text(f"📁 <b>{panel.name}</b>: Лог аудита пуст.")
+            return
+            
+        msg = f"📋 <b>Последние действия в панели: {panel.name}</b>\n"
+        msg += "━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        
+        for log in logs:
+            dt = datetime.datetime.fromtimestamp(log["timestamp"])
+            time_str = dt.strftime("%d.%m %H:%M:%S")
+            target_str = f" ➔ <code>{html.escape(log['target'])}</code>" if log.get('target') else ""
+            details_str = f" (<i>{html.escape(log['details'])}</i>)" if log.get('details') else ""
+            
+            msg += f"🕒 <code>{time_str}</code> | 👤 <b>{html.escape(log['username'])}</b>\n"
+            msg += f"⚙️ <code>{html.escape(log['action'])}</code>{target_str}{details_str}\n"
+            msg += "────────────────────────\n"
+            
+        await status_msg.delete()
+        await message.answer(msg, parse_mode="HTML")
+    else:
+        error_info = res.get("msg") or res.get("error") or "Неизвестная ошибка"
+        await status_msg.edit_text(f"❌ <b>Ошибка получения логов {panel.name}:</b>\n<code>{error_info}</code>")
+
+
+@router.callback_query(F.data.startswith("spectre_menu:"))
+async def cb_spectre_menu(callback: CallbackQuery):
+    panel_key = callback.data.split(":", 1)[1]
+    panel = spectre_manager.panels.get(panel_key)
+    if not panel:
+        await callback.answer("❌ Панель не найдена.", show_alert=True)
+        return
+        
+    webapp_url = f"{panel.url}/{panel.secret_path}/"
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=f"📱 Открыть WebApp", web_app=WebAppInfo(url=webapp_url))],
+        [
+            InlineKeyboardButton(text="⚙️ Статус", callback_data=f"spectre_status:{panel_key}"),
+            InlineKeyboardButton(text="📋 Логи аудита", callback_data=f"spectre_audit:{panel_key}")
+        ],
+        [
+            InlineKeyboardButton(text="📥 Бэкап", callback_data=f"spectre_backup:{panel_key}"),
+            InlineKeyboardButton(text="➕ Добавить слейв", callback_data=f"spectre_add_slave:{panel_key}")
+        ],
+        [InlineKeyboardButton(text="🔙 Назад к списку", callback_data="spectre_list")]
+    ])
+    await callback.message.edit_text(
+        f"🚀 <b>Управление панелью {panel.name}</b>\n\nВыберите действие:",
+        reply_markup=kb,
+        parse_mode="HTML"
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data == "spectre_list")
+async def cb_spectre_list(callback: CallbackQuery):
+    panels = spectre_manager.panels
+    buttons = []
+    for p_key, p in panels.items():
+        buttons.append([InlineKeyboardButton(text=f"📱 {p.name}", callback_data=f"spectre_menu:{p_key}")])
+    buttons.append([InlineKeyboardButton(text="➕ Добавить мастер ноду", callback_data="spectre_add_master")])
+    kb = InlineKeyboardMarkup(inline_keyboard=buttons)
+    await callback.message.edit_text(
+        "🚀 <b>Выберите Spectre Panel для управления:</b>",
+        reply_markup=kb,
+        parse_mode="HTML"
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("spectre_add_slave:"))
+async def cb_add_slave(callback: CallbackQuery):
+    panel_key = callback.data.split(":", 1)[1]
+    panel = spectre_manager.panels.get(panel_key)
+    if not panel:
+        await callback.answer("❌ Панель не найдена.", show_alert=True)
+        return
+        
+    await callback.message.edit_text(
+        f"⏳ <b>Генерация кода подключения для слейв-ноды на {panel.name}...</b>",
+        parse_mode="HTML"
+    )
+    
+    # Запрос join-code с Мастер-панели
+    success, res = await panel.request("POST", "/api/nodes/join-code")
+    if success and "code" in res:
+        join_code = res["code"]
+        expires_at = res["expires_at"]
+        dt = datetime.datetime.fromtimestamp(expires_at)
+        expiry_str = dt.strftime("%d.%m %H:%M:%S")
+        
+        master_url = f"{panel.url}"
+        if panel.secret_path:
+            master_url += f"/{panel.secret_path}"
+            
+        msg = (
+            f"➕ <b>Добавление слейв-ноды для {panel.name}</b>\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━━━\n"
+            f"🔑 Код подключения (Join Code):\n<code>{join_code}</code>\n"
+            f"⏱ Истекает: <b>{expiry_str}</b>\n\n"
+            f"💻 <b>Команда для запуска на слейв-сервере:</b>\n"
+            f"<code>python register_node.py --master \"{master_url}\" --join-code \"{join_code}\"</code>\n\n"
+            f"<i>Запустите эту команду в директории слейв-панели для регистрации публичного ключа.</i>"
+        )
+        
+        back_data = f"spectre_menu:{panel_key}" if len(spectre_manager.panels) > 1 else "spectre_list"
+        kb = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🔙 Назад", callback_data=back_data)]
+        ])
+        await callback.message.edit_text(msg, reply_markup=kb, parse_mode="HTML")
+    else:
+        error_info = res.get("msg") or res.get("error") or "Неизвестная ошибка"
+        back_data = f"spectre_menu:{panel_key}" if len(spectre_manager.panels) > 1 else "spectre_list"
+        kb = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🔙 Назад", callback_data=back_data)]
+        ])
+        await callback.message.edit_text(
+            f"❌ <b>Ошибка генерации кода подключения для {panel.name}:</b>\n<code>{error_info}</code>",
+            reply_markup=kb,
+            parse_mode="HTML"
+        )
+        
+    await callback.answer()
+
+
+@router.callback_query(F.data == "spectre_add_master")
+async def cb_add_master(callback: CallbackQuery):
+    msg = (
+        f"➕ <b>Добавление новой Мастер-панели в Контроллер</b>\n"
+        f"━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        f"Чтобы подключить еще одну Мастер-панель к вашему Telegram-боту:\n\n"
+        f"1️⃣ Откройте конфигурационный файл <code>.env</code> контроллера.\n"
+        f"2️⃣ Добавьте или отредактируйте переменную <code>SPECTRE_PANELS</code>. Это JSON-список панелей:\n\n"
+        f"<code>SPECTRE_PANELS='[\n"
+        f"  {{\"name\": \"Моя Панель\", \"url\": \"https://ip:port\", \"token\": \"api_token_here\", \"secret_path\": \"secret\"}}\n"
+        f"]'</code>\n\n"
+        f"3️⃣ Перезапустите бота. Он автоматически обнаружит её и добавит в меню."
+    )
+    back_data = "spectre_list"
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🔙 Назад", callback_data=back_data)]
+    ])
+    await callback.message.edit_text(msg, reply_markup=kb, parse_mode="HTML")
+    await callback.answer()
+
+
+@router.message(Command("setup_slave"))
+async def cmd_setup_slave(message: types.Message):
+    """
+    Команда для автоматической настройки текущего сервера в качестве слейв-ноды.
+    Формат: /setup_slave <master_url> <join_code>
+    """
+    args = message.text.split(maxsplit=2)
+    if len(args) < 3:
+        await message.reply(
+            "💻 <b>Настройка сервера как слейв-ноды:</b>\n"
+            "Используйте формат: <code>/setup_slave &lt;master_url&gt; &lt;join_code&gt;</code>\n\n"
+            "<i>Пример:</i>\n<code>/setup_slave https://master.com/secret JOIN-E5A73D1C</code>",
+            parse_mode="HTML"
+        )
+        return
+        
+    master_url = args[1].strip()
+    join_code = args[2].strip()
+    
+    status_msg = await message.reply("⏳ <b>Инициализация подключения к Мастер-серверу...</b>")
+    
+    try:
+        import os
+        import json
+        import aiohttp
+        from cryptography.hazmat.primitives.asymmetric import ed25519
+        
+        # 1. Генерируем ключи Ed25519
+        private_key = ed25519.Ed25519PrivateKey.generate()
+        priv_hex = private_key.private_bytes_raw().hex()
+        pub_hex = private_key.public_key().public_bytes_raw().hex()
+        
+        # 2. Выполняем запрос регистрации к Мастеру
+        register_url = f"{master_url.rstrip('/')}/api/nodes/register"
+        payload = {
+            "join_code": join_code,
+            "public_key": pub_hex
+        }
+        
+        connector = aiohttp.TCPConnector(ssl=False)
+        async with aiohttp.ClientSession(connector=connector) as session:
+            async with session.post(register_url, json=payload, timeout=15) as response:
+                if response.status != 200:
+                    text = await response.text()
+                    await status_msg.edit_text(
+                        f"❌ <b>Регистрация отклонена Мастером (код {response.status}):</b>\n<code>{text[:200]}</code>"
+                    )
+                    return
+                    
+                data = await response.json()
+                
+        # 3. Находим путь к установленной локальной панели
+        candidate_paths = [
+            "/opt/spectre-panel",
+            "/root/Spectre-panel",
+            "/home/spectre-panel",
+            "/app",
+            "/opt/Spectre-panel"
+        ]
+        
+        # fallback to adjacent directory for development/Windows
+        base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))) # PycharmProjects
+        panel_dev_dir = os.path.join(base_dir, "panel")
+        if os.path.exists(panel_dev_dir):
+            candidate_paths.insert(0, panel_dev_dir)
+            
+        target_dir = None
+        for path in candidate_paths:
+            if os.path.exists(path):
+                target_dir = path
+                break
+                
+        if not target_dir:
+            target_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            
+        config_path = os.path.join(target_dir, "node_config.json")
+        
+        # Сохраняем конфиг ноды
+        config = {
+            "node_id": data["node_id"],
+            "node_api_token": data["node_api_token"],
+            "master_public_key": data["master_public_key"],
+            "master_url": master_url,
+            "private_key": priv_hex,
+            "public_key": pub_hex
+        }
+        
+        with open(config_path, "w", encoding="utf-8") as f:
+            json.dump(config, f, indent=4)
+            
+        try:
+            os.chmod(config_path, 0o600)
+        except Exception:
+            pass
+            
+        await status_msg.edit_text(
+            f"✅ <b>Сервер успешно настроен как слейв-нода!</b>\n\n"
+            f"ID Ноды: <code>{data['node_id']}</code>\n"
+            f"Конфиг сохранен в: <code>{config_path}</code>\n"
+            f"🔗 Связь с Мастером установлена успешно."
+        )
+    except Exception as e:
+        logging.error(f"Error in setup_slave handler: {e}")
+        await status_msg.edit_text(f"❌ <b>Произошла ошибка при настройке слейв-ноды:</b>\n<code>{e}</code>")
+
+
 
 
 

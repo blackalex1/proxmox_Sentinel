@@ -35,6 +35,8 @@ async def start_all_lxc_monitors():
     # 5. Запускаем мониторинг удаленного сервера, если включен в конфиге
     if settings.remote_monitor_enable:
         asyncio.create_task(monitor_remote_server(), name="monitor_remote_server")
+        from .remote.resources import monitor_remote_resources
+        asyncio.create_task(monitor_remote_resources(), name="monitor_remote_resources")
         logging.info("Мониторинг удаленного сервера запущен!")
         
     # 6. Запускаем мониторинг роутера (SSH conntrack/syslog), если включен в конфиге
