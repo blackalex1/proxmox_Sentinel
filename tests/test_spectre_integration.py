@@ -369,3 +369,152 @@ async def test_spectre_handlers_unban_client(monkeypatch):
     assert "🟢 Разблокирован" in mock_status_msg.edit_text.call_args[0][0]
 
 
+@pytest.mark.asyncio
+async def test_spectre_panel_get_audit_logs():
+    panel = SpectrePanelInstance("Test", "http://127.0.0.1:2053", "token", "ui", "lxc", "999")
+    
+    mock_response = MagicMock()
+    mock_response.status = 200
+    mock_response.json = AsyncMock(return_value={"success": True, "logs": []})
+    
+    mock_request_ctx = MagicMock()
+    mock_request_ctx.__aenter__ = AsyncMock(return_value=mock_response)
+    mock_request_ctx.__aexit__ = AsyncMock(return_value=None)
+    
+    mock_session = MagicMock()
+    mock_session.request = MagicMock(return_value=mock_request_ctx)
+    mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+    mock_session.__aexit__ = AsyncMock(return_value=None)
+    
+    with patch("aiohttp.ClientSession", return_value=mock_session):
+        success, res = await panel.get_audit_logs()
+        assert success is True
+        assert res["success"] is True
+        assert "logs" in res
+
+
+@pytest.mark.asyncio
+async def test_spectre_handlers_audit(monkeypatch):
+    from core.handlers.spectre_handlers import cmd_audit
+    from core.spectre_client import spectre_manager, SpectrePanelInstance
+    
+    panel = SpectrePanelInstance("Panel", "http://127.0.0.1:15000", "token", "ui", "vps", "1.1.1.1")
+    spectre_manager.panels = {"vps_1.1.1.1": panel}
+    
+    async def mock_get_audit_logs(self, limit=10):
+        import time
+        return True, {
+            "success": True,
+            "logs": [
+                {
+                    "timestamp": int(time.time()),
+                    "username": "admin",
+                    "action": "login_success",
+                    "target": "1.2.3.4",
+                    "details": "Details"
+                }
+            ]
+        }
+    monkeypatch.setattr(SpectrePanelInstance, "get_audit_logs", mock_get_audit_logs)
+    
+    mock_status_msg = AsyncMock()
+    mock_message = AsyncMock()
+    mock_message.answer = AsyncMock(return_value=mock_status_msg)
+    
+    await cmd_audit(mock_message)
+    
+    # Сначала отправляется статус-сообщение о загрузке, затем оно удаляется, и отправляется результат
+    assert mock_message.answer.call_count == 2
+    mock_status_msg.delete.assert_called_once()
+    
+    # Проверяем, что во втором вызове answer был передан текст с логом
+    second_call_text = mock_message.answer.call_args_list[1][0][0]
+    assert "Последние действия в панели" in second_call_text
+
+
+@pytest.mark.asyncio
+async def test_spectre_handlers_add_slave(monkeypatch):
+    from core.handlers.spectre_handlers import cb_add_slave
+    from core.spectre_client import spectre_manager, SpectrePanelInstance
+    
+    panel = SpectrePanelInstance("Panel", "http://127.0.0.1:15000", "token", "ui", "vps", "1.1.1.1")
+    spectre_manager.panels = {"vps_1.1.1.1": panel}
+    
+    async def mock_request(self, method, path, **kwargs):
+        if path == "/api/nodes/join-code":
+            return True, {"success": True, "code": "JOIN-12345", "expires_at": 1780847253}
+        return False, {}
+    monkeypatch.setattr(SpectrePanelInstance, "request", mock_request)
+    
+    mock_callback = AsyncMock()
+    mock_callback.data = "spectre_add_slave:vps_1.1.1.1"
+    
+    await cb_add_slave(mock_callback)
+    
+    mock_callback.message.edit_text.assert_called()
+    called_args = mock_callback.message.edit_text.call_args_list
+    assert any("JOIN-12345" in call[0][0] for call in called_args)
+    assert any("python register_node.py" in call[0][0] for call in called_args)
+    mock_callback.answer.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_spectre_handlers_add_master(monkeypatch):
+    from core.handlers.spectre_handlers import cb_add_master
+    
+    mock_callback = AsyncMock()
+    mock_callback.data = "spectre_add_master"
+    
+    await cb_add_master(mock_callback)
+    
+    mock_callback.message.edit_text.assert_called_once()
+    assert "Добавление новой Мастер-панели" in mock_callback.message.edit_text.call_args[0][0]
+    mock_callback.answer.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_spectre_handlers_setup_slave(monkeypatch):
+    from core.handlers.spectre_handlers import cmd_setup_slave
+    
+    # Mock aiohttp client session post
+    mock_response = MagicMock()
+    mock_response.status = 200
+    mock_response.json = AsyncMock(return_value={
+        "node_id": "node-mock-123",
+        "node_api_token": "token-mock-123",
+        "master_public_key": "pub-mock-123"
+    })
+    
+    mock_post_ctx = MagicMock()
+    mock_post_ctx.__aenter__ = AsyncMock(return_value=mock_response)
+    mock_post_ctx.__aexit__ = AsyncMock(return_value=None)
+    
+    mock_session = MagicMock()
+    mock_session.post = MagicMock(return_value=mock_post_ctx)
+    mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+    mock_session.__aexit__ = AsyncMock(return_value=None)
+    
+    # Mock file writing
+    patch("builtins.open", MagicMock()).start()
+    
+    mock_status_msg = AsyncMock()
+    mock_message = AsyncMock()
+    mock_message.text = "/setup_slave https://master-server.com/secret JOIN-12345"
+    mock_message.reply = AsyncMock(return_value=mock_status_msg)
+    
+    with patch("aiohttp.ClientSession", return_value=mock_session), \
+         patch("os.path.exists", return_value=True), \
+         patch("os.chmod", return_value=True):
+         
+        await cmd_setup_slave(mock_message)
+        
+        mock_message.reply.assert_called_once()
+        mock_status_msg.edit_text.assert_called_once()
+        assert "Сервер успешно настроен" in mock_status_msg.edit_text.call_args[0][0]
+        assert "node-mock-123" in mock_status_msg.edit_text.call_args[0][0]
+        
+    patch.stopall()
+
+
+
+
