@@ -12,6 +12,9 @@ from .firewall import setup_vpn_container_rules
 # Период повторной отправки алертов о нагрузке по ресурсам (10 минут)
 ALERT_THROTTLE_INTERVAL = 600
 
+# Отслеживание времени начала высокой нагрузки по CPU/RAM: (vmid, metric) -> timestamp
+lxc_high_load_start = {}
+
 async def monitor_lxc_resources():
     """Периодический опрос Proxmox для контроля статусов и ресурсов контейнеров."""
     logging.info("Запущен мониторинг ресурсов LXC...")
@@ -80,27 +83,34 @@ async def monitor_lxc_resources():
                             
                             # Проверка CPU
                             if cpu > settings.monitor_lxc_cpu:
-                                last_alert = lxc_alert_throttle.get((vmid, 'cpu'), 0)
-                                if now - last_alert > ALERT_THROTTLE_INTERVAL:
-                                    lxc_alert_throttle[(vmid, 'cpu')] = now
-                                    msg = (f"⚠️ <b>Внимание: Высокая нагрузка CPU!</b>\n\n"
-                                           f"📦 LXC: <b>{vmid} ({name})</b>\n"
-                                           f"🔴 CPU: <b>{cpu:.1f}%</b> (Порог: {settings.monitor_lxc_cpu}%)")
-                                    await send_alert_to_admins(msg)
+                                if (vmid, 'cpu') not in lxc_high_load_start:
+                                    lxc_high_load_start[(vmid, 'cpu')] = now
+                                if now - lxc_high_load_start[(vmid, 'cpu')] >= 300:
+                                    last_alert = lxc_alert_throttle.get((vmid, 'cpu'), 0)
+                                    if now - last_alert > ALERT_THROTTLE_INTERVAL:
+                                        lxc_alert_throttle[(vmid, 'cpu')] = now
+                                        msg = (f"⚠️ <b>Внимание: Высокая нагрузка CPU (более 5 минут)!</b>\n\n"
+                                               f"📦 LXC: <b>{vmid} ({name})</b>\n"
+                                               f"🔴 CPU: <b>{cpu:.1f}%</b> (Порог: {settings.monitor_lxc_cpu}%)")
+                                        await send_alert_to_admins(msg)
                             else:
-                                # Сбрасываем троттлинг, если показатель пришел в норму
+                                lxc_high_load_start.pop((vmid, 'cpu'), None)
                                 lxc_alert_throttle.pop((vmid, 'cpu'), None)
                                 
                             # Проверка RAM
                             if mem_pct > settings.monitor_lxc_ram:
-                                last_alert = lxc_alert_throttle.get((vmid, 'ram'), 0)
-                                if now - last_alert > ALERT_THROTTLE_INTERVAL:
-                                    lxc_alert_throttle[(vmid, 'ram')] = now
-                                    msg = (f"⚠️ <b>Внимание: Высокое потребление RAM!</b>\n\n"
-                                           f"📦 LXC: <b>{vmid} ({name})</b>\n"
-                                           f"🔴 ОЗУ: <b>{mem_pct:.1f}%</b> ({mem / (1024**3):.1f} / {maxmem / (1024**3):.1f} GB) (Порог: {settings.monitor_lxc_ram}%)")
-                                    await send_alert_to_admins(msg)
+                                if (vmid, 'ram') not in lxc_high_load_start:
+                                    lxc_high_load_start[(vmid, 'ram')] = now
+                                if now - lxc_high_load_start[(vmid, 'ram')] >= 300:
+                                    last_alert = lxc_alert_throttle.get((vmid, 'ram'), 0)
+                                    if now - last_alert > ALERT_THROTTLE_INTERVAL:
+                                        lxc_alert_throttle[(vmid, 'ram')] = now
+                                        msg = (f"⚠️ <b>Внимание: Высокое потребление RAM (более 5 минут)!</b>\n\n"
+                                               f"📦 LXC: <b>{vmid} ({name})</b>\n"
+                                               f"🔴 ОЗУ: <b>{mem_pct:.1f}%</b> ({mem / (1024**3):.1f} / {maxmem / (1024**3):.1f} GB) (Порог: {settings.monitor_lxc_ram}%)")
+                                        await send_alert_to_admins(msg)
                             else:
+                                lxc_high_load_start.pop((vmid, 'ram'), None)
                                 lxc_alert_throttle.pop((vmid, 'ram'), None)
                                 
                             # Проверка Disk

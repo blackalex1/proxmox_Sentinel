@@ -63,6 +63,10 @@ class SpectrePanelInstance:
             logging.error(f"[Spectre API {self.name}] Исключение при запросе: {e}")
             return False, {"error": str(e)}
 
+    async def get_audit_logs(self, limit: int = 10) -> Tuple[bool, dict]:
+        """Запрашивает последние записи логов аудита с панели."""
+        return await self.request("GET", "/api/security/audit-logs", params={"limit": limit})
+
 class SpectreClientManager:
     """
     Менеджер для автоматического поиска и управления панелями Spectre Panel.
