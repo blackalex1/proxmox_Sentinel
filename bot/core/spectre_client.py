@@ -59,13 +59,14 @@ class SpectrePanelInstance:
     """
     Представляет инстанс Spectre Panel (локальный LXC или удаленный VPS).
     """
-    def __init__(self, name: str, url: str, token: str, secret_path: str, source_type: str, identifier: str):
+    def __init__(self, name: str, url: str, token: str, secret_path: str, source_type: str, identifier: str, env_path: str = None):
         self.name = name
         self.url = url.rstrip('/')
         self.token = token
         self.secret_path = secret_path.strip('/')
         self.source_type = source_type # 'lxc' или 'vps'
         self.identifier = identifier   # VMID для LXC, IP для VPS
+        self.env_path = env_path
         
     async def request(self, method: str, path: str, **kwargs) -> Tuple[bool, dict]:
         """
@@ -237,7 +238,8 @@ class SpectreClientManager:
                                         token=token,
                                         secret_path=secret_path,
                                         source_type="lxc",
-                                        identifier=str(vmid)
+                                        identifier=str(vmid),
+                                        env_path=path
                                     )
                                     logging.info(f"[Spectre Discovery] Найдена локальная панель: {new_panels[key].name} ({url})")
                                 break
@@ -322,7 +324,8 @@ class SpectreClientManager:
                                     token=token,
                                     secret_path=secret_path,
                                     source_type="vps",
-                                    identifier=vps_ip
+                                    identifier=vps_ip,
+                                    env_path=path
                                 )
                                 logging.info(f"[Spectre Discovery] Найдена удаленная панель: {new_panels[key].name} ({url})")
                             break
