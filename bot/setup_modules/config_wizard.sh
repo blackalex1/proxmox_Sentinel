@@ -71,65 +71,175 @@ run_config_wizard() {
         # 3. Автогенерация или использование существующего API-токена Proxmox через pveum
         AUTO_TOKEN_ID=""
         AUTO_TOKEN_SECRET=""
-        if command -v pveum >/dev/null 2>&1; then
-            echo -e "\n${GREEN}✓ Обнаружен Proxmox VE (утилита pveum доступна).${NC}"
-            
-            # Получаем список существующих токенов для root@pam
-            TOKENS_JSON=$(pveum user token list root@pam --output-format json 2>/dev/null || echo "[]")
-            # Парсим имена токенов через Python
-            EXISTING_TOKENS=$(python3 -c "import sys, json; tokens = json.loads(sys.stdin.read()); print(','.join([t.get('tokenid', '') for t in tokens if 'tokenid' in t]))" <<< "${TOKENS_JSON}" 2>/dev/null || true)
-            
-            token_choice="new"
-            if [ -n "${EXISTING_TOKENS}" ]; then
-                echo -e "${CYAN}Обнаружены существующие API-токены Proxmox для пользователя root@pam:${NC}"
-                IFS=',' read -r -a token_array <<< "${EXISTING_TOKENS}"
-                for i in "${!token_array[@]}"; do
-                    echo -e "  $((i+1))) root@pam!${token_array[i]}"
-                done
-                echo -e "  $(( ${#token_array[@]} + 1 ))) [Создать новый API-токен]"
-                
-                echo -e "\n${YELLOW}Выберите номер токена для использования (или создайте новый):${NC}"
-                read -rp ">> " user_token_selection
-                
-                # Проверяем корректность выбора
-                if [[ "$user_token_selection" =~ ^[0-9]+$ ]] && [ "$user_token_selection" -ge 1 ] && [ "$user_token_selection" -le "${#token_array[@]}" ]; then
-                    selected_token_name="${token_array[$((user_token_selection-1))]}"
-                    AUTO_TOKEN_ID="root@pam!${selected_token_name}"
-                    echo -e "${GREEN}✓ Выбран существующий токен: ${AUTO_TOKEN_ID}${NC}"
-                    echo -e "${BLUE}👉 Введите секретный код (Secret Value) для этого токена:${NC}"
-                    read -rp ">> " AUTO_TOKEN_SECRET
-                    token_choice="existing"
-                else
-                    token_choice="new"
-                fi
+        SKIP_PROXMOX_SETUP=0
+        
+        PYTHON_EXEC="python3"
+        if [ -f "${SCRIPT_DIR}/venv/bin/python" ]; then
+            PYTHON_EXEC="${SCRIPT_DIR}/venv/bin/python"
+        fi
+
+        # Считываем уже существующий токен и настройки из .env
+        EXISTING_HOST=""
+        EXISTING_USER=""
+        EXISTING_TOKEN_ID=""
+        EXISTING_TOKEN_SECRET=""
+        EXISTING_VERIFY_SSL="False"
+        if [ -f "${ENV_FILE}" ]; then
+            EXISTING_HOST=$(grep -E "^PROXMOX_HOST=" "${ENV_FILE}" | cut -d'=' -f2- | tr -d '\r\n ' || true)
+            EXISTING_USER=$(grep -E "^PROXMOX_USER=" "${ENV_FILE}" | cut -d'=' -f2- | tr -d '\r\n ' || true)
+            EXISTING_TOKEN_ID=$(grep -E "^PROXMOX_TOKEN_ID=" "${ENV_FILE}" | cut -d'=' -f2- | tr -d '\r\n ' || true)
+            EXISTING_TOKEN_SECRET=$(grep -E "^PROXMOX_TOKEN_SECRET=" "${ENV_FILE}" | cut -d'=' -f2- | tr -d '\r\n ' || true)
+            EXISTING_VERIFY_SSL=$(grep -E "^PROXMOX_VERIFY_SSL=" "${ENV_FILE}" | cut -d'=' -f2- | tr -d '\r\n ' || true)
+            if [ -z "${EXISTING_VERIFY_SSL}" ]; then
+                EXISTING_VERIFY_SSL="False"
             fi
+        fi
+
+        # Если в .env есть все настройки Proxmox, попробуем их проверить
+        if [ -n "${EXISTING_HOST}" ] && [ -n "${EXISTING_USER}" ] && [ -n "${EXISTING_TOKEN_ID}" ] && [ -n "${EXISTING_TOKEN_SECRET}" ]; then
+            echo -e "\n${CYAN}Обнаружена существующая конфигурация Proxmox в .env.${NC}"
+            echo -e "Проверка подключения к Proxmox VE API..."
             
-            if [ "${token_choice}" = "new" ]; then
-                echo -e "\nХотите ли вы автоматически сгенерировать новый выделенный API-токен для работы бота? (y/n) [y]"
-                read -rp ">> " generate_token_pve
-                if [ -z "${generate_token_pve}" ] || [ "${generate_token_pve}" = "y" ] || [ "${generate_token_pve}" = "Y" ]; then
-                    echo -e "Введите имя нового токена [по умолчанию: aegis-ips]:"
-                    read -rp ">> " new_token_name
-                    if [ -z "${new_token_name}" ]; then
-                        new_token_name="aegis-ips"
-                    fi
+            TEST_OUT=$(${PYTHON_EXEC} -c "
+import sys
+from proxmoxer import ProxmoxAPI
+try:
+    host = sys.argv[1]
+    user = sys.argv[2]
+    token_id = sys.argv[3]
+    token_secret = sys.argv[4]
+    verify_ssl = sys.argv[5].lower() == 'true'
+    
+    token_name = token_id.split('!')[1] if '!' in token_id else token_id
+    proxmox = ProxmoxAPI(host, user=user, token_name=token_name, token_value=token_secret, verify_ssl=verify_ssl)
+    proxmox.nodes.get()
+    print('SUCCESS')
+except Exception as e:
+    print('ERROR:', e)
+" "${EXISTING_HOST}" "${EXISTING_USER}" "${EXISTING_TOKEN_ID}" "${EXISTING_TOKEN_SECRET}" "${EXISTING_VERIFY_SSL}" 2>/dev/null || echo "FAILED")
+            
+            TEST_OUT=$(echo "${TEST_OUT}" | tr -d '\r\n')
+            if [ "${TEST_OUT}" = "SUCCESS" ]; then
+                echo -e "${GREEN}✓ Подключение к Proxmox VE API успешно проверено! Валидный токен.${NC}"
+                echo -e "Хотите использовать существующие настройки Proxmox и пропустить их изменение? (y/n) [y]"
+                read -rp ">> " skip_pve_ask
+                if [ -z "${skip_pve_ask}" ] || [ "${skip_pve_ask}" = "y" ] || [ "${skip_pve_ask}" = "Y" ]; then
+                    AUTO_TOKEN_ID="${EXISTING_TOKEN_ID}"
+                    AUTO_TOKEN_SECRET="${EXISTING_TOKEN_SECRET}"
+                    SKIP_PROXMOX_SETUP=1
+                fi
+            else
+                echo -e "${RED}⚠️ Существующие учетные данные Proxmox не прошли проверку: ${TEST_OUT}${NC}"
+            fi
+        fi
+
+        if [ ${SKIP_PROXMOX_SETUP} -eq 0 ]; then
+            if command -v pveum >/dev/null 2>&1; then
+                echo -e "\n${GREEN}✓ Обнаружен Proxmox VE (утилита pveum доступна).${NC}"
+                
+                # Получаем список существующих токенов для root@pam
+                TOKENS_JSON=$(pveum user token list root@pam --output-format json 2>/dev/null || echo "[]")
+                # Парсим имена токенов через Python
+                EXISTING_TOKENS=$(python3 -c "import sys, json; tokens = json.loads(sys.stdin.read()); print(','.join([t.get('tokenid', '') for t in tokens if 'tokenid' in t]))" <<< "${TOKENS_JSON}" 2>/dev/null || true)
+                EXISTING_TOKENS=$(echo "${EXISTING_TOKENS}" | tr -d '\r\n ' || true)
+                
+                token_choice="new"
+                if [ -n "${EXISTING_TOKENS}" ]; then
+                    echo -e "${CYAN}Обнаружены существующие API-токены Proxmox для пользователя root@pam:${NC}"
+                    IFS=',' read -r -a token_array <<< "${EXISTING_TOKENS}"
+                    for i in "${!token_array[@]}"; do
+                        token_array[i]=$(echo "${token_array[i]}" | tr -d '\r\n ')
+                        echo -e "  $((i+1))) root@pam!${token_array[i]}"
+                    done
+                    echo -e "  $(( ${#token_array[@]} + 1 ))) [Создать новый API-токен]"
                     
-                    echo -e "Генерация API-токена 'root@pam!${new_token_name}'..."
-                    # Удаляем старый токен с таким же именем, если он был
-                    pveum user token delete root@pam "${new_token_name}" 2>/dev/null || true
-                    # Создаем новый токен
-                    TOKEN_OUT=$(pveum user token add root@pam "${new_token_name}" --privsep 0 --output-format json 2>/dev/null || true)
-                    if [ -n "${TOKEN_OUT}" ]; then
-                        TOKEN_SECRET=$(python3 -c "import sys, json; print(json.loads(sys.stdin.read()).get('value', ''))" <<< "${TOKEN_OUT}" 2>/dev/null || true)
-                        if [ -n "${TOKEN_SECRET}" ]; then
-                            echo -e "${GREEN}✓ API-токен успешно сгенерирован!${NC}"
-                            AUTO_TOKEN_ID="root@pam!${new_token_name}"
-                            AUTO_TOKEN_SECRET="${TOKEN_SECRET}"
+                    echo -e "\n${YELLOW}Выберите номер токена для использования (или создайте новый):${NC}"
+                    read -rp ">> " user_token_selection
+                    
+                    # Проверяем корректность выбора
+                    if [[ "$user_token_selection" =~ ^[0-9]+$ ]] && [ "$user_token_selection" -ge 1 ] && [ "$user_token_selection" -le "${#token_array[@]}" ]; then
+                        selected_token_name="${token_array[$((user_token_selection-1))]}"
+                        selected_token_name=$(echo "${selected_token_name}" | tr -d '\r\n ')
+                        AUTO_TOKEN_ID="root@pam!${selected_token_name}"
+                        echo -e "${GREEN}✓ Выбран существующий токен: ${AUTO_TOKEN_ID}${NC}"
+                        
+                        if [ "${AUTO_TOKEN_ID}" = "${EXISTING_TOKEN_ID}" ] && [ -n "${EXISTING_TOKEN_SECRET}" ]; then
+                            # Проверяем валидность этого сохраненного секрета
+                            echo -e "Проверка подключения к Proxmox VE с сохраненным секретом..."
+                            TEST_HOST="${EXISTING_HOST}"
+                            if [ -z "${TEST_HOST}" ]; then
+                                TEST_HOST="${PVE_HOST_DEFAULT}"
+                            fi
+                            TEST_USER="${EXISTING_USER}"
+                            if [ -z "${TEST_USER}" ]; then
+                                TEST_USER="root@pam"
+                            fi
+                            TEST_OUT=$(${PYTHON_EXEC} -c "
+import sys
+from proxmoxer import ProxmoxAPI
+try:
+    host = sys.argv[1]
+    user = sys.argv[2]
+    token_id = sys.argv[3]
+    token_secret = sys.argv[4]
+    verify_ssl = sys.argv[5].lower() == 'true'
+    
+    token_name = token_id.split('!')[1] if '!' in token_id else token_id
+    proxmox = ProxmoxAPI(host, user=user, token_name=token_name, token_value=token_secret, verify_ssl=verify_ssl)
+    proxmox.nodes.get()
+    print('SUCCESS')
+except Exception as e:
+    print('ERROR:', e)
+" "${TEST_HOST}" "${TEST_USER}" "${AUTO_TOKEN_ID}" "${EXISTING_TOKEN_SECRET}" "${EXISTING_VERIFY_SSL}" 2>/dev/null || echo "FAILED")
+                            
+                            TEST_OUT=$(echo "${TEST_OUT}" | tr -d '\r\n')
+                            if [ "${TEST_OUT}" = "SUCCESS" ]; then
+                                AUTO_TOKEN_SECRET="${EXISTING_TOKEN_SECRET}"
+                                echo -e "${GREEN}✓ Обнаружен сохраненный секрет для этого токена в .env, и подключение успешно проверено. Используем его автоматически.${NC}"
+                            else
+                                echo -e "${RED}⚠️ Сохраненный секрет из .env не прошел проверку подключения: ${TEST_OUT}${NC}"
+                                echo -e "${BLUE}👉 Введите секретный код (Secret Value) для этого токена:${NC}"
+                                read -rp ">> " AUTO_TOKEN_SECRET
+                                AUTO_TOKEN_SECRET=$(echo "${AUTO_TOKEN_SECRET}" | tr -d '\r\n ')
+                            fi
                         else
-                            echo -e "${RED}⚠️ Не удалось извлечь секрет токена из вывода pveum.${NC}"
+                            echo -e "${BLUE}👉 Введите секретный код (Secret Value) для этого токена:${NC}"
+                            read -rp ">> " AUTO_TOKEN_SECRET
+                            AUTO_TOKEN_SECRET=$(echo "${AUTO_TOKEN_SECRET}" | tr -d '\r\n ')
                         fi
+                        token_choice="existing"
                     else
-                        echo -e "${RED}⚠️ Ошибка при создании токена через pveum.${NC}"
+                        token_choice="new"
+                    fi
+                fi
+                
+                if [ "${token_choice}" = "new" ]; then
+                    echo -e "\nХотите ли вы автоматически сгенерировать новый выделенный API-токен для работы бота? (y/n) [y]"
+                    read -rp ">> " generate_token_pve
+                    if [ -z "${generate_token_pve}" ] || [ "${generate_token_pve}" = "y" ] || [ "${generate_token_pve}" = "Y" ]; then
+                        echo -e "Введите имя нового токена [по умолчанию: aegis-ips]:"
+                        read -rp ">> " new_token_name
+                        if [ -z "${new_token_name}" ]; then
+                            new_token_name="aegis-ips"
+                        fi
+                        
+                        echo -e "Генерация API-токена 'root@pam!${new_token_name}'..."
+                        # Удаляем старый токен с таким же именем, если он был
+                        pveum user token delete root@pam "${new_token_name}" 2>/dev/null || true
+                        # Создаем новый токен
+                        TOKEN_OUT=$(pveum user token add root@pam "${new_token_name}" --privsep 0 --output-format json 2>/dev/null || true)
+                        if [ -n "${TOKEN_OUT}" ]; then
+                            TOKEN_SECRET=$(python3 -c "import sys, json; print(json.loads(sys.stdin.read()).get('value', ''))" <<< "${TOKEN_OUT}" 2>/dev/null || true)
+                            if [ -n "${TOKEN_SECRET}" ]; then
+                                echo -e "${GREEN}✓ API-токен успешно сгенерирован!${NC}"
+                                AUTO_TOKEN_ID="root@pam!${new_token_name}"
+                                AUTO_TOKEN_SECRET="${TOKEN_SECRET}"
+                            else
+                                echo -e "${RED}⚠️ Не удалось извлечь секрет токена из вывода pveum.${NC}"
+                            fi
+                        else
+                            echo -e "${RED}⚠️ Ошибка при создании токена через pveum.${NC}"
+                        fi
                     fi
                 fi
             fi
@@ -217,25 +327,29 @@ run_config_wizard() {
             prompt_var "BOT_TOKEN" "Токен вашего Telegram-бота (BOT_TOKEN)" ""
             prompt_var "ADMIN_IDS" "Telegram ID администраторов через запятую (ADMIN_IDS)" ""
             prompt_var "TRUSTED_ADMIN_IPS" "Белый список IP-адресов администратора (вход с этих IP не будет вызывать тревогу, например: 192.168.1.50, через запятую)" "${TRUSTED_IPS_DEFAULT}"
-            prompt_var "PROXMOX_HOST" "IP и порт вашего хоста Proxmox VE (PROXMOX_HOST)" "${PVE_HOST_DEFAULT}"
-            prompt_var "PROXMOX_USER" "Имя пользователя Proxmox (PROXMOX_USER)" "root@pam"
-            
-            if [ -n "${AUTO_TOKEN_ID}" ] && [ -n "${AUTO_TOKEN_SECRET}" ]; then
-                # Записываем сгенерированный или выбранный токен напрямую в .env без лишних вопросов
-                if grep -q "^PROXMOX_TOKEN_ID=" "${ENV_FILE}"; then
-                    sed -i "s/^PROXMOX_TOKEN_ID=.*/PROXMOX_TOKEN_ID=${AUTO_TOKEN_ID}/" "${ENV_FILE}"
-                else
-                    echo "PROXMOX_TOKEN_ID=${AUTO_TOKEN_ID}" >> "${ENV_FILE}"
-                fi
-                if grep -q "^PROXMOX_TOKEN_SECRET=" "${ENV_FILE}"; then
-                    sed -i "s/^PROXMOX_TOKEN_SECRET=.*/PROXMOX_TOKEN_SECRET=${AUTO_TOKEN_SECRET}/" "${ENV_FILE}"
-                else
-                    echo "PROXMOX_TOKEN_SECRET=${AUTO_TOKEN_SECRET}" >> "${ENV_FILE}"
-                fi
-                echo -e "   ${GREEN}✓ Успешно использован API-токен: PROXMOX_TOKEN_ID=${AUTO_TOKEN_ID}${NC}"
+            if [ ${SKIP_PROXMOX_SETUP} -eq 1 ]; then
+                echo -e "   ${GREEN}✓ Настройка параметров подключения к Proxmox VE пропущена (параметры верны).${NC}"
             else
-                prompt_var "PROXMOX_TOKEN_ID" "Proxmox API Token ID (PROXMOX_TOKEN_ID)" ""
-                prompt_var "PROXMOX_TOKEN_SECRET" "Proxmox API Token Secret (PROXMOX_TOKEN_SECRET)" ""
+                prompt_var "PROXMOX_HOST" "IP и порт вашего хоста Proxmox VE (PROXMOX_HOST)" "${PVE_HOST_DEFAULT}"
+                prompt_var "PROXMOX_USER" "Имя пользователя Proxmox (PROXMOX_USER)" "root@pam"
+                
+                if [ -n "${AUTO_TOKEN_ID}" ] && [ -n "${AUTO_TOKEN_SECRET}" ]; then
+                    # Записываем сгенерированный или выбранный токен напрямую в .env без лишних вопросов
+                    if grep -q "^PROXMOX_TOKEN_ID=" "${ENV_FILE}"; then
+                        sed -i "s/^PROXMOX_TOKEN_ID=.*/PROXMOX_TOKEN_ID=${AUTO_TOKEN_ID}/" "${ENV_FILE}"
+                    else
+                        echo "PROXMOX_TOKEN_ID=${AUTO_TOKEN_ID}" >> "${ENV_FILE}"
+                    fi
+                    if grep -q "^PROXMOX_TOKEN_SECRET=" "${ENV_FILE}"; then
+                        sed -i "s/^PROXMOX_TOKEN_SECRET=.*/PROXMOX_TOKEN_SECRET=${AUTO_TOKEN_SECRET}/" "${ENV_FILE}"
+                    else
+                        echo "PROXMOX_TOKEN_SECRET=${AUTO_TOKEN_SECRET}" >> "${ENV_FILE}"
+                    fi
+                    echo -e "   ${GREEN}✓ Успешно использован API-токен: PROXMOX_TOKEN_ID=${AUTO_TOKEN_ID}${NC}"
+                else
+                    prompt_var "PROXMOX_TOKEN_ID" "Proxmox API Token ID (PROXMOX_TOKEN_ID)" ""
+                    prompt_var "PROXMOX_TOKEN_SECRET" "Proxmox API Token Secret (PROXMOX_TOKEN_SECRET)" ""
+                fi
             fi
             
             # Записываем VPN_VMID напрямую, если он был выбран на шаге автоопределения
