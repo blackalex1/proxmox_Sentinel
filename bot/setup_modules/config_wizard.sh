@@ -238,8 +238,17 @@ run_config_wizard() {
                 prompt_var "PROXMOX_TOKEN_SECRET" "Proxmox API Token Secret (PROXMOX_TOKEN_SECRET)" ""
             fi
             
-            # Запрашиваем VPN_VMID
-            prompt_var "VPN_VMID" "Идентификатор контейнера с VPN (VPN_VMID)" "${AUTO_VPN_VMID:-101}"
+            # Записываем VPN_VMID напрямую, если он был выбран на шаге автоопределения
+            if [ -n "${AUTO_VPN_VMID}" ]; then
+                if grep -q "^VPN_VMID=" "${ENV_FILE}"; then
+                    sed -i "s/^VPN_VMID=.*/VPN_VMID=${AUTO_VPN_VMID}/" "${ENV_FILE}"
+                else
+                    echo "VPN_VMID=${AUTO_VPN_VMID}" >> "${ENV_FILE}"
+                fi
+                echo -e "   ${GREEN}✓ Успешно сохранен идентификатор контейнера: VPN_VMID=${AUTO_VPN_VMID}${NC}"
+            else
+                prompt_var "VPN_VMID" "Идентификатор контейнера с VPN (VPN_VMID)" "101"
+            fi
             
             # Мониторинг VPS
             prompt_bool "REMOTE_MONITOR_ENABLE" "Включить мониторинг удаленного сервера VPS?" "False"
