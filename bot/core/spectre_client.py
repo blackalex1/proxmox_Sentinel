@@ -37,6 +37,24 @@ async def probe_panel_url(ip: str, port: str) -> str:
                 continue
     return f"https://{ip}:{port}"
 
+def normalize_url(url: str) -> Optional[Tuple[str, int]]:
+    """
+    Извлекает нормализованный хост/IP и порт из URL для надежного сравнения дубликатов.
+    """
+    try:
+        from urllib.parse import urlparse
+        if not url.startswith("http://") and not url.startswith("https://"):
+            parsed = urlparse("http://" + url)
+        else:
+            parsed = urlparse(url)
+        host = parsed.hostname
+        port = parsed.port or (443 if parsed.scheme == 'https' else 80)
+        if host:
+            return host.lower().strip(), port
+    except Exception:
+        pass
+    return None
+
 class SpectrePanelInstance:
     """
     Представляет инстанс Spectre Panel (локальный LXC или удаленный VPS).
@@ -122,7 +140,198 @@ class SpectreClientManager:
             "/app/config/.env",
             "/opt/Spectre-panel/config/.env"
         ]
-        
+
+        async def discover_lxc_panel(node_name, vm):
+            vmid = vm['vmid']
+            try:
+                # Сначала пробуем получить путь через systemd-сервис vpn-host-agent
+                service_path = None
+                try:
+                    cmd_svc = ["pct", "exec", str(vmid), "--", "systemctl", "show", "-p", "WorkingDirectory", "vpn-host-agent"]
+                    proc_svc = await asyncio.create_subprocess_exec(
+                        *cmd_svc,
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.DEVNULL
+                    )
+                    stdout_svc, _ = await proc_svc.communicate()
+                    if proc_svc.returncode == 0 and stdout_svc:
+                        svc_out = stdout_svc.decode('utf-8', errors='ignore').strip()
+                        if svc_out.startswith("WorkingDirectory=") and len(svc_out) > 17:
+                            work_dir = svc_out.split("=", 1)[1].strip()
+                            if work_dir.endswith("/host") or work_dir.endswith("\\host"):
+                                proj_dir = work_dir[:-5]
+                            else:
+                                proj_dir = work_dir
+                            service_path = f"{proj_dir.rstrip('/')}/config/.env"
+                except Exception:
+                    pass
+
+                # Динамический поиск файлов config/.env внутри контейнера с помощью find
+                detected_paths = []
+                find_success = False
+                try:
+                    find_cmd = ["pct", "exec", str(vmid), "--", "find", "/opt", "/root", "/home", "/app", "/var", "-maxdepth", "4", "-name", ".env"]
+                    find_proc = await asyncio.create_subprocess_exec(
+                        *find_cmd,
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.DEVNULL
+                    )
+                    find_stdout, _ = await find_proc.communicate()
+                    if find_proc.returncode == 0:
+                        find_success = True
+                        if find_stdout:
+                            for found_path in find_stdout.decode('utf-8', errors='ignore').splitlines():
+                                found_path = found_path.strip()
+                                if found_path.endswith('/config/.env') and found_path not in detected_paths:
+                                    detected_paths.append(found_path)
+                except Exception:
+                    pass
+
+                paths_to_check = list(detected_paths)
+                if service_path and service_path not in paths_to_check:
+                    paths_to_check.append(service_path)
+                
+                # Если find и service_path ничего не нашли, и find не был успешен, только тогда пробуем кандидаты
+                if not paths_to_check and not find_success:
+                    for c_path in candidate_paths:
+                        if c_path not in paths_to_check:
+                            paths_to_check.append(c_path)
+
+                for path in paths_to_check:
+                    cmd = ["pct", "exec", str(vmid), "--", "cat", path]
+                    proc = await asyncio.create_subprocess_exec(
+                        *cmd,
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.DEVNULL
+                    )
+                    stdout, _ = await proc.communicate()
+                    if proc.returncode == 0 and stdout:
+                        env_content = stdout.decode('utf-8', errors='ignore')
+                        config = parse_env_content(env_content)
+                        
+                        port = config.get("PANEL_PORT")
+                        token = config.get("API_TOKEN")
+                        secret_path = config.get("PANEL_SECRET_PATH", "ui")
+                        
+                        if port and token:
+                            from modules.proxmox.api import proxmox
+                            ip = proxmox.get_lxc_ip(node_name, vmid)
+                            if ip:
+                                url = await probe_panel_url(ip, port)
+                                # Избегаем дубликатов
+                                is_dup = False
+                                norm_url = normalize_url(url)
+                                for ep in new_panels.values():
+                                    norm_ep = normalize_url(ep.url)
+                                    if norm_ep and norm_url and norm_ep == norm_url:
+                                        is_dup = True
+                                        break
+                                    if ep.url.rstrip('/').lower() == url.rstrip('/').lower():
+                                        is_dup = True
+                                        break
+                                if not is_dup:
+                                    key = f"lxc_{vmid}"
+                                    new_panels[key] = SpectrePanelInstance(
+                                        name=f"LXC {vmid} ({vm.get('name', 'VPN')})",
+                                        url=url,
+                                        token=token,
+                                        secret_path=secret_path,
+                                        source_type="lxc",
+                                        identifier=str(vmid)
+                                    )
+                                    logging.info(f"[Spectre Discovery] Найдена локальная панель: {new_panels[key].name} ({url})")
+                                break
+            except Exception as e:
+                logging.error(f"[Spectre Discovery] Ошибка при поиске в LXC {vmid}: {e}")
+
+        async def discover_vps_panel(server):
+            vps_ip = server['ip']
+            try:
+                from modules.proxmox.monitor.remote.ssh import run_remote_ssh_cmd
+                # Сначала пробуем получить путь через systemd-сервис vpn-host-agent на удаленном VPS
+                service_path = None
+                try:
+                    success_svc, stdout_svc, _ = await run_remote_ssh_cmd(server, ["systemctl", "show", "-p", "WorkingDirectory", "vpn-host-agent"])
+                    if success_svc and stdout_svc:
+                        svc_out = stdout_svc.strip()
+                        if svc_out.startswith("WorkingDirectory=") and len(svc_out) > 17:
+                            work_dir = svc_out.split("=", 1)[1].strip()
+                            if work_dir.endswith("/host") or work_dir.endswith("\\host"):
+                                proj_dir = work_dir[:-5]
+                            else:
+                                proj_dir = work_dir
+                            
+                            service_path = f"{proj_dir.rstrip('/')}/config/.env"
+                except Exception:
+                    pass
+                    
+                # Динамический поиск файлов config/.env на удаленном VPS с помощью find
+                detected_paths = []
+                find_success = False
+                try:
+                    success_find, stdout_find, _ = await run_remote_ssh_cmd(
+                        server, 
+                        ["find", "/opt", "/root", "/home", "/app", "/var", "-maxdepth", "4", "-name", ".env"]
+                    )
+                    if success_find:
+                        find_success = True
+                        if stdout_find:
+                            for found_path in stdout_find.splitlines():
+                                found_path = found_path.strip()
+                                if found_path.endswith('/config/.env') and found_path not in detected_paths:
+                                    detected_paths.append(found_path)
+                except Exception:
+                    pass
+
+                paths_to_check = list(detected_paths)
+                if service_path and service_path not in paths_to_check:
+                    paths_to_check.append(service_path)
+                
+                if not paths_to_check and not find_success:
+                    for c_path in candidate_paths:
+                        if c_path not in paths_to_check:
+                            paths_to_check.append(c_path)
+                    
+                for path in paths_to_check:
+                    # Проверяем файл .env через SSH
+                    success, stdout, stderr = await run_remote_ssh_cmd(server, ["cat", path])
+                    if success and stdout:
+                        config = parse_env_content(stdout)
+                        port = config.get("PANEL_PORT")
+                        token = config.get("API_TOKEN")
+                        secret_path = config.get("PANEL_SECRET_PATH", "ui")
+                        
+                        if port and token:
+                            url = await probe_panel_url(vps_ip, port)
+                            # Избегаем дубликатов
+                            is_dup = False
+                            norm_url = normalize_url(url)
+                            for ep in new_panels.values():
+                                norm_ep = normalize_url(ep.url)
+                                if norm_ep and norm_url and norm_ep == norm_url:
+                                    is_dup = True
+                                    break
+                                if ep.url.rstrip('/').lower() == url.rstrip('/').lower():
+                                    is_dup = True
+                                    break
+                            if not is_dup:
+                                key = f"vps_{vps_ip}"
+                                new_panels[key] = SpectrePanelInstance(
+                                    name=f"VPS {vps_ip}",
+                                    url=url,
+                                    token=token,
+                                    secret_path=secret_path,
+                                    source_type="vps",
+                                    identifier=vps_ip
+                                )
+                                logging.info(f"[Spectre Discovery] Найдена удаленная панель: {new_panels[key].name} ({url})")
+                            break
+            except Exception as e:
+                logging.error(f"[Spectre Discovery] Ошибка при поиске на удаленном VPS {vps_ip}: {e}")
+
+        # Собираем все асинхронные задачи поиска
+        tasks = []
+
         # 1. Поиск на локальных LXC-контейнерах
         if settings.proxmox_host:
             try:
@@ -133,179 +342,19 @@ class SpectreClientManager:
                     vms = proxmox.get_vms(node_name)
                     for vm in vms:
                         if vm.get('type') == 'lxc' and vm.get('status') == 'running':
-                            vmid = vm['vmid']
-                            
-                            # Сначала пробуем получить путь через systemd-сервис vpn-host-agent
-                            service_path = None
-                            try:
-                                cmd_svc = ["pct", "exec", str(vmid), "--", "systemctl", "show", "-p", "WorkingDirectory", "vpn-host-agent"]
-                                proc_svc = await asyncio.create_subprocess_exec(
-                                    *cmd_svc,
-                                    stdout=asyncio.subprocess.PIPE,
-                                    stderr=asyncio.subprocess.DEVNULL
-                                )
-                                stdout_svc, _ = await proc_svc.communicate()
-                                if proc_svc.returncode == 0 and stdout_svc:
-                                    svc_out = stdout_svc.decode('utf-8', errors='ignore').strip()
-                                    if svc_out.startswith("WorkingDirectory=") and len(svc_out) > 17:
-                                        work_dir = svc_out.split("=", 1)[1].strip()
-                                        if work_dir.endswith("/host"):
-                                            proj_dir = work_dir[:-5]
-                                        elif work_dir.endswith("\\host"):
-                                            proj_dir = work_dir[:-5]
-                                        else:
-                                            proj_dir = work_dir
-                                        
-                                        service_path = f"{proj_dir.rstrip('/')}/config/.env"
-                            except Exception:
-                                pass
-                                
-                            # Динамический поиск файлов config/.env внутри контейнера с помощью find
-                            detected_paths = []
-                            try:
-                                find_cmd = ["pct", "exec", str(vmid), "--", "find", "/opt", "/root", "/home", "/app", "/var", "-maxdepth", "4", "-name", ".env"]
-                                find_proc = await asyncio.create_subprocess_exec(
-                                    *find_cmd,
-                                    stdout=asyncio.subprocess.PIPE,
-                                    stderr=asyncio.subprocess.DEVNULL
-                                )
-                                find_stdout, _ = await find_proc.communicate()
-                                if find_proc.returncode == 0 and find_stdout:
-                                    for found_path in find_stdout.decode('utf-8', errors='ignore').splitlines():
-                                        found_path = found_path.strip()
-                                        if found_path.endswith('/config/.env') and found_path not in detected_paths:
-                                            detected_paths.append(found_path)
-                            except Exception:
-                                pass
-
-                            paths_to_check = list(detected_paths)
-                            if service_path and service_path not in paths_to_check:
-                                paths_to_check.append(service_path)
-                            for c_path in candidate_paths:
-                                if c_path not in paths_to_check:
-                                    paths_to_check.append(c_path)
-                                
-                            # Проверяем наличие файла .env
-                            for path in paths_to_check:
-                                cmd = ["pct", "exec", str(vmid), "--", "cat", path]
-                                proc = await asyncio.create_subprocess_exec(
-                                    *cmd,
-                                    stdout=asyncio.subprocess.PIPE,
-                                    stderr=asyncio.subprocess.DEVNULL
-                                )
-                                stdout, _ = await proc.communicate()
-                                if proc.returncode == 0 and stdout:
-                                    env_content = stdout.decode('utf-8', errors='ignore')
-                                    config = parse_env_content(env_content)
-                                    
-                                    port = config.get("PANEL_PORT")
-                                    token = config.get("API_TOKEN")
-                                    secret_path = config.get("PANEL_SECRET_PATH", "ui")
-                                    
-                                    if port and token:
-                                        ip = proxmox.get_lxc_ip(node_name, vmid)
-                                        if ip:
-                                            url = await probe_panel_url(ip, port)
-                                            # Избегаем дубликатов
-                                            is_dup = False
-                                            for ep in new_panels.values():
-                                                if ep.url.rstrip('/').lower() == url.rstrip('/').lower():
-                                                    is_dup = True
-                                                    break
-                                            if not is_dup:
-                                                key = f"lxc_{vmid}"
-                                                new_panels[key] = SpectrePanelInstance(
-                                                    name=f"LXC {vmid} ({vm.get('name', 'VPN')})",
-                                                    url=url,
-                                                    token=token,
-                                                    secret_path=secret_path,
-                                                    source_type="lxc",
-                                                    identifier=str(vmid)
-                                                )
-                                                logging.info(f"[Spectre Discovery] Найдена локальная панель: {new_panels[key].name} ({url})")
-                                            break
+                            tasks.append(discover_lxc_panel(node_name, vm))
             except Exception as e:
                 logging.error(f"[Spectre Discovery] Ошибка при поиске в Proxmox: {e}")
-                
+
         # 2. Поиск на удаленных серверах VPS
         if settings.remote_servers:
-            from modules.proxmox.monitor.remote.ssh import run_remote_ssh_cmd
             for server in settings.remote_servers:
-                vps_ip = server['ip']
-                try:
-                    # Сначала пробуем получить путь через systemd-сервис vpn-host-agent на удаленном VPS
-                    service_path = None
-                    try:
-                        success_svc, stdout_svc, _ = await run_remote_ssh_cmd(server, ["systemctl", "show", "-p", "WorkingDirectory", "vpn-host-agent"])
-                        if success_svc and stdout_svc:
-                            svc_out = stdout_svc.strip()
-                            if svc_out.startswith("WorkingDirectory=") and len(svc_out) > 17:
-                                work_dir = svc_out.split("=", 1)[1].strip()
-                                if work_dir.endswith("/host"):
-                                    proj_dir = work_dir[:-5]
-                                elif work_dir.endswith("\\host"):
-                                    proj_dir = work_dir[:-5]
-                                else:
-                                    proj_dir = work_dir
-                                
-                                service_path = f"{proj_dir.rstrip('/')}/config/.env"
-                    except Exception:
-                        pass
-                        
-                    # Динамический поиск файлов config/.env на удаленном VPS с помощью find
-                    detected_paths = []
-                    try:
-                        success_find, stdout_find, _ = await run_remote_ssh_cmd(
-                            server, 
-                            ["find", "/opt", "/root", "/home", "/app", "/var", "-maxdepth", "4", "-name", ".env"]
-                        )
-                        if success_find and stdout_find:
-                            for found_path in stdout_find.splitlines():
-                                found_path = found_path.strip()
-                                if found_path.endswith('/config/.env') and found_path not in detected_paths:
-                                    detected_paths.append(found_path)
-                    except Exception:
-                        pass
+                tasks.append(discover_vps_panel(server))
 
-                    paths_to_check = list(detected_paths)
-                    if service_path and service_path not in paths_to_check:
-                        paths_to_check.append(service_path)
-                    for c_path in candidate_paths:
-                        if c_path not in paths_to_check:
-                            paths_to_check.append(c_path)
-                        
-                    for path in paths_to_check:
-                        # Проверяем файл .env через SSH
-                        success, stdout, stderr = await run_remote_ssh_cmd(server, ["cat", path])
-                        if success and stdout:
-                            config = parse_env_content(stdout)
-                            port = config.get("PANEL_PORT")
-                            token = config.get("API_TOKEN")
-                            secret_path = config.get("PANEL_SECRET_PATH", "ui")
-                            
-                            if port and token:
-                                url = await probe_panel_url(vps_ip, port)
-                                # Избегаем дубликатов
-                                is_dup = False
-                                for ep in new_panels.values():
-                                    if ep.url.rstrip('/').lower() == url.rstrip('/').lower():
-                                        is_dup = True
-                                        break
-                                if not is_dup:
-                                    key = f"vps_{vps_ip}"
-                                    new_panels[key] = SpectrePanelInstance(
-                                        name=f"VPS {vps_ip}",
-                                        url=url,
-                                        token=token,
-                                        secret_path=secret_path,
-                                        source_type="vps",
-                                        identifier=vps_ip
-                                    )
-                                    logging.info(f"[Spectre Discovery] Найдена удаленная панель: {new_panels[key].name} ({url})")
-                                break
-                except Exception as e:
-                    logging.error(f"[Spectre Discovery] Ошибка при поиске на удаленном VPS {vps_ip}: {e}")
-                    
+        # Запускаем все задачи автообнаружения параллельно
+        if tasks:
+            await asyncio.gather(*tasks)
+
         # 3. Добавление панелей, настроенных вручную в .env
         if settings.spectre_panels:
             for idx, p in enumerate(settings.spectre_panels):
@@ -325,7 +374,12 @@ class SpectreClientManager:
                         
                     # Избегаем дубликатов
                     is_dup = False
+                    norm_url = normalize_url(url)
                     for ep in new_panels.values():
+                        norm_ep = normalize_url(ep.url)
+                        if norm_ep and norm_url and norm_ep == norm_url:
+                            is_dup = True
+                            break
                         if ep.url.rstrip('/').lower() == url.rstrip('/').lower():
                             is_dup = True
                             break
