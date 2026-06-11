@@ -625,6 +625,7 @@ async def cb_spectre_list(callback: CallbackQuery):
     for p_key, p in panels.items():
         buttons.append([InlineKeyboardButton(text=f"📱 {p.name}", callback_data=f"spectre_menu:{p_key}")])
     buttons.append([InlineKeyboardButton(text="➕ Добавить мастер ноду", callback_data="spectre_add_master")])
+    buttons.append([InlineKeyboardButton(text="🔙 В главное меню", callback_data="main_menu")])
     kb = InlineKeyboardMarkup(inline_keyboard=buttons)
     await callback.message.edit_text(
         "🚀 <b>Выберите Spectre Panel для управления:</b>",

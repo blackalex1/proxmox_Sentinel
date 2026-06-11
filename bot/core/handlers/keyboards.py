@@ -7,6 +7,9 @@ def get_main_menu_keyboard() -> InlineKeyboardMarkup:
             InlineKeyboardButton(text="🖥️ Proxmox VE", callback_data="proxmox_main")
         ],
         [
+            InlineKeyboardButton(text="🚀 Spectre VPN Panel", callback_data="spectre_list")
+        ],
+        [
             InlineKeyboardButton(text="🛠️ Ansible Playbooks", callback_data="ansible_main")
         ],
         [
