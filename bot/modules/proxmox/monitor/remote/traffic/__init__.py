@@ -135,6 +135,14 @@ async def investigate_and_resolve_remote_attack(server, dst_ip, dpt, tunnel_emai
                f"🕒 Время: <code>{timestamp}</code>\n"
                f"✨ Все остальные пользователи туннеля снова в сети!")
         await send_alert_to_admins(msg)
+        
+        # Отчёт мастер-панели (если этот бот — слейв, иначе no-op)
+        await spectre_manager.report_investigation_to_master(
+            action="investigation_result",
+            culprit_email=xray_client,
+            tunnel_email=tunnel_email,
+            details=f"dst={dst_ip}:{dpt}, vps={server['ip']}, route={target_panel.name if target_panel else 'unknown'}->hysteria->vps"
+        )
     else:
         # Фаза 2: Виновник не найден
         xray_logs_summary = ""
@@ -176,6 +184,14 @@ async def investigate_and_resolve_remote_attack(server, dst_ip, dpt, tunnel_emai
                f"🔍 <b>Собранные фрагменты логов:</b>\n{logs_text}\n"
                f"👇 Вы можете разблокировать туннель вручную в один клик:")
         await send_alert_to_admins(msg, reply_markup=keyboard)
+        
+        # Отчёт мастер-панели (если этот бот — слейв, иначе no-op)
+        await spectre_manager.report_investigation_to_master(
+            action="investigation_failed",
+            culprit_email="",
+            tunnel_email=tunnel_email,
+            details=f"dst={dst_ip}:{dpt}, vps={server['ip']}"
+        )
 
 async def handle_remote_traffic_line(line, server=None):
     """Парсинг сетевых алертов iptables удаленного VPS."""

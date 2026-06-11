@@ -47,6 +47,9 @@ async def start_all_lxc_monitors():
     # 7. Запускаем фоновый планировщик автоматических бэкапов
     asyncio.create_task(start_auto_backup_scheduler(), name="auto_backup_scheduler")
     
+    # 8. Запускаем фоновый опрос аудит-логов панелей для перехвата и оповещения об IPS авто-блокировках
+    asyncio.create_task(monitor_panel_audit_logs(), name="monitor_panel_audit_logs")
+    
     logging.info("Все службы LXC мониторинга успешно запущены в фоне!")
 
 
@@ -110,6 +113,122 @@ async def start_auto_backup_scheduler():
             logging.error(f"[Backup Scheduler] Исключение в планировщике бэкапов: {e}")
             
         await asyncio.sleep(60)
+
+
+async def monitor_panel_audit_logs():
+    """
+    Периодически опрашивает логи аудита всех панелей Spectre Panel и пересылает
+    уведомления об авто-блокировках IPS-Sentinel администраторам в Telegram.
+    """
+    from core.spectre_client import spectre_manager
+    from core.bot import bot
+    import time
+    
+    # Хранит последний обработанный ID лога для каждой панели
+    last_log_ids = {}
+    
+    logging.info("[Audit Monitor] Запущен фоновый мониторинг логов аудита панелей.")
+    
+    # Даем немного времени на стартовое обнаружение панелей
+    await asyncio.sleep(10)
+    
+    # Инициализируем начальные ID, чтобы не спамить старыми алертами при перезапуске бота
+    for p_key, panel in list(spectre_manager.panels.items()):
+        try:
+            success, res = await panel.get_audit_logs(limit=1)
+            if success and res.get("success") and res.get("logs"):
+                last_log_ids[p_key] = res["logs"][0]["id"]
+        except Exception:
+            pass
+            
+    while True:
+        try:
+            panels = list(spectre_manager.panels.items())
+            for p_key, panel in panels:
+                try:
+                    success, res = await panel.get_audit_logs(limit=20)
+                    if not success or not res.get("success"):
+                        continue
+                        
+                    logs = res.get("logs", [])
+                    if not logs:
+                        continue
+                        
+                    # Сортируем логи по возрастанию ID (от старых к новым)
+                    logs.sort(key=lambda x: x["id"])
+                    
+                    prev_max_id = last_log_ids.get(p_key, 0)
+                    new_max_id = prev_max_id
+                    
+                    for log in logs:
+                        log_id = log["id"]
+                        if log_id <= prev_max_id:
+                            continue
+                            
+                        new_max_id = max(new_max_id, log_id)
+                        
+                        # Фильтруем события авто-блокировки и успешных авторизаций
+                        is_ips_block = (
+                            log.get("username") == "IPS-Sentinel" or
+                            "IPS-Sentinel" in str(log.get("details")) or
+                            "IPS Auto-blocked" in str(log.get("details"))
+                        )
+                        is_login_success = log.get("action") in ["login_success", "login_telegram_success"]
+                        
+                        if is_ips_block:
+                            email = log.get("target") or "unknown"
+                            details = log.get("details") or ""
+                            timestamp_val = log.get("timestamp")
+                            try:
+                                import datetime
+                                time_str = datetime.datetime.fromtimestamp(timestamp_val).strftime("%H:%M:%S")
+                            except Exception:
+                                time_str = datetime.datetime.now().strftime("%H:%M:%S")
+                                
+                            msg = (f"🛑 <b>[IPS: Авто-блокировка на {panel.name}]</b>\n\n"
+                                   f"👤 Пользователь: <code>{email}</code>\n"
+                                   f"ℹ️ Причина: <b>{details}</b>\n"
+                                   f"🕒 Время: <code>{time_str}</code>")
+                                   
+                            # Отправляем алерт всем администраторам контроллера
+                            for admin_id in settings.admin_ids:
+                                try:
+                                    await bot.send_message(chat_id=admin_id, text=msg, parse_mode="HTML")
+                                except Exception as e:
+                                    logging.error(f"[Audit Monitor] Не удалось отправить алерт админу {admin_id}: {e}")
+                                    
+                        elif is_login_success:
+                            username = log.get("username") or "unknown"
+                            ip = log.get("target") or "unknown"
+                            details = log.get("details") or ""
+                            timestamp_val = log.get("timestamp")
+                            try:
+                                import datetime
+                                time_str = datetime.datetime.fromtimestamp(timestamp_val).strftime("%H:%M:%S")
+                            except Exception:
+                                time_str = datetime.datetime.now().strftime("%H:%M:%S")
+                                
+                            msg = (f"🔑 <b>[Вход выполнен на {panel.name}]</b>\n\n"
+                                   f"👤 Логин: <code>{username}</code>\n"
+                                   f"🌐 IP-адрес: <code>{ip}</code>\n"
+                                   f"ℹ️ Детали: <b>{details}</b>\n"
+                                   f"🕒 Время: <code>{time_str}</code>")
+                                   
+                            # Отправляем алерт всем администраторам контроллера
+                            for admin_id in settings.admin_ids:
+                                try:
+                                    await bot.send_message(chat_id=admin_id, text=msg, parse_mode="HTML")
+                                except Exception as e:
+                                    logging.error(f"[Audit Monitor] Не удалось отправить алерт админу {admin_id}: {e}")
+                                    
+                    last_log_ids[p_key] = new_max_id
+                except Exception as panel_err:
+                    logging.debug(f"[Audit Monitor] Ошибка опроса панели {panel.name}: {panel_err}")
+        except Exception as e:
+            logging.error(f"[Audit Monitor] Ошибка в цикле мониторинга аудит-логов: {e}")
+            
+        await asyncio.sleep(10)
+
 
 
 
