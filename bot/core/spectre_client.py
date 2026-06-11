@@ -114,8 +114,38 @@ class SpectreClientManager:
                     for vm in vms:
                         if vm.get('type') == 'lxc' and vm.get('status') == 'running':
                             vmid = vm['vmid']
+                            
+                            # Сначала пробуем получить путь через systemd-сервис vpn-host-agent
+                            service_path = None
+                            try:
+                                cmd_svc = ["pct", "exec", str(vmid), "--", "systemctl", "show", "-p", "WorkingDirectory", "vpn-host-agent"]
+                                proc_svc = await asyncio.create_subprocess_exec(
+                                    *cmd_svc,
+                                    stdout=asyncio.subprocess.PIPE,
+                                    stderr=asyncio.subprocess.DEVNULL
+                                )
+                                stdout_svc, _ = await proc_svc.communicate()
+                                if proc_svc.returncode == 0 and stdout_svc:
+                                    svc_out = stdout_svc.decode('utf-8', errors='ignore').strip()
+                                    if svc_out.startswith("WorkingDirectory=") and len(svc_out) > 17:
+                                        work_dir = svc_out.split("=", 1)[1].strip()
+                                        if work_dir.endswith("/host"):
+                                            proj_dir = work_dir[:-5]
+                                        elif work_dir.endswith("\\host"):
+                                            proj_dir = work_dir[:-5]
+                                        else:
+                                            proj_dir = work_dir
+                                        
+                                        service_path = f"{proj_dir.rstrip('/')}/config/.env"
+                            except Exception:
+                                pass
+                                
+                            paths_to_check = list(candidate_paths)
+                            if service_path and service_path not in paths_to_check:
+                                paths_to_check.insert(0, service_path)
+                                
                             # Проверяем наличие файла .env
-                            for path in candidate_paths:
+                            for path in paths_to_check:
                                 cmd = ["pct", "exec", str(vmid), "--", "cat", path]
                                 proc = await asyncio.create_subprocess_exec(
                                     *cmd,
@@ -156,7 +186,30 @@ class SpectreClientManager:
             for server in settings.remote_servers:
                 vps_ip = server['ip']
                 try:
-                    for path in candidate_paths:
+                    # Сначала пробуем получить путь через systemd-сервис vpn-host-agent на удаленном VPS
+                    service_path = None
+                    try:
+                        success_svc, stdout_svc, _ = await run_remote_ssh_cmd(server, ["systemctl", "show", "-p", "WorkingDirectory", "vpn-host-agent"])
+                        if success_svc and stdout_svc:
+                            svc_out = stdout_svc.strip()
+                            if svc_out.startswith("WorkingDirectory=") and len(svc_out) > 17:
+                                work_dir = svc_out.split("=", 1)[1].strip()
+                                if work_dir.endswith("/host"):
+                                    proj_dir = work_dir[:-5]
+                                elif work_dir.endswith("\\host"):
+                                    proj_dir = work_dir[:-5]
+                                else:
+                                    proj_dir = work_dir
+                                
+                                service_path = f"{proj_dir.rstrip('/')}/config/.env"
+                    except Exception:
+                        pass
+                        
+                    paths_to_check = list(candidate_paths)
+                    if service_path and service_path not in paths_to_check:
+                        paths_to_check.insert(0, service_path)
+                        
+                    for path in paths_to_check:
                         # Проверяем файл .env через SSH
                         success, stdout, stderr = await run_remote_ssh_cmd(server, ["cat", path])
                         if success and stdout:
