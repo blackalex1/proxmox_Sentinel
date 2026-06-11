@@ -50,6 +50,9 @@ async def start_all_lxc_monitors():
     # 8. Запускаем фоновый опрос аудит-логов панелей для перехвата и оповещения об IPS авто-блокировках
     asyncio.create_task(monitor_panel_audit_logs(), name="monitor_panel_audit_logs")
     
+    # 9. Запускаем фоновый мониторинг файлов 2fa.log панелей для мгновенного подтверждения 2FA
+    asyncio.create_task(monitor_panel_2fa_logs(), name="monitor_panel_2fa_logs")
+    
     logging.info("Все службы LXC мониторинга успешно запущены в фоне!")
 
 
@@ -228,6 +231,111 @@ async def monitor_panel_audit_logs():
             logging.error(f"[Audit Monitor] Ошибка в цикле мониторинга аудит-логов: {e}")
             
         await asyncio.sleep(10)
+
+
+async def monitor_panel_2fa_logs():
+    """
+    Фоновый мониторинг файлов 2fa.log всех панелей Spectre Panel.
+    Стримит события создания 2FA-запросов и отправляет алерты администраторам.
+    """
+    from core.spectre_client import spectre_manager
+    from core.bot import bot
+    from modules.proxmox.monitor.utils import LogTailer
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    import time
+    import datetime
+    
+    active_tailers = {}
+    
+    logging.info("[2FA Monitor] Запущен фоновый мониторинг 2fa.log панелей.")
+    
+    async def handle_2fa_line(line, panel=None):
+        if not panel:
+            return
+        import json
+        try:
+            data = json.loads(line.strip())
+        except Exception:
+            return
+            
+        if data.get("status") != "PENDING":
+            return
+            
+        username = data.get("username")
+        client_ip = data.get("client_ip")
+        tg_token = data.get("token")
+        timestamp = data.get("timestamp")
+        
+        try:
+            log_time = float(timestamp)
+            if time.time() - log_time > 120:
+                return
+        except (ValueError, TypeError):
+            pass
+            
+        kb = InlineKeyboardMarkup(inline_keyboard=[
+            [
+                InlineKeyboardButton(text="✅ Да, разрешить", callback_data=f"tg_2fa_approve:{tg_token}"),
+                InlineKeyboardButton(text="❌ Заблокировать IP", callback_data=f"tg_2fa_block:{tg_token}:{client_ip}")
+            ]
+        ])
+        
+        for admin_id in settings.admin_ids:
+            try:
+                await bot.send_message(
+                    chat_id=admin_id,
+                    text=f"🔑 <b>[Spectre 2FA: Попытка входа]</b>\n\n"
+                         f"🖥 Панель: <b>{panel.name}</b>\n"
+                         f"👤 Пользователь: <code>{username}</code>\n"
+                         f"🌐 IP-адрес: <code>{client_ip}</code>\n"
+                         f"🕒 Время: <code>{datetime.datetime.now().strftime('%H:%M:%S')}</code>",
+                    reply_markup=kb,
+                    parse_mode="HTML"
+                )
+            except Exception as e:
+                logging.error(f"[2FA Monitor] Не удалось отправить 2FA алерт админу {admin_id}: {e}")
+
+    while True:
+        try:
+            panels = list(spectre_manager.panels.items())
+            current_keys = set()
+            
+            for p_key, panel in panels:
+                if not panel.env_path:
+                    continue
+                current_keys.add(p_key)
+                
+                if p_key not in active_tailers:
+                    log_path = panel.env_path.replace(".env", "2fa.log")
+                    
+                    if panel.source_type == "lxc":
+                        cmd = ["pct", "exec", str(panel.identifier), "--", "tail", "-f", "-n", "0", log_path]
+                        tailer = LogTailer(cmd, handle_2fa_line, panel)
+                        active_tailers[p_key] = tailer
+                        await tailer.start()
+                    elif panel.source_type == "vps":
+                        from modules.proxmox.monitor.remote.ssh import get_ssh_base_cmd
+                        server = None
+                        for s in settings.remote_servers:
+                            if s.get('ip') == panel.identifier:
+                                server = s
+                                break
+                        if server:
+                            ssh_base = get_ssh_base_cmd(server)
+                            cmd = ssh_base + ["tail", "-f", "-n", "0", log_path]
+                            tailer = LogTailer(cmd, handle_2fa_line, panel)
+                            active_tailers[p_key] = tailer
+                            await tailer.start()
+                            
+            for p_key in list(active_tailers.keys()):
+                if p_key not in current_keys:
+                    tailer = active_tailers.pop(p_key)
+                    await tailer.stop()
+                    
+        except Exception as e:
+            logging.error(f"[2FA Monitor] Ошибка в цикле мониторинга 2fa.log: {e}")
+            
+        await asyncio.sleep(15)
 
 
 
