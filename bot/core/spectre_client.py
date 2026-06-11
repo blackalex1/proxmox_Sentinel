@@ -145,7 +145,7 @@ class SpectreClientManager:
                             # Динамический поиск файлов config/.env внутри контейнера с помощью find
                             detected_paths = []
                             try:
-                                find_cmd = ["pct", "exec", str(vmid), "--", "find", "/opt", "/root", "/home", "/app", "/var", "-maxdepth", "4", "-name", ".env", "-path", "*/config/.env"]
+                                find_cmd = ["pct", "exec", str(vmid), "--", "find", "/opt", "/root", "/home", "/app", "/var", "-maxdepth", "4", "-name", ".env"]
                                 find_proc = await asyncio.create_subprocess_exec(
                                     *find_cmd,
                                     stdout=asyncio.subprocess.PIPE,
@@ -155,7 +155,7 @@ class SpectreClientManager:
                                 if find_proc.returncode == 0 and find_stdout:
                                     for found_path in find_stdout.decode('utf-8', errors='ignore').splitlines():
                                         found_path = found_path.strip()
-                                        if found_path and found_path not in detected_paths:
+                                        if found_path.endswith('/config/.env') and found_path not in detected_paths:
                                             detected_paths.append(found_path)
                             except Exception:
                                 pass
@@ -233,12 +233,12 @@ class SpectreClientManager:
                     try:
                         success_find, stdout_find, _ = await run_remote_ssh_cmd(
                             server, 
-                            ["find", "/opt", "/root", "/home", "/app", "/var", "-maxdepth", "4", "-name", ".env", "-path", "*/config/.env"]
+                            ["find", "/opt", "/root", "/home", "/app", "/var", "-maxdepth", "4", "-name", ".env"]
                         )
                         if success_find and stdout_find:
                             for found_path in stdout_find.splitlines():
                                 found_path = found_path.strip()
-                                if found_path and found_path not in detected_paths:
+                                if found_path.endswith('/config/.env') and found_path not in detected_paths:
                                     detected_paths.append(found_path)
                     except Exception:
                         pass
