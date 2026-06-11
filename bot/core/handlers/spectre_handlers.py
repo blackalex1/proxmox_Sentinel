@@ -506,9 +506,8 @@ async def cb_tg_2fa_approve(callback: CallbackQuery):
 
 @router.callback_query(F.data.startswith("tg_2fa_block:"))
 async def cb_tg_2fa_block(callback: CallbackQuery):
-    parts = callback.data.split(":", 2)
+    parts = callback.data.split(":", 1)
     token = parts[1]
-    ip = parts[2] if len(parts) > 2 else "unknown"
     
     success_found = False
     error_msg = None
@@ -521,7 +520,7 @@ async def cb_tg_2fa_block(callback: CallbackQuery):
             error_msg = res.get("msg")
             
     if success_found:
-        await callback.message.edit_text(f"🛑 <b>IP {ip} заблокирован.</b>", parse_mode="HTML")
+        await callback.message.edit_text("🛑 <b>IP-адрес заблокирован.</b>", parse_mode="HTML")
     else:
         await callback.answer(f"❌ Ошибка: {error_msg or 'Не удалось заблокировать ни на одной панели'}", show_alert=True)
 
