@@ -360,3 +360,44 @@ async def cmd_whitelist_process_cli(message: types.Message):
         await message.reply(f"🟢 Добавлен процесс <code>{val}</code> в белый список узла <b>{get_node_label(node)}</b>.", parse_mode="HTML")
     else:
         await message.reply(f"ℹ️ Процесс <code>{val}</code> уже находится в белом списке узла <b>{get_node_label(node)}</b>.", parse_mode="HTML")
+
+
+@router.callback_query(F.data.startswith("qwl:"))
+async def cb_quick_whitelist(callback: CallbackQuery):
+    try:
+        parts = callback.data.split(":", 3)
+        if len(parts) < 4:
+            await callback.answer("❌ Неверный формат callback-данных.", show_alert=True)
+            return
+            
+        node = parts[1]
+        wl_type = parts[2]
+        val = parts[3]
+        
+        # Если тип ipport, val содержит ip:port. Если тип ip, val содержит ip.
+        whitelists = await get_node_whitelists()
+        if node not in whitelists:
+            whitelists[node] = {"ip_ports": [], "processes": []}
+            
+        if val not in whitelists[node]["ip_ports"]:
+            whitelists[node]["ip_ports"].append(val)
+            await save_node_whitelists(whitelists)
+            await sync_whitelists_to_panels()
+            
+            await callback.answer(f"🟢 Успешно добавлено в белый список {get_node_label(node)}: {val}", show_alert=True)
+            
+            orig_text = callback.message.html_text or callback.message.text or ""
+            new_text = f"{orig_text}\n\n✅ <b>Добавлено в белый список ({get_node_label(node)}):</b> <code>{val}</code>"
+            try:
+                await callback.message.edit_text(text=new_text, parse_mode="HTML", reply_markup=None)
+            except Exception:
+                pass
+        else:
+            await callback.answer(f"ℹ️ Уже находится в белом списке {get_node_label(node)}.", show_alert=True)
+            try:
+                await callback.message.edit_reply_markup(reply_markup=None)
+            except Exception:
+                pass
+    except Exception as e:
+        logging.error(f"Ошибка при быстром добавлении в белый список: {e}")
+        await callback.answer("❌ Произошла ошибка при сохранении.", show_alert=True)
