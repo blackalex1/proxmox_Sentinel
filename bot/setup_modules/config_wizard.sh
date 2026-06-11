@@ -381,9 +381,9 @@ except Exception as e:
             
             DETECTED_JSON=""
             if [ -f "${SCRIPT_DIR}/venv/bin/python" ]; then
-                DETECTED_JSON=$(BOT_TOKEN="123:abc" "${SCRIPT_DIR}/venv/bin/python" "${SCRIPT_DIR}/setup_modules/detect_panels.py" 2>/dev/null || true)
+                DETECTED_JSON=$(BOT_TOKEN="123:abc" "${SCRIPT_DIR}/venv/bin/python" "${SCRIPT_DIR}/setup_modules/detect_panels.py" 2>"${SCRIPT_DIR}/detect_panels.log" || true)
             else
-                DETECTED_JSON=$(BOT_TOKEN="123:abc" python3 "${SCRIPT_DIR}/setup_modules/detect_panels.py" 2>/dev/null || true)
+                DETECTED_JSON=$(BOT_TOKEN="123:abc" python3 "${SCRIPT_DIR}/setup_modules/detect_panels.py" 2>"${SCRIPT_DIR}/detect_panels.log" || true)
             fi
             
             PANELS_FOUND=0
@@ -403,7 +403,12 @@ except Exception as e:
                 fi
             else
                 echo -e "\n${YELLOW}⚠️ Не удалось автоматически обнаружить установленные панели Spectre Panel.${NC}"
+                if [ -f "${SCRIPT_DIR}/detect_panels.log" ] && [ -s "${SCRIPT_DIR}/detect_panels.log" ]; then
+                    echo -e "${CYAN}Детали ошибки поиска:${NC}"
+                    cat "${SCRIPT_DIR}/detect_panels.log"
+                fi
             fi
+            rm -f "${SCRIPT_DIR}/detect_panels.log"
             
             SP_JSON="[]"
             if [ "${USE_DETECTED}" = "y" ]; then
