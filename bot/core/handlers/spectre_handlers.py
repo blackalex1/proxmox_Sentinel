@@ -165,6 +165,7 @@ async def run_status_for_panel(message: types.Message, panel_key: str):
             f"🖧 Всего подключений (Inbounds): <b>{counts.get('total_inbounds', 0)}</b>\n"
             f"👥 Всего клиентов: <b>{counts.get('total_clients', 0)}</b>\n"
             f"🟢 Активных пользователей: <b>{counts.get('active_clients', 0)}</b>\n"
+            f"🔵 В сети (Онлайн): <b>{counts.get('online_clients', 0)}</b>\n"
             f"🔴 Заблокированных: <b>{counts.get('blocked_clients', 0)}</b>"
         )
         await status_msg.delete()
