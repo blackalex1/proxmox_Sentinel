@@ -309,7 +309,7 @@ async def monitor_panel_2fa_logs():
                     log_path = panel.env_path.replace(".env", "2fa.log")
                     
                     if panel.source_type == "lxc":
-                        cmd = ["pct", "exec", str(panel.identifier), "--", "tail", "-f", "-n", "0", log_path]
+                        cmd = ["pct", "exec", str(panel.identifier), "--", "tail", "-F", "-n", "0", log_path]
                         tailer = LogTailer(cmd, handle_2fa_line, panel)
                         active_tailers[p_key] = tailer
                         await tailer.start()
@@ -322,7 +322,7 @@ async def monitor_panel_2fa_logs():
                                 break
                         if server:
                             ssh_base = get_ssh_base_cmd(server)
-                            cmd = ssh_base + ["tail", "-f", "-n", "0", log_path]
+                            cmd = ssh_base + ["tail", "-F", "-n", "0", log_path]
                             tailer = LogTailer(cmd, handle_2fa_line, panel)
                             active_tailers[p_key] = tailer
                             await tailer.start()
