@@ -19,6 +19,24 @@ def parse_env_content(content: str) -> dict:
             result[k.strip()] = v.strip().strip('"').strip("'")
     return result
 
+async def probe_panel_url(ip: str, port: str) -> str:
+    """
+    Проверяет доступность панели по HTTPS и HTTP, возвращает рабочий URL.
+    """
+    connector = aiohttp.TCPConnector(ssl=False)
+    async with aiohttp.ClientSession(connector=connector) as session:
+        for proto in ["https", "http"]:
+            url = f"{proto}://{ip}:{port}"
+            try:
+                async with session.get(url, timeout=2) as response:
+                    logging.info(f"[Spectre Discovery] Панель ответила по протоколу {proto} на {url} (статус {response.status})")
+                    return url
+            except (aiohttp.ClientConnectorError, aiohttp.ServerDisconnectedError, asyncio.TimeoutError):
+                continue
+            except Exception:
+                continue
+    return f"https://{ip}:{port}"
+
 class SpectrePanelInstance:
     """
     Представляет инстанс Spectre Panel (локальный LXC или удаленный VPS).
@@ -187,8 +205,7 @@ class SpectreClientManager:
                                     if port and token:
                                         ip = proxmox.get_lxc_ip(node_name, vmid)
                                         if ip:
-                                            # Схема по умолчанию HTTP (внутри приватной сети LXC)
-                                            url = f"http://{ip}:{port}"
+                                            url = await probe_panel_url(ip, port)
                                             key = f"lxc_{vmid}"
                                             new_panels[key] = SpectrePanelInstance(
                                                 name=f"LXC {vmid} ({vm.get('name', 'VPN')})",
@@ -260,8 +277,7 @@ class SpectreClientManager:
                             secret_path = config.get("PANEL_SECRET_PATH", "ui")
                             
                             if port and token:
-                                # Пробуем HTTPS, если не сработает - HTTP
-                                url = f"http://{vps_ip}:{port}"
+                                url = await probe_panel_url(vps_ip, port)
                                 key = f"vps_{vps_ip}"
                                 new_panels[key] = SpectrePanelInstance(
                                     name=f"VPS {vps_ip}",
