@@ -155,7 +155,7 @@ run_config_wizard() {
                         status_array[idx]=$status
                         
                         lower_name=$(echo "$name" | tr '[:upper:]' '[:lower:]')
-                        if [[ "$lower_name" =~ vpn || "$lower_name" =~ wg || "$lower_name" =~ wireguard || "$lower_name" =~ openvpn || "$lower_name" =~ xray || "$lower_name" =~ spectre ]]; then
+                        if [[ "$lower_name" =~ vpn || "$lower_name" =~ wg || "$lower_name" =~ wireguard || "$lower_name" =~ openvpn || "$lower_name" =~ xray || "$lower_name" =~ spectre || "$lower_name" =~ panel || "$lower_name" =~ x-ui || "$lower_name" =~ xui ]]; then
                             if [ $auto_idx -eq -1 ]; then
                                 auto_idx=$idx
                             fi
