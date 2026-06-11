@@ -24,6 +24,13 @@ async def cmd_panel(message: types.Message):
         panel_key = list(panels.keys())[0]
         panel = list(panels.values())[0]
         webapp_url = f"{panel.url}/{panel.secret_path}/"
+        success, settings_data = await panel.request("GET", "/api/settings")
+        if success and settings_data.get("ssl_domain"):
+            from urllib.parse import urlparse
+            parsed = urlparse(panel.url)
+            domain = settings_data["ssl_domain"]
+            port_str = f":{parsed.port}" if parsed.port and parsed.port not in (80, 443) else ""
+            webapp_url = f"https://{domain}{port_str}/{panel.secret_path}/"
         kb = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text=f"📱 Открыть {panel.name}", web_app=WebAppInfo(url=webapp_url))],
             [
@@ -598,6 +605,13 @@ async def cb_spectre_menu(callback: CallbackQuery):
         return
         
     webapp_url = f"{panel.url}/{panel.secret_path}/"
+    success, settings_data = await panel.request("GET", "/api/settings")
+    if success and settings_data.get("ssl_domain"):
+        from urllib.parse import urlparse
+        parsed = urlparse(panel.url)
+        domain = settings_data["ssl_domain"]
+        port_str = f":{parsed.port}" if parsed.port and parsed.port not in (80, 443) else ""
+        webapp_url = f"https://{domain}{port_str}/{panel.secret_path}/"
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text=f"📱 Открыть WebApp", web_app=WebAppInfo(url=webapp_url))],
         [
