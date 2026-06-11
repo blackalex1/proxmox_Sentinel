@@ -292,5 +292,31 @@ class SpectreClientManager:
                     results.append(item)
         return results
 
+    async def report_investigation_to_master(self, action: str, culprit_email: str, 
+                                              tunnel_email: str, details: str):
+        """
+        Просит каждую свою панель переслать отчёт о расследовании мастер-панели.
+        Панели без node_config.json (не слейвы) вернут reported=false и будут пропущены.
+        Первая панель-слейв, успешно отправившая отчёт, прерывает цикл.
+        """
+        for p in self.panels.values():
+            try:
+                success, res = await p.request("POST", "/api/security/report-to-master", json={
+                    "action": action,
+                    "client_email": culprit_email,
+                    "tunnel_email": tunnel_email,
+                    "details": details
+                })
+                if success and res.get("reported"):
+                    logging.info(f"[Spectre] Панель {p.name} переслала отчёт о расследовании мастер-панели")
+                    return True
+                elif success and not res.get("reported"):
+                    logging.debug(f"[Spectre] Панель {p.name} не является слейвом, пропускаем")
+            except Exception as e:
+                logging.error(f"[Spectre] Ошибка при отправке отчёта через {p.name}: {e}")
+        
+        logging.debug("[Spectre] Ни одна панель не является слейвом — отчёт не отправлен (это нормально для мастер-бота)")
+        return False
+
 # Создаем глобальный синглтон менеджера
 spectre_manager = SpectreClientManager()
