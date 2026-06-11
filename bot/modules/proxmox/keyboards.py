@@ -47,6 +47,9 @@ def get_vm_control_keyboard(node_name: str, vmid: str, vm_type: str, is_running:
             InlineKeyboardButton(text="🔒 Логи входа Хоста", callback_data=f"lxc_auth_{node_name}_{vmid}"),
             InlineKeyboardButton(text="🌐 Трафик Хоста", callback_data=f"lxc_ports_{node_name}_{vmid}")
         ])
+        buttons.append([
+            InlineKeyboardButton(text="⚙️ Белый список IPS", callback_data="wl_view:local")
+        ])
         buttons.append([InlineKeyboardButton(text="🔄 Обновить статус", callback_data=f"vm_{node_name}_{vmid}_host")])
         buttons.append([InlineKeyboardButton(text="🔙 Назад к списку ВМ", callback_data=f"node_{node_name}")])
         return InlineKeyboardMarkup(inline_keyboard=buttons)
@@ -64,6 +67,11 @@ def get_vm_control_keyboard(node_name: str, vmid: str, vm_type: str, is_running:
         buttons.append([
             InlineKeyboardButton(text="🔒 Логи входа", callback_data=f"lxc_auth_{node_name}_{vmid}"),
             InlineKeyboardButton(text="🌐 Трафик портов", callback_data=f"lxc_ports_{node_name}_{vmid}")
+        ])
+
+    if vm_type == 'lxc':
+        buttons.append([
+            InlineKeyboardButton(text="⚙️ Белый список IPS", callback_data=f"wl_view:lxc_{vmid}")
         ])
 
     buttons.append([InlineKeyboardButton(text="🔄 Обновить статус", callback_data=f"vm_{node_name}_{vmid}_{vm_type}")])

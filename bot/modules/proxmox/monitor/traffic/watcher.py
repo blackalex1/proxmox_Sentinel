@@ -210,7 +210,32 @@ async def handle_traffic_log_line(line):
                    f"🎯 Назначение: <code>{dst}:{dpt}</code>\n"
                    f"🕒 Время: <code>{timestamp}</code>")
             
-            await send_alert_to_admins(msg)
+            # Добавляем кнопки быстрого добавления в белый список
+            from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+            target_ip = src if direction == 'IN' else dst
+            target_port = dpt
+            
+            buttons = []
+            # Строка 1: Белый список для всего IP (любые порты)
+            row1 = [
+                InlineKeyboardButton(text="🌍 Разрешить IP везде", callback_data=f"qwl:global:ip:{target_ip}")
+            ]
+            if vmid != 0:
+                row1.append(InlineKeyboardButton(text=f"📦 Разрешить IP в LXC {vmid}", callback_data=f"qwl:lxc_{vmid}:ip:{target_ip}"))
+            buttons.append(row1)
+            
+            # Строка 2: Белый список конкретного IP:Порт
+            if target_port > 0:
+                row2 = [
+                    InlineKeyboardButton(text=f"🌍 IP:Порт ({target_port}) везде", callback_data=f"qwl:global:ipport:{target_ip}:{target_port}")
+                ]
+                if vmid != 0:
+                    row2.append(InlineKeyboardButton(text=f"📦 IP:Порт ({target_port}) в LXC {vmid}", callback_data=f"qwl:lxc_{vmid}:ipport:{target_ip}:{target_port}"))
+                buttons.append(row2)
+                
+            kb = InlineKeyboardMarkup(inline_keyboard=buttons)
+            
+            await send_alert_to_admins(msg, reply_markup=kb)
 
     except Exception as e:
         logging.error(f"Ошибка в обработчике трафика: {e}")
