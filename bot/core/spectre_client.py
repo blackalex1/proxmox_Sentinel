@@ -206,16 +206,23 @@ class SpectreClientManager:
                                         ip = proxmox.get_lxc_ip(node_name, vmid)
                                         if ip:
                                             url = await probe_panel_url(ip, port)
-                                            key = f"lxc_{vmid}"
-                                            new_panels[key] = SpectrePanelInstance(
-                                                name=f"LXC {vmid} ({vm.get('name', 'VPN')})",
-                                                url=url,
-                                                token=token,
-                                                secret_path=secret_path,
-                                                source_type="lxc",
-                                                identifier=str(vmid)
-                                            )
-                                            logging.info(f"[Spectre Discovery] Найдена локальная панель: {new_panels[key].name} ({url})")
+                                            # Избегаем дубликатов
+                                            is_dup = False
+                                            for ep in new_panels.values():
+                                                if ep.url.rstrip('/').lower() == url.rstrip('/').lower():
+                                                    is_dup = True
+                                                    break
+                                            if not is_dup:
+                                                key = f"lxc_{vmid}"
+                                                new_panels[key] = SpectrePanelInstance(
+                                                    name=f"LXC {vmid} ({vm.get('name', 'VPN')})",
+                                                    url=url,
+                                                    token=token,
+                                                    secret_path=secret_path,
+                                                    source_type="lxc",
+                                                    identifier=str(vmid)
+                                                )
+                                                logging.info(f"[Spectre Discovery] Найдена локальная панель: {new_panels[key].name} ({url})")
                                             break
             except Exception as e:
                 logging.error(f"[Spectre Discovery] Ошибка при поиске в Proxmox: {e}")
@@ -278,16 +285,23 @@ class SpectreClientManager:
                             
                             if port and token:
                                 url = await probe_panel_url(vps_ip, port)
-                                key = f"vps_{vps_ip}"
-                                new_panels[key] = SpectrePanelInstance(
-                                    name=f"VPS {vps_ip}",
-                                    url=url,
-                                    token=token,
-                                    secret_path=secret_path,
-                                    source_type="vps",
-                                    identifier=vps_ip
-                                )
-                                logging.info(f"[Spectre Discovery] Найдена удаленная панель: {new_panels[key].name} ({url})")
+                                # Избегаем дубликатов
+                                is_dup = False
+                                for ep in new_panels.values():
+                                    if ep.url.rstrip('/').lower() == url.rstrip('/').lower():
+                                        is_dup = True
+                                        break
+                                if not is_dup:
+                                    key = f"vps_{vps_ip}"
+                                    new_panels[key] = SpectrePanelInstance(
+                                        name=f"VPS {vps_ip}",
+                                        url=url,
+                                        token=token,
+                                        secret_path=secret_path,
+                                        source_type="vps",
+                                        identifier=vps_ip
+                                    )
+                                    logging.info(f"[Spectre Discovery] Найдена удаленная панель: {new_panels[key].name} ({url})")
                                 break
                 except Exception as e:
                     logging.error(f"[Spectre Discovery] Ошибка при поиске на удаленном VPS {vps_ip}: {e}")
@@ -309,18 +323,25 @@ class SpectreClientManager:
                     except Exception:
                         pass
                         
-                    name = p.get("name", f"Manual Panel {idx+1}")
-                    secret_path = p.get("secret_path", "ui")
-                    key = f"manual_{idx}"
-                    new_panels[key] = SpectrePanelInstance(
-                        name=name,
-                        url=url,
-                        token=token,
-                        secret_path=secret_path,
-                        source_type="manual",
-                        identifier=str(idx)
-                    )
-                    logging.info(f"[Spectre Discovery] Добавлена ручная панель: {name} ({url})")
+                    # Избегаем дубликатов
+                    is_dup = False
+                    for ep in new_panels.values():
+                        if ep.url.rstrip('/').lower() == url.rstrip('/').lower():
+                            is_dup = True
+                            break
+                    if not is_dup:
+                        name = p.get("name", f"Manual Panel {idx+1}")
+                        secret_path = p.get("secret_path", "ui")
+                        key = f"manual_{idx}"
+                        new_panels[key] = SpectrePanelInstance(
+                            name=name,
+                            url=url,
+                            token=token,
+                            secret_path=secret_path,
+                            source_type="manual",
+                            identifier=str(idx)
+                        )
+                        logging.info(f"[Spectre Discovery] Добавлена ручная панель: {name} ({url})")
 
         async with self._lock:
             self.panels = new_panels
