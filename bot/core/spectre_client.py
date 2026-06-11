@@ -298,6 +298,17 @@ class SpectreClientManager:
                 url = p.get("url")
                 token = p.get("token")
                 if url and token:
+                    # Пробуем распарсить url и динамически проверить протокол (HTTP/HTTPS)
+                    try:
+                        from urllib.parse import urlparse
+                        parsed = urlparse(url)
+                        host = parsed.hostname
+                        port = parsed.port
+                        if host and port:
+                            url = await probe_panel_url(host, str(port))
+                    except Exception:
+                        pass
+                        
                     name = p.get("name", f"Manual Panel {idx+1}")
                     secret_path = p.get("secret_path", "ui")
                     key = f"manual_{idx}"
