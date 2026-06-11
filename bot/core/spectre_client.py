@@ -144,10 +144,10 @@ class SpectreClientManager:
         async def discover_lxc_panel(node_name, vm):
             vmid = vm['vmid']
             try:
-                # Сначала пробуем получить путь через systemd-сервис vpn-host-agent
+                # Сначала пробуем получить путь через systemd-сервис spectre-agent
                 service_path = None
                 try:
-                    cmd_svc = ["pct", "exec", str(vmid), "--", "systemctl", "show", "-p", "WorkingDirectory", "vpn-host-agent"]
+                    cmd_svc = ["pct", "exec", str(vmid), "--", "systemctl", "show", "-p", "WorkingDirectory", "spectre-agent"]
                     proc_svc = await asyncio.create_subprocess_exec(
                         *cmd_svc,
                         stdout=asyncio.subprocess.PIPE,
@@ -248,10 +248,10 @@ class SpectreClientManager:
             vps_ip = server['ip']
             try:
                 from modules.proxmox.monitor.remote.ssh import run_remote_ssh_cmd
-                # Сначала пробуем получить путь через systemd-сервис vpn-host-agent на удаленном VPS
+                # Сначала пробуем получить путь через systemd-сервис spectre-agent на удаленном VPS
                 service_path = None
                 try:
-                    success_svc, stdout_svc, _ = await run_remote_ssh_cmd(server, ["systemctl", "show", "-p", "WorkingDirectory", "vpn-host-agent"])
+                    success_svc, stdout_svc, _ = await run_remote_ssh_cmd(server, ["systemctl", "show", "-p", "WorkingDirectory", "spectre-agent"])
                     if success_svc and stdout_svc:
                         svc_out = stdout_svc.strip()
                         if svc_out.startswith("WorkingDirectory=") and len(svc_out) > 17:
