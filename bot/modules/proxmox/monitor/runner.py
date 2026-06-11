@@ -276,7 +276,7 @@ async def monitor_panel_2fa_logs():
         kb = InlineKeyboardMarkup(inline_keyboard=[
             [
                 InlineKeyboardButton(text="✅ Да, разрешить", callback_data=f"tg_2fa_approve:{tg_token}"),
-                InlineKeyboardButton(text="❌ Заблокировать IP", callback_data=f"tg_2fa_block:{tg_token}:{client_ip}")
+                InlineKeyboardButton(text="❌ Заблокировать IP", callback_data=f"tg_2fa_block:{tg_token}")
             ]
         ])
         
