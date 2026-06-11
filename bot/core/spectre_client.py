@@ -96,8 +96,10 @@ class SpectreClientManager:
         logging.info("[Spectre Discovery] Запуск автообнаружения панелей...")
         new_panels = {}
         candidate_paths = [
+            "/opt/vpn_panel/config/.env",
             "/opt/spectre-panel/config/.env",
             "/root/Spectre-panel/config/.env",
+            "/root/panel/config/.env",
             "/home/spectre-panel/config/.env",
             "/app/config/.env",
             "/opt/Spectre-panel/config/.env"
@@ -140,9 +142,30 @@ class SpectreClientManager:
                             except Exception:
                                 pass
                                 
-                            paths_to_check = list(candidate_paths)
+                            # Динамический поиск файлов config/.env внутри контейнера с помощью find
+                            detected_paths = []
+                            try:
+                                find_cmd = ["pct", "exec", str(vmid), "--", "find", "/opt", "/root", "/home", "/app", "/var", "-maxdepth", "4", "-name", ".env", "-path", "*/config/.env"]
+                                find_proc = await asyncio.create_subprocess_exec(
+                                    *find_cmd,
+                                    stdout=asyncio.subprocess.PIPE,
+                                    stderr=asyncio.subprocess.DEVNULL
+                                )
+                                find_stdout, _ = await find_proc.communicate()
+                                if find_proc.returncode == 0 and find_stdout:
+                                    for found_path in find_stdout.decode('utf-8', errors='ignore').splitlines():
+                                        found_path = found_path.strip()
+                                        if found_path and found_path not in detected_paths:
+                                            detected_paths.append(found_path)
+                            except Exception:
+                                pass
+
+                            paths_to_check = list(detected_paths)
                             if service_path and service_path not in paths_to_check:
-                                paths_to_check.insert(0, service_path)
+                                paths_to_check.append(service_path)
+                            for c_path in candidate_paths:
+                                if c_path not in paths_to_check:
+                                    paths_to_check.append(c_path)
                                 
                             # Проверяем наличие файла .env
                             for path in paths_to_check:
@@ -205,9 +228,27 @@ class SpectreClientManager:
                     except Exception:
                         pass
                         
-                    paths_to_check = list(candidate_paths)
+                    # Динамический поиск файлов config/.env на удаленном VPS с помощью find
+                    detected_paths = []
+                    try:
+                        success_find, stdout_find, _ = await run_remote_ssh_cmd(
+                            server, 
+                            ["find", "/opt", "/root", "/home", "/app", "/var", "-maxdepth", "4", "-name", ".env", "-path", "*/config/.env"]
+                        )
+                        if success_find and stdout_find:
+                            for found_path in stdout_find.splitlines():
+                                found_path = found_path.strip()
+                                if found_path and found_path not in detected_paths:
+                                    detected_paths.append(found_path)
+                    except Exception:
+                        pass
+
+                    paths_to_check = list(detected_paths)
                     if service_path and service_path not in paths_to_check:
-                        paths_to_check.insert(0, service_path)
+                        paths_to_check.append(service_path)
+                    for c_path in candidate_paths:
+                        if c_path not in paths_to_check:
+                            paths_to_check.append(c_path)
                         
                     for path in paths_to_check:
                         # Проверяем файл .env через SSH
