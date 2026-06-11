@@ -245,72 +245,108 @@ except Exception as e:
             fi
         fi
 
-        # 4. Автоопределение LXC контейнеров для VPN_VMID
+        # 4. Автоопределение LXC контейнеров для VPN_VMID и Spectre Panel
         AUTO_VPN_VMID=""
-        if command -v pct >/dev/null 2>&1; then
-            echo -e "\n${CYAN}Поиск контейнеров LXC на хосте Proxmox VE...${NC}"
-            LXC_LIST=$(pct list 2>/dev/null | tail -n +2 | awk '{print $1, $2, $NF}' || true)
-            
-            if [ -n "$LXC_LIST" ]; then
-                declare -a vmid_array
-                declare -a name_array
-                declare -a status_array
+        DETECTED_PANELS_JSON=""
+        USE_AUTO_PANEL="n"
+        SP_JSON="[]"
+        
+        # Мы можем попробовать найти Spectre Panel прямо сейчас, до вывода списка всех LXC
+        echo -e "\n${CYAN}Поиск установленных панелей Spectre Panel на LXC контейнерах...${NC}"
+        if [ -f "${SCRIPT_DIR}/venv/bin/python" ]; then
+            DETECTED_PANELS_JSON=$(BOT_TOKEN="123:abc" "${SCRIPT_DIR}/venv/bin/python" "${SCRIPT_DIR}/setup_modules/detect_panels.py" 2>/dev/null || true)
+        else
+            DETECTED_PANELS_JSON=$(BOT_TOKEN="123:abc" python3 "${SCRIPT_DIR}/setup_modules/detect_panels.py" 2>/dev/null || true)
+        fi
+        
+        PANEL_VMID_SUGGESTION=""
+        PANEL_URL_SUGGESTION=""
+        PANEL_NAME_SUGGESTION=""
+        
+        if [ -n "${DETECTED_PANELS_JSON}" ] && [ "${DETECTED_PANELS_JSON}" != "[]" ]; then
+            PANEL_VMID_SUGGESTION=$(python3 -c "import sys, json; panels = json.loads(sys.argv[1]); p = panels[0] if panels else {}; url = p.get('url', ''); name = p.get('name', ''); import re; m = re.search(r'LXC (\d+)', name); print(m.group(1) if m else '')" "${DETECTED_PANELS_JSON}" 2>/dev/null || true)
+            PANEL_URL_SUGGESTION=$(python3 -c "import sys, json; panels = json.loads(sys.argv[1]); p = panels[0] if panels else {}; print(p.get('url', ''))" "${DETECTED_PANELS_JSON}" 2>/dev/null || true)
+            PANEL_NAME_SUGGESTION=$(python3 -c "import sys, json; panels = json.loads(sys.argv[1]); p = panels[0] if panels else {}; print(p.get('name', ''))" "${DETECTED_PANELS_JSON}" 2>/dev/null || true)
+        fi
+        
+        if [ -n "${PANEL_VMID_SUGGESTION}" ]; then
+            echo -e "${GREEN}✓ Обнаружена установленная Spectre Panel: ${YELLOW}${PANEL_NAME_SUGGESTION}${GREEN} (${PANEL_URL_SUGGESTION})${NC}"
+            echo -e "Использовать этот контейнер (${YELLOW}${PANEL_VMID_SUGGESTION}${NC}) для мониторинга VPN_VMID и автоматически подключить панель? (y/n) [y]"
+            read -rp ">> " use_auto_panel_input
+            if [ -z "${use_auto_panel_input}" ] || [ "${use_auto_panel_input}" = "y" ] || [ "${use_auto_panel_input}" = "Y" ]; then
+                USE_AUTO_PANEL="y"
+                AUTO_VPN_VMID="${PANEL_VMID_SUGGESTION}"
+                SP_JSON="${DETECTED_PANELS_JSON}"
+                echo -e "${GREEN}✓ Выбран контейнер с панелью: ${AUTO_VPN_VMID}${NC}"
+            fi
+        fi
+        
+        if [ "${USE_AUTO_PANEL}" = "n" ]; then
+            if command -v pct >/dev/null 2>&1; then
+                echo -e "\n${CYAN}Поиск контейнеров LXC на хосте Proxmox VE...${NC}"
+                LXC_LIST=$(pct list 2>/dev/null | tail -n +2 | awk '{print $1, $2, $NF}' || true)
                 
-                idx=0
-                auto_idx=-1
-                while read -r vmid status name; do
-                    if [ -n "$vmid" ]; then
-                        vmid_array[idx]=$vmid
-                        name_array[idx]=$name
-                        status_array[idx]=$status
-                        
-                        lower_name=$(echo "$name" | tr '[:upper:]' '[:lower:]')
-                        if [[ "$lower_name" =~ vpn || "$lower_name" =~ wg || "$lower_name" =~ wireguard || "$lower_name" =~ openvpn || "$lower_name" =~ xray || "$lower_name" =~ spectre || "$lower_name" =~ panel || "$lower_name" =~ x-ui || "$lower_name" =~ xui ]]; then
-                            if [ $auto_idx -eq -1 ]; then
-                                auto_idx=$idx
-                            fi
-                        fi
-                        idx=$((idx+1))
-                    fi
-                done <<< "$LXC_LIST"
-                
-                if [ ${#vmid_array[@]} -gt 0 ]; then
-                    echo -e "Найденные контейнеры LXC:"
-                    for i in "${!vmid_array[@]}"; do
-                        if [ $i -eq $auto_idx ]; then
-                            echo -e "  $((i+1))) ${GREEN}${vmid_array[i]} - ${name_array[i]} (Статус: ${status_array[i]}) [Автоопределение: VPN]${NC}"
-                        else
-                            echo -e "  $((i+1))) ${vmid_array[i]} - ${name_array[i]} (Статус: ${status_array[i]})"
-                        fi
-                    done
-                    echo -e "  $(( ${#vmid_array[@]} + 1 ))) [Ввести ID вручную]"
+                if [ -n "$LXC_LIST" ]; then
+                    declare -a vmid_array
+                    declare -a name_array
+                    declare -a status_array
                     
-                    default_option=""
-                    if [ $auto_idx -ne -1 ]; then
-                        default_option=$((auto_idx+1))
-                    fi
-                    
-                    echo -e "\n${YELLOW}Выберите порядковый номер из списка (1, 2...) или введите ID контейнера (например, 101) для VPN_VMID [по умолчанию: ${default_option:-ID вручную}]:${NC}"
-                    read -rp ">> " user_lxc_selection
-                    
-                    if [ -z "$user_lxc_selection" ] && [ -n "$default_option" ]; then
-                        user_lxc_selection=$default_option
-                    fi
-                    
-                    if [[ "$user_lxc_selection" =~ ^[0-9]+$ ]]; then
-                        # Сначала проверяем, не введен ли порядковый номер из списка
-                        if [ "$user_lxc_selection" -ge 1 ] && [ "$user_lxc_selection" -le "${#vmid_array[@]}" ]; then
-                            AUTO_VPN_VMID="${vmid_array[$((user_lxc_selection-1))]}"
-                            echo -e "${GREEN}✓ Выбран контейнер: ${AUTO_VPN_VMID} (${name_array[$((user_lxc_selection-1))]})${NC}"
-                        else
-                            # Иначе проверяем, не введен ли реальный VMID напрямую
-                            for i in "${!vmid_array[@]}"; do
-                                if [ "${vmid_array[i]}" -eq "$user_lxc_selection" ]; then
-                                    AUTO_VPN_VMID="$user_lxc_selection"
-                                    echo -e "${GREEN}✓ Выбран контейнер по прямому ID: ${AUTO_VPN_VMID} (${name_array[i]})${NC}"
-                                    break
+                    idx=0
+                    auto_idx=-1
+                    while read -r vmid status name; do
+                        if [ -n "$vmid" ]; then
+                            vmid_array[idx]=$vmid
+                            name_array[idx]=$name
+                            status_array[idx]=$status
+                            
+                            lower_name=$(echo "$name" | tr '[:upper:]' '[:lower:]')
+                            if [[ "$lower_name" =~ vpn || "$lower_name" =~ wg || "$lower_name" =~ wireguard || "$lower_name" =~ openvpn || "$lower_name" =~ xray || "$lower_name" =~ spectre || "$lower_name" =~ panel || "$lower_name" =~ x-ui || "$lower_name" =~ xui ]]; then
+                                if [ $auto_idx -eq -1 ]; then
+                                    auto_idx=$idx
                                 fi
-                            done
+                            fi
+                            idx=$((idx+1))
+                        fi
+                    done <<< "$LXC_LIST"
+                    
+                    if [ ${#vmid_array[@]} -gt 0 ]; then
+                        echo -e "Найденные контейнеры LXC:"
+                        for i in "${!vmid_array[@]}"; do
+                            if [ $i -eq $auto_idx ]; then
+                                echo -e "  $((i+1))) ${GREEN}${vmid_array[i]} - ${name_array[i]} (Статус: ${status_array[i]}) [Автоопределение: VPN]${NC}"
+                            else
+                                echo -e "  $((i+1))) ${vmid_array[i]} - ${name_array[i]} (Статус: ${status_array[i]})"
+                            fi
+                        done
+                        echo -e "  $(( ${#vmid_array[@]} + 1 ))) [Ввести ID вручную]"
+                        
+                        default_option=""
+                        if [ $auto_idx -ne -1 ]; then
+                            default_option=$((auto_idx+1))
+                        fi
+                        
+                        echo -e "\n${YELLOW}Выберите порядковый номер из списка (1, 2...) или введите ID контейнера (например, 101) для VPN_VMID [по умолчанию: ${default_option:-ID вручную}]:${NC}"
+                        read -rp ">> " user_lxc_selection
+                        
+                        if [ -z "$user_lxc_selection" ] && [ -n "$default_option" ]; then
+                            user_lxc_selection=$default_option
+                        fi
+                        
+                        if [[ "$user_lxc_selection" =~ ^[0-9]+$ ]]; then
+                            # Сначала проверяем, не введен ли порядковый номер из списка
+                            if [ "$user_lxc_selection" -ge 1 ] && [ "$user_lxc_selection" -le "${#vmid_array[@]}" ]; then
+                                AUTO_VPN_VMID="${vmid_array[$((user_lxc_selection-1))]}"
+                                echo -e "${GREEN}✓ Выбран контейнер: ${AUTO_VPN_VMID} (${name_array[$((user_lxc_selection-1))]})${NC}"
+                            else
+                                # Иначе проверяем, не введен ли реальный VMID напрямую
+                                for i in "${!vmid_array[@]}"; do
+                                    if [ "${vmid_array[i]}" -eq "$user_lxc_selection" ]; then
+                                        AUTO_VPN_VMID="$user_lxc_selection"
+                                        echo -e "${GREEN}✓ Выбран контейнер по прямому ID: ${AUTO_VPN_VMID} (${name_array[i]})${NC}"
+                                        break
+                                    fi
+                                done
+                            fi
                         fi
                     fi
                 fi
@@ -377,49 +413,56 @@ except Exception as e:
         
             # Интерактивная настройка Spectre Panel (автоопределение с ручным вводом при необходимости)
             echo -e "\n${BLUE}👉 Настройка Spectre Panel (управление VPN-клиентами):${NC}"
-            echo -e "${YELLOW}Запуск автоматического поиска установленных панелей...${NC}"
             
-            DETECTED_JSON=""
-            if [ -f "${SCRIPT_DIR}/venv/bin/python" ]; then
-                DETECTED_JSON=$(BOT_TOKEN="123:abc" "${SCRIPT_DIR}/venv/bin/python" "${SCRIPT_DIR}/setup_modules/detect_panels.py" 2>"${SCRIPT_DIR}/detect_panels.log" || true)
-            else
-                DETECTED_JSON=$(BOT_TOKEN="123:abc" python3 "${SCRIPT_DIR}/setup_modules/detect_panels.py" 2>"${SCRIPT_DIR}/detect_panels.log" || true)
-            fi
-            
-            PANELS_FOUND=0
-            if [ -n "${DETECTED_JSON}" ] && [ "${DETECTED_JSON}" != "[]" ]; then
-                PANELS_FOUND=1
-            fi
-            
-            USE_DETECTED="n"
-            if [ ${PANELS_FOUND} -eq 1 ]; then
-                echo -e "\n${GREEN}✓ Обнаружены следующие панели Spectre Panel:${NC}"
-                python3 -c "import sys, json; panels = json.loads(sys.argv[1]); [print(f'  - {p[\"name\"]} ({p[\"url\"]})') for p in panels]" "${DETECTED_JSON}" 2>/dev/null || echo -e "  (Не удалось отформатировать вывод)"
-                
-                echo -e "\nИспользовать обнаруженные панели? (y/n) [y]"
-                read -rp ">> " use_detected_input
-                if [ -z "${use_detected_input}" ] || [ "${use_detected_input}" = "y" ] || [ "${use_detected_input}" = "Y" ]; then
-                    USE_DETECTED="y"
-                fi
-            else
-                echo -e "\n${YELLOW}⚠️ Не удалось автоматически обнаружить установленные панели Spectre Panel.${NC}"
-                if [ -f "${SCRIPT_DIR}/detect_panels.log" ] && [ -s "${SCRIPT_DIR}/detect_panels.log" ]; then
-                    echo -e "${CYAN}Детали ошибки поиска:${NC}"
-                    cat "${SCRIPT_DIR}/detect_panels.log"
-                fi
-            fi
-            rm -f "${SCRIPT_DIR}/detect_panels.log"
-            
-            SP_JSON="[]"
-            if [ "${USE_DETECTED}" = "y" ]; then
-                SP_JSON="${DETECTED_JSON}"
+            local configure_spectre_manual="n"
+            if [ "${USE_AUTO_PANEL}" = "y" ]; then
+                echo -e "   ${GREEN}✓ Автоматически подключена обнаруженная панель (контейнер ${AUTO_VPN_VMID}).${NC}"
                 echo -e "Хотите ли вы дополнительно настроить еще одну панель вручную? (y/n) [n]"
                 read -rp ">> " configure_spectre_manual
             else
-                echo -e "Хотите ли вы настроить адрес и API-токен Spectre Panel вручную? (y/n) [y]"
-                read -rp ">> " configure_spectre_manual
-                if [ -z "${configure_spectre_manual}" ] || [ "${configure_spectre_manual}" = "y" ] || [ "${configure_spectre_manual}" = "Y" ]; then
-                    configure_spectre_manual="y"
+                echo -e "${YELLOW}Запуск автоматического поиска установленных панелей...${NC}"
+                
+                DETECTED_JSON=""
+                if [ -f "${SCRIPT_DIR}/venv/bin/python" ]; then
+                    DETECTED_JSON=$(BOT_TOKEN="123:abc" "${SCRIPT_DIR}/venv/bin/python" "${SCRIPT_DIR}/setup_modules/detect_panels.py" 2>"${SCRIPT_DIR}/detect_panels.log" || true)
+                else
+                    DETECTED_JSON=$(BOT_TOKEN="123:abc" python3 "${SCRIPT_DIR}/setup_modules/detect_panels.py" 2>"${SCRIPT_DIR}/detect_panels.log" || true)
+                fi
+                
+                PANELS_FOUND=0
+                if [ -n "${DETECTED_JSON}" ] && [ "${DETECTED_JSON}" != "[]" ]; then
+                    PANELS_FOUND=1
+                fi
+                
+                USE_DETECTED="n"
+                if [ ${PANELS_FOUND} -eq 1 ]; then
+                    echo -e "\n${GREEN}✓ Обнаружены следующие панели Spectre Panel:${NC}"
+                    python3 -c "import sys, json; panels = json.loads(sys.argv[1]); [print(f'  - {p[\"name\"]} ({p[\"url\"]})') for p in panels]" "${DETECTED_JSON}" 2>/dev/null || echo -e "  (Не удалось отформатировать вывод)"
+                    
+                    echo -e "\nИспользовать обнаруженные панели? (y/n) [y]"
+                    read -rp ">> " use_detected_input
+                    if [ -z "${use_detected_input}" ] || [ "${use_detected_input}" = "y" ] || [ "${use_detected_input}" = "Y" ]; then
+                        USE_DETECTED="y"
+                    fi
+                else
+                    echo -e "\n${YELLOW}⚠️ Не удалось автоматически обнаружить установленные панели Spectre Panel.${NC}"
+                    if [ -f "${SCRIPT_DIR}/detect_panels.log" ] && [ -s "${SCRIPT_DIR}/detect_panels.log" ]; then
+                        echo -e "${CYAN}Детали ошибки поиска:${NC}"
+                        cat "${SCRIPT_DIR}/detect_panels.log"
+                    fi
+                fi
+                rm -f "${SCRIPT_DIR}/detect_panels.log"
+                
+                if [ "${USE_DETECTED}" = "y" ]; then
+                    SP_JSON="${DETECTED_JSON}"
+                    echo -e "Хотите ли вы дополнительно настроить еще одну панель вручную? (y/n) [n]"
+                    read -rp ">> " configure_spectre_manual
+                else
+                    echo -e "Хотите ли вы настроить адрес и API-токен Spectre Panel вручную? (y/n) [y]"
+                    read -rp ">> " configure_spectre_manual
+                    if [ -z "${configure_spectre_manual}" ] || [ "${configure_spectre_manual}" = "y" ] || [ "${configure_spectre_manual}" = "Y" ]; then
+                        configure_spectre_manual="y"
+                    fi
                 fi
             fi
             
