@@ -138,6 +138,8 @@ async def main():
         for target, status in results.items():
             if status == "WHITELISTED":
                 status_str = f"{YELLOW}ПРОПУЩЕНО (РАЗРЕШЕНО / БЕЛЫЙ СПИСОК){NC}"
+            elif status == "SKIPPED":
+                status_str = f"{YELLOW}ПРОПУЩЕНО (НЕТ КЛЮЧА SSH / НЕ НАСТРОЕНО){NC}"
             elif "Роутер" in target:
                 status_str = f"{GREEN}УСПЕШНО (ПОДКЛЮЧЕНО){NC}" if status else f"{RED}СБОЙ (ПРОБЛЕМА ПОДКЛЮЧЕНИЯ/УТИЛИТ){NC}"
             else:

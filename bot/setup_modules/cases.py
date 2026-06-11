@@ -11,11 +11,23 @@ async def test_host_ips():
     """Test Host IPS connection blocking (VMID 0)."""
     print_header("ТЕСТ 1: Активная защита Хоста Proxmox (vmid=0)")
     
-    # Try using trigger connect process to test IPS
-    test_cmd = [
-        sys.executable, "-c",
-        "import socket, time; s=socket.socket(); s.settimeout(2); s.connect_ex(('192.0.2.42', 22)); time.sleep(5)"
-    ]
+    # Detect available command on host prioritizing non-whitelisted ones
+    test_cmd = None
+    for cmd_name in ["nc", "curl", "wget"]:
+        if shutil.which(cmd_name):
+            if cmd_name == "nc":
+                test_cmd = ["nc", "-w", "2", "192.0.2.42", "22"]
+            elif cmd_name == "curl":
+                test_cmd = ["curl", "--connect-timeout", "2", "http://192.0.2.42:22"]
+            elif cmd_name == "wget":
+                test_cmd = ["wget", "--timeout=2", "--tries=1", "http://192.0.2.42:22"]
+            break
+            
+    if not test_cmd:
+        test_cmd = [
+            sys.executable, "-c",
+            "import socket, time; s=socket.socket(); s.settimeout(2); s.connect_ex(('192.0.2.42', 22)); time.sleep(5)"
+        ]
     
     print_info(f"Запуск дочернего процесса: {' '.join(test_cmd)}")
     start_time = time.time()
@@ -85,10 +97,23 @@ async def benchmark_ips_latency():
     """Benchmark the latency of the IPS engine blocking connection."""
     print_header("БЕНЧМАРК: Измерение быстродействия IPS (время реакции)")
     
-    test_cmd = [
-        sys.executable, "-c",
-        "import socket, time; s=socket.socket(); s.settimeout(2); s.connect_ex(('192.0.2.42', 22)); time.sleep(5)"
-    ]
+    # Detect available command on host prioritizing non-whitelisted ones
+    test_cmd = None
+    for cmd_name in ["nc", "curl", "wget"]:
+        if shutil.which(cmd_name):
+            if cmd_name == "nc":
+                test_cmd = ["nc", "-w", "2", "192.0.2.42", "22"]
+            elif cmd_name == "curl":
+                test_cmd = ["curl", "--connect-timeout", "2", "http://192.0.2.42:22"]
+            elif cmd_name == "wget":
+                test_cmd = ["wget", "--timeout=2", "--tries=1", "http://192.0.2.42:22"]
+            break
+            
+    if not test_cmd:
+        test_cmd = [
+            sys.executable, "-c",
+            "import socket, time; s=socket.socket(); s.settimeout(2); s.connect_ex(('192.0.2.42', 22)); time.sleep(5)"
+        ]
     
     print_info("Запуск триггера подключения для замера задержки...")
     start_time = time.perf_counter()
@@ -142,15 +167,17 @@ async def test_container_ips(vmid, name):
         print_warning(f"Чтобы включить его через CLI: pct set {vmid} -net0 name=eth0,bridge=vmbr0,firewall=1  (замените параметры на ваши)")
         print_warning("Без этого правила фильтрации трафика на мосту PVE не будут работать для этого LXC!")
     
-    # Detect available command inside container
+    # Detect available command inside container prioritizing non-whitelisted ones
     detect_cmds = [
-        ["pct", "exec", str(vmid), "--", "which", "python3"],
-        ["pct", "exec", str(vmid), "--", "which", "python"],
-        ["pct", "exec", str(vmid), "--", "which", "nc"]
+        ("nc", ["pct", "exec", str(vmid), "--", "which", "nc"]),
+        ("curl", ["pct", "exec", str(vmid), "--", "which", "curl"]),
+        ("wget", ["pct", "exec", str(vmid), "--", "which", "wget"]),
+        ("python3", ["pct", "exec", str(vmid), "--", "which", "python3"]),
+        ("python", ["pct", "exec", str(vmid), "--", "which", "python"]),
     ]
     
     trigger_cmd = None
-    for detect in detect_cmds:
+    for name, detect in detect_cmds:
         try:
             proc = await asyncio.create_subprocess_exec(
                 *detect,
@@ -160,12 +187,16 @@ async def test_container_ips(vmid, name):
             stdout, _ = await proc.communicate()
             if proc.returncode == 0:
                 cmd_path = stdout.decode('utf-8').strip()
-                if "python3" in detect[-1]:
-                    trigger_cmd = ["pct", "exec", str(vmid), "--", cmd_path, "-c", "import socket, time; s=socket.socket(); s.settimeout(2); s.connect_ex(('192.0.2.42', 22)); time.sleep(5)"]
-                elif "python" in detect[-1]:
-                    trigger_cmd = ["pct", "exec", str(vmid), "--", cmd_path, "-c", "import socket, time; s=socket.socket(); s.connect_ex(('192.0.2.42', 22)); time.sleep(5)"]
-                else:
+                if name == "nc":
                     trigger_cmd = ["pct", "exec", str(vmid), "--", "timeout", "5", cmd_path, "-w", "2", "192.0.2.42", "22"]
+                elif name == "curl":
+                    trigger_cmd = ["pct", "exec", str(vmid), "--", "timeout", "5", cmd_path, "--connect-timeout", "2", "http://192.0.2.42:22"]
+                elif name == "wget":
+                    trigger_cmd = ["pct", "exec", str(vmid), "--", "timeout", "5", cmd_path, "--timeout=2", "--tries=1", "http://192.0.2.42:22"]
+                elif name == "python3":
+                    trigger_cmd = ["pct", "exec", str(vmid), "--", cmd_path, "-c", "import socket, time; s=socket.socket(); s.settimeout(2); s.connect_ex(('192.0.2.42', 22)); time.sleep(5)"]
+                elif name == "python":
+                    trigger_cmd = ["pct", "exec", str(vmid), "--", cmd_path, "-c", "import socket, time; s=socket.socket(); s.connect_ex(('192.0.2.42', 22)); time.sleep(5)"]
                 break
         except Exception:
             continue
@@ -218,24 +249,50 @@ async def test_remote_vps(server):
     """Test remote VPS IPS connection blocking."""
     print_header(f"ТЕСТ: Активная защита удаленного VPS ({server['ip']})")
     
+    import os
+    key_path = server.get('key')
+    if key_path and not os.path.isabs(key_path):
+        import core.config
+        base_dir = getattr(core.config, 'base_dir', os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        candidate = os.path.abspath(os.path.join(base_dir, key_path))
+        if not os.path.exists(candidate):
+            config_candidate = os.path.abspath(os.path.join(base_dir, 'config', key_path))
+            if os.path.exists(config_candidate):
+                key_path = config_candidate
+            else:
+                key_path = candidate
+        else:
+            key_path = candidate
+
+    if not key_path or not os.path.exists(key_path):
+        print_warning(f"Уведомление: Файл приватного ключа '{key_path}' не найден.")
+        print_warning("Тест удаленного VPS будет ПРОПУЩЕН. Пожалуйста, скопируйте ключ id_rsa_remote в bot/config/.")
+        return "SKIPPED"
+        
     try:
         from modules.proxmox.monitor.remote.ssh import run_remote_ssh_cmd
     except ImportError:
         print_error("Не удалось импортировать модули SSH. Убедитесь, что зависимости (asyncssh) установлены.")
         return False
 
-    # Check remote commands (python3, python, or nc)
+    # Check remote commands prioritizing non-whitelisted ones
     print_info("Определение доступных утилит на VPS...")
+    has_nc, _, _ = await run_remote_ssh_cmd(server, ["which nc"])
+    has_curl, _, _ = await run_remote_ssh_cmd(server, ["which curl"])
+    has_wget, _, _ = await run_remote_ssh_cmd(server, ["which wget"])
     has_python3, _, _ = await run_remote_ssh_cmd(server, ["which python3"])
     has_python, _, _ = await run_remote_ssh_cmd(server, ["which python"])
-    has_nc, _, _ = await run_remote_ssh_cmd(server, ["which nc"])
     
-    if has_python3:
+    if has_nc:
+        cmd = ["timeout 5 nc -w 2 192.0.2.42 22"]
+    elif has_curl:
+        cmd = ["timeout 5 curl --connect-timeout 2 http://192.0.2.42:22"]
+    elif has_wget:
+        cmd = ["timeout 5 wget --timeout=2 --tries=1 http://192.0.2.42:22"]
+    elif has_python3:
         cmd = ["python3 -c \"import socket, time; s=socket.socket(); s.settimeout(2); s.connect_ex(('192.0.2.42', 22)); time.sleep(5)\""]
     elif has_python:
         cmd = ["python -c \"import socket, time; s=socket.socket(); s.connect_ex(('192.0.2.42', 22)); time.sleep(5)\""]
-    elif has_nc:
-        cmd = ["timeout 5 nc -w 2 192.0.2.42 22"]
     else:
         cmd = ["timeout 5 bash -c \"echo > /dev/tcp/192.0.2.42/22 && sleep 5\""]
         
@@ -245,13 +302,23 @@ async def test_remote_vps(server):
     success, stdout, stderr = await run_remote_ssh_cmd(server, cmd)
     duration = time.time() - start_time
     
+    # Check if there was a connection/SSH level error
+    if not success and stderr:
+        connection_errors = [
+            "connection refused", "permission denied", "timed out", 
+            "host key verification failed", "could not resolve", "no route to host"
+        ]
+        if any(err in stderr.lower() for err in connection_errors) or "connect" in stderr.lower():
+            print_error(f"Ошибка подключения по SSH к удаленному VPS: {stderr.strip()}")
+            return False
+    
     if not success and duration < 3.5:
         print_success(f"Процесс на VPS {server['ip']} успешно убит удаленным IPS!")
-        print_info(f"Длительность: {duration:.2f} сек, Ошибка SSH: {stderr.strip()}")
+        print_info(f"Длительность: {duration:.2f} сек, Ошибка SSH: {stderr.strip() if stderr else ''}")
         print_success(f"Активная защита на VPS {server['ip']} РАБОТАЕТ корректно.")
         return True
     else:
-        print_warning(f"Процесс на VPS завершился без принудительной блокировки за {duration:.2f} сек.")
+        print_warning(f"Процесс на VPS заверсился без принудительной блокировки за {duration:.2f} сек.")
         print_info(f"Результат выполнения: Успешно={success}, Stdout={stdout}, Stderr={stderr}")
         return False
 
