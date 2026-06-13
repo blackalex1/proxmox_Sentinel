@@ -33,22 +33,30 @@ def clean_html_for_telegram(text: str) -> str:
     # 2. Линия hr -> разделитель
     text = re.sub(r'<hr\s*/?>', '⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯\n', text)
     
-    # 3. Табличные теги
-    text = re.sub(r'<tr>', '', text)
-    text = re.sub(r'</tr>', '\n', text)
-    
-    text = re.sub(r'<th[^>]*>', '<b>', text)
-    text = re.sub(r'</th>', '</b> ', text)
-    
-    text = re.sub(r'<td[^>]*>', '', text)
-    text = re.sub(r'</td>', ' ', text)
-    
+    # 3. Табличные теги: парсим двухколоночные строки как Key: Value
+    def clean_tr(match):
+        row_content = match.group(1)
+        # Находим все теги th/td в строке
+        cols = re.findall(r'<(?:td|th)\b[^>]*>(.*?)</(?:td|th)>', row_content, flags=re.DOTALL)
+        if len(cols) == 2:
+            val1 = re.sub(r'\s+', ' ', cols[0]).strip()
+            val2 = re.sub(r'\s+', ' ', cols[1]).strip()
+            # Пропускаем заголовки вида "Параметр: Значение"
+            if "Параметр" in val1 or "Parameter" in val1:
+                return ""
+            return f"{val1}: {val2}\n"
+        elif cols:
+            vals = [re.sub(r'\s+', ' ', c).strip() for c in cols]
+            return " | ".join(vals) + "\n"
+        return ""
+
+    text = re.sub(r'\s*<tr\b[^>]*>(.*?)</tr>\s*', clean_tr, text, flags=re.DOTALL)
     text = re.sub(r'</?table[^>]*>', '', text)
     
     # 4. Коллапсирующие блоки details/summary
-    text = re.sub(r'</?details[^>]*>', '', text)
-    text = re.sub(r'<summary[^>]*>', '<b>', text)
-    text = re.sub(r'</summary>', '</b>\n', text)
+    text = re.sub(r'\s*</?details[^>]*>\s*', '\n', text)
+    text = re.sub(r'[ \t]*<summary[^>]*>', '<b>', text)
+    text = re.sub(r'</summary>\s*', '</b>\n', text)
     
     # 5. Лишние пробелы
     text = re.sub(r' +', ' ', text)
@@ -57,7 +65,14 @@ def clean_html_for_telegram(text: str) -> str:
     for idx, block in enumerate(code_blocks):
         text = text.replace(f"__CODE_BLOCK_MASK_{idx}__", block)
         
-    return text.strip()
+    # Очищаем лишние пустые строки (максимум одна пустая строка подряд)
+    lines = []
+    for line in text.split("\n"):
+        line_str = line.strip()
+        if line_str or (lines and lines[-1]):
+            lines.append(line)
+            
+    return "\n".join(lines).strip()
 
 class ResilientOutbox:
     def __init__(self):
