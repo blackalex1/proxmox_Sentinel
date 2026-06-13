@@ -281,20 +281,64 @@ async def cb_tg_2fa_approve(callback: CallbackQuery):
 
 @router.callback_query(F.data.startswith("tg_2fa_block:"))
 async def cb_tg_2fa_block(callback: CallbackQuery):
-    parts = callback.data.split(":", 1)
+    parts = callback.data.split(":")
     token = parts[1]
     
-    success_found = False
-    error_msg = None
-    for p_key, panel in spectre_manager.panels.items():
-        success, res = await panel.request("POST", "/api/auth/tg-2fa/action", json={"token": token, "action": "block"})
-        if success and res.get("success"):
-            success_found = True
-            break
-        elif success:
-            error_msg = res.get("msg")
-            
-    if success_found:
-        await callback.message.edit_text("🛑 <b>IP-адрес заблокирован.</b>", parse_mode="HTML")
-    else:
-        await callback.answer(f"❌ Ошибка: {error_msg or 'Не удалось заблокировать ни на одной панели'}", show_alert=True)
+    if len(parts) > 2 and parts[2] == "confirm":
+        success_found = False
+        error_msg = None
+        for p_key, panel in spectre_manager.panels.items():
+            success, res = await panel.request("POST", "/api/auth/tg-2fa/action", json={"token": token, "action": "block"})
+            if success and res.get("success"):
+                success_found = True
+                break
+            elif success:
+                error_msg = res.get("msg")
+                
+        if success_found:
+            await callback.message.edit_text("🛑 <b>IP-адрес заблокирован.</b>", parse_mode="HTML")
+        else:
+            await callback.answer(f"❌ Ошибка: {error_msg or 'Не удалось заблокировать ни на одной панели'}", show_alert=True)
+        return
+        
+    # Запрос подтверждения
+    original_text = callback.message.html_text if callback.message else ""
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="🔥 Да, заблокировать IP", callback_data=f"tg_2fa_block:{token}:confirm"),
+            InlineKeyboardButton(text="🔙 Отмена", callback_data=f"tg_2fa_cancel_block:{token}")
+        ]
+    ])
+    
+    await callback.message.edit_text(
+        f"{original_text}\n\n⚠️ <b>Вы уверены? Блокировка вашего IP лишит вас доступа к серверу!</b>",
+        parse_mode="HTML",
+        reply_markup=kb
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("tg_2fa_cancel_block:"))
+async def cb_tg_2fa_cancel_block(callback: CallbackQuery):
+    token = callback.data.split(":", 1)[1]
+    
+    original_text = callback.message.html_text if callback.message else ""
+    warning_marker = "\n\n⚠️ Вы уверены?"
+    if warning_marker in original_text:
+        original_text = original_text.split(warning_marker)[0]
+    elif "⚠️" in original_text:
+        original_text = original_text.split("⚠️")[0].strip()
+        
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="✅ Да, разрешить", callback_data=f"tg_2fa_approve:{token}"),
+            InlineKeyboardButton(text="❌ Заблокировать IP", callback_data=f"tg_2fa_block:{token}")
+        ]
+    ])
+    
+    await callback.message.edit_text(
+        original_text,
+        parse_mode="HTML",
+        reply_markup=kb
+    )
+    await callback.answer("Блокировка IP отменена")
