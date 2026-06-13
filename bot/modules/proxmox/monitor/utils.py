@@ -272,7 +272,11 @@ async def edit_rich_message(chat_id, message_id, text, parse_mode="HTML", reply_
             if res.get("ok"):
                 edited_msg = Message.model_validate(res["result"])
             else:
-                logging.warning(f"[Rich Message Edit] Не удалось отредактировать Rich Message, код: {res.get('description')}")
+                desc = res.get('description', '')
+                if "message is not modified" in desc.lower():
+                    logging.debug(f"[Rich Message Edit] Сообщение не изменено: {desc}")
+                else:
+                    logging.warning(f"[Rich Message Edit] Не удалось отредактировать Rich Message, код: {desc}")
     except Exception as e:
         logging.warning(f"[Rich Message Edit] Исключение при редактировании Rich Message: {e}")
         
