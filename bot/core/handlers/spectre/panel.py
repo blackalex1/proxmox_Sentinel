@@ -399,7 +399,7 @@ async def cb_ctrl_reset_pwd(callback: CallbackQuery):
             return
 
         if success:
-            await callback.message.edit_text(callback.message.html_text + f"\n\n🔑 <b>Пароль пользователя {username} успешно изменен!</b>\nНовый пароль: <code>{new_pwd}</code>", parse_mode="HTML")
+            await callback.message.edit_text(callback.message.html_text + f"\n\n🔑 <b>Пароль пользователя {username} успешно изменен!</b>\nНовый пароль: <tg-spoiler><code>{new_pwd}</code></tg-spoiler>", parse_mode="HTML")
             await callback.answer("Пароль успешно изменен", show_alert=False)
         else:
             await callback.answer(f"Не удалось сбросить пароль: {error_msg}", show_alert=True)
