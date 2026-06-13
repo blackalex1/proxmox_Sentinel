@@ -61,12 +61,36 @@ async def get_node_selection_keyboard() -> InlineKeyboardMarkup:
         [InlineKeyboardButton(text="🖥️ Proxmox Host", callback_data="wl_view:local")]
     ]
     
-    # Добавляем обнаруженные панели
+    # Получаем все правила из БД, чтобы отобразить даже выключенные/офлайн ноды
+    whitelists = await get_node_whitelists()
+    nodes_with_rules = set()
+    for k, v in whitelists.items():
+        if v.get("ip_ports") or v.get("processes"):
+            nodes_with_rules.add(k)
+            
+    active_nodes = set()
+    
+    # Добавляем обнаруженные активные панели
     for p_key, p in spectre_manager.panels.items():
         if p.source_type == 'lxc':
-            buttons.append([InlineKeyboardButton(text=f"📦 LXC {p.identifier} ({p.name})", callback_data=f"wl_view:lxc_{p.identifier}")])
+            node_key = f"lxc_{p.identifier}"
+            active_nodes.add(node_key)
+            buttons.append([InlineKeyboardButton(text=f"📦 LXC {p.identifier} ({p.name})", callback_data=f"wl_view:{node_key}")])
         elif p.source_type == 'vps':
-            buttons.append([InlineKeyboardButton(text=f"🌐 VPS {p.identifier}", callback_data=f"wl_view:vps_{p.identifier}")])
+            node_key = f"vps_{p.identifier}"
+            active_nodes.add(node_key)
+            buttons.append([InlineKeyboardButton(text=f"🌐 VPS {p.identifier}", callback_data=f"wl_view:{node_key}")])
+            
+    # Добавляем неактивные ноды, у которых есть правила в БД
+    for node in sorted(nodes_with_rules):
+        if node in ('global', 'router', 'local'):
+            continue
+        if node in active_nodes:
+            continue
+            
+        # Узел не в сети/неактивен, но имеет сохраненные правила в БД
+        label = get_node_label(node)
+        buttons.append([InlineKeyboardButton(text=f"{label} (офлайн)", callback_data=f"wl_view:{node}")])
             
     # Добавляем кнопку просмотра всех правил
     buttons.append([InlineKeyboardButton(text="📋 Показать все правила", callback_data="wl_view_all")])
