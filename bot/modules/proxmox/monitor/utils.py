@@ -176,15 +176,23 @@ async def send_rich_message(chat_id, text, parse_mode="HTML", reply_markup=None)
     """
     import aiohttp
     import json
+    import re
     
     url_rich = bot.session.api.api_url(token=settings.bot_token, method="sendRichMessage")
     success = False
+    
+    # Авто-детект markdown формата, если передан HTML, но текст содержит заголовки или таблицы Markdown
+    actual_parse_mode = parse_mode
+    if parse_mode.lower() == "html" and text:
+        if re.search(r'^#\s+', text, re.MULTILINE) or re.search(r'^###\s+', text, re.MULTILINE) or ('| ---' in text) or ('| :---' in text) or re.search(r'^---\s*$', text, re.MULTILINE):
+            actual_parse_mode = "markdown"
+
     try:
         payload = {
             "chat_id": chat_id,
             "rich_message": {}
         }
-        if parse_mode.lower() in ("markdown", "markdownv2"):
+        if actual_parse_mode.lower() in ("markdown", "markdownv2"):
             payload["rich_message"]["markdown"] = text
         else:
             payload["rich_message"]["html"] = text
@@ -210,9 +218,9 @@ async def send_rich_message(chat_id, text, parse_mode="HTML", reply_markup=None)
     if not success:
         try:
             fallback_text = text
-            if parse_mode.lower() == "html":
+            if actual_parse_mode.lower() == "html":
                 fallback_text = convert_rich_html_to_standard(text)
-            await bot.send_message(chat_id, fallback_text, parse_mode=parse_mode, reply_markup=reply_markup)
+            await bot.send_message(chat_id, fallback_text, parse_mode=actual_parse_mode, reply_markup=reply_markup)
         except Exception as e:
             logging.error(f"Не удалось отправить стандартное сообщение для {chat_id}: {e}")
             raise e
