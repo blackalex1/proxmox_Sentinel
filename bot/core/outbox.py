@@ -253,7 +253,11 @@ class ResilientOutbox:
                     from aiogram.types import Message
                     return Message.model_validate(res["result"])
                 else:
-                    logger.warning(f"[Rich Message Edit] Не удалось отредактировать Rich Message, код: {res.get('description')}")
+                    desc = res.get('description', '')
+                    if "message is not modified" in desc.lower():
+                        logger.debug(f"[Rich Message Edit] Сообщение не изменено: {desc}")
+                    else:
+                        logger.warning(f"[Rich Message Edit] Не удалось отредактировать Rich Message, код: {desc}")
         except Exception as e:
             logger.warning(f"[Rich Message Edit] Исключение при редактировании Rich Message: {e}")
             
