@@ -1,7 +1,7 @@
 import pytest
 import asyncio
 from unittest.mock import AsyncMock, patch, MagicMock, ANY
-from core.handlers.base import process_terminate_ssh, process_ban_ssh_key, get_kill_tree_cmd, get_ban_key_tree_cmd
+from core.handlers.ssh_alerts import process_terminate_ssh, process_ban_ssh_key, get_kill_tree_cmd, get_ban_key_tree_cmd
 
 @pytest.mark.asyncio
 async def test_process_terminate_ssh_local_success():
