@@ -135,8 +135,7 @@ async def monitor_panel_audit_logs():
     
     while True:
         try:
-            for panel in list(spectre_manager.panels.values()):
-                p_key = panel.name
+            for p_key, panel in list(spectre_manager.panels.items()):
                 
                 # При первом запуске инициализируем ID последнего лога, чтобы не слать старые алерты
                 if p_key not in last_log_ids:
