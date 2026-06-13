@@ -1,4 +1,12 @@
 import re
+from core.messages import (
+    get_pve_web_login_alert,
+    get_pve_web_fail_alert,
+    get_ssh_login_alert,
+    get_ssh_fail_alert,
+    get_sudo_alert,
+    get_ssh_close_alert
+)
 
 def parse_auth_line(line: str, vmid: int, timestamp: str, container_name: str):
     """Парсинг логов аутентификации контейнера/хоста.
@@ -17,13 +25,7 @@ def parse_auth_line(line: str, vmid: int, timestamp: str, container_name: str):
         }
         
         target_str = "Хост Proxmox VE" if vmid == 0 else f"LXC {vmid} ({container_name})"
-        emoji_str = "🖥" if vmid == 0 else "🔒"
-        
-        msg = (f"{emoji_str} <b>Успешный вход в Proxmox Web GUI!</b>\n\n"
-               f"📦 Назначение: <b>{target_str}</b>\n"
-               f"👤 Пользователь: <code>{user}</code>\n"
-               f"🌐 IP-адрес: <code>WEB_GUI</code>\n"
-               f"🕒 Время: <code>{timestamp}</code>")
+        msg = get_pve_web_login_alert(target_str, user, timestamp, line)
         return event, msg
 
     # 0.1. Ошибка входа в Proxmox Web GUI (pvedaemon)
@@ -39,13 +41,7 @@ def parse_auth_line(line: str, vmid: int, timestamp: str, container_name: str):
         }
         
         target_str = "Хост Proxmox VE" if vmid == 0 else f"LXC {vmid} ({container_name})"
-        
-        msg = (f"❌ <b>ОШИБКА АВТОРИЗАЦИИ в Proxmox Web GUI!</b>\n\n"
-               f"📦 Назначение: <b>{target_str}</b>\n"
-               f"👤 Попытка входа под: <code>{user}</code>\n"
-               f"🌐 IP-адрес: <code>{ip}</code>\n"
-               f"📝 Причина: <code>{reason}</code>\n"
-               f"🕒 Время: <code>{timestamp}</code>")
+        msg = get_pve_web_fail_alert(target_str, user, ip, reason, timestamp, line)
         return event, msg
     
     # 1. Успешный вход по SSH
@@ -65,14 +61,10 @@ def parse_auth_line(line: str, vmid: int, timestamp: str, container_name: str):
             event['fingerprint'] = fingerprint
         
         target_str = "Хост Proxmox VE" if vmid == 0 else f"LXC {vmid} ({container_name})"
-        title_str = "🖥 <b>Успешная SSH авторизация на Хосте!</b>" if vmid == 0 else "🔒 <b>Успешная SSH авторизация в LXC!</b>"
+        emoji_str = "🖥" if vmid == 0 else "🔒"
+        title_str = "Успешная SSH авторизация на Хосте!" if vmid == 0 else "Успешная SSH авторизация в LXC!"
         
-        msg = (f"{title_str}\n\n"
-               f"📦 Назначение: <b>{target_str}</b>\n"
-               f"👤 Пользователь: <code>{user}</code>\n"
-               f"🌐 IP-адрес: <code>{ip}</code>\n"
-               f"🔑 Метод: <b>{method}</b>\n"
-               f"🕒 Время: <code>{timestamp}</code>")
+        msg = get_ssh_login_alert(title_str, emoji_str, target_str, user, ip, method, fingerprint, timestamp, line)
         return event, msg
 
     # 2. Неудачный вход по SSH (пароль или публичный ключ)
@@ -89,14 +81,10 @@ def parse_auth_line(line: str, vmid: int, timestamp: str, container_name: str):
         }
         
         target_str = "Хост Proxmox VE" if vmid == 0 else f"LXC {vmid} ({container_name})"
-        title_str = "❌ <b>ОШИБКА SSH АВТОРИЗАЦИИ на Хосте!</b>" if vmid == 0 else "❌ <b>ОШИБКА АВТОРИЗАЦИИ в LXC!</b>"
+        emoji_str = "🖥" if vmid == 0 else "🔒"
+        title_str = "ОШИБКА SSH АВТОРИЗАЦИИ на Хосте!" if vmid == 0 else "ОШИБКА АВТОРИЗАЦИИ в LXC!"
         
-        msg = (f"{title_str}\n\n"
-               f"📦 Назначение: <b>{target_str}</b>\n"
-               f"👤 Попытка входа под: <code>{user}</code>\n"
-               f"🌐 IP-адрес: <code>{ip}</code>\n"
-               f"🔑 Способ: <b>{method_ru}</b>\n"
-               f"🕒 Время: <code>{timestamp}</code>")
+        msg = get_ssh_fail_alert(title_str, emoji_str, target_str, user, ip, method_ru, timestamp, line)
         return event, msg
 
     # 3. Выполнение команд через SUDO
@@ -112,13 +100,10 @@ def parse_auth_line(line: str, vmid: int, timestamp: str, container_name: str):
         }
         
         target_str = "Хост Proxmox VE" if vmid == 0 else f"LXC {vmid} ({container_name})"
-        title_str = "💻 <b>Выполнение SUDO-команды на Хосте!</b>" if vmid == 0 else "🛠 <b>Выполнение SUDO-команды в LXC!</b>"
+        emoji_str = "🖥" if vmid == 0 else "🔒"
+        title_str = "Выполнение SUDO-команды на Хосте!" if vmid == 0 else "Выполнение SUDO-команды в LXC!"
         
-        msg = (f"{title_str}\n\n"
-               f"📦 Назначение: <b>{target_str}</b>\n"
-               f"👤 Пользователь: <code>{user}</code> (от имени <code>{run_as}</code>)\n"
-               f"💻 Команда:\n<code>{command}</code>\n"
-               f"🕒 Время: <code>{timestamp}</code>")
+        msg = get_sudo_alert(title_str, emoji_str, target_str, user, run_as, command, timestamp, line)
         return event, msg
 
     # 5. SSH сессия закрыта (Connection closed / session closed)
@@ -137,11 +122,7 @@ def parse_auth_line(line: str, vmid: int, timestamp: str, container_name: str):
                 'msg': f"SSH соединение закрыто (порт {port})"
             }
             target_str = "Хост Proxmox VE" if vmid == 0 else f"LXC {vmid} ({container_name})"
-            msg = (f"🚪 <b>SSH сессия завершена</b>\n\n"
-                   f"📦 Назначение: <b>{target_str}</b>\n"
-                   f"👤 Пользователь: <code>{user}</code>\n"
-                   f"🌐 IP-адрес: <code>{ip}</code>\n"
-                   f"🕒 Время: <code>{timestamp}</code>")
+            msg = get_ssh_close_alert(target_str, user, ip, timestamp, line)
             return event, msg
 
         # 5.2 pam_unix session closed
@@ -157,10 +138,7 @@ def parse_auth_line(line: str, vmid: int, timestamp: str, container_name: str):
                 'msg': f"SSH сессия закрыта для {user}"
             }
             target_str = "Хост Proxmox VE" if vmid == 0 else f"LXC {vmid} ({container_name})"
-            msg = (f"🚪 <b>SSH сессия завершена</b>\n\n"
-                   f"📦 Назначение: <b>{target_str}</b>\n"
-                   f"👤 Пользователь: <code>{user}</code>\n"
-                   f"🕒 Время: <code>{timestamp}</code>")
+            msg = get_ssh_close_alert(target_str, user, None, timestamp, line)
             return event, msg
 
     return None, None

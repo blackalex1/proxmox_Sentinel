@@ -7,6 +7,7 @@ from core.db import execute_read_all, execute_write
 from modules.proxmox.monitor.remote.ssh import run_remote_ssh_cmd
 from modules.router.router import run_router_ssh_cmd, unban_router_ip
 from modules.proxmox.monitor.utils import send_alert_to_admins
+from core.messages import get_router_recovery_alert, get_router_unknown_block_alert
 
 async def reconcile_router_bans():
     """
@@ -88,23 +89,10 @@ async def reconcile_router_bans():
                         is_trusted_node = True
 
                 if is_trusted_node:
-                    # Специальное критическое оповещение для спасения белых IP
-                    alert_text = (
-                        f"🚨 <b>КРИТИЧЕСКАЯ УГРОЗА: Восстановлен доступ для доверенного узла!</b>\n\n"
-                        f"Бот обнаружил, что доверенный IP-адрес (хост Proxmox VE или телефон администратора) <code>{ip}</code> был заблокирован на роутере!\n\n"
-                        f"<b>Найденные и удаленные правила:</b>\n"
-                        f"<pre>{rules_str}</pre>\n\n"
-                        f"В целях восстановления нормальной работы, данная блокировка была <b>автоматически снята</b> ботом."
-                    )
+                    alert_text = get_router_recovery_alert(ip, rules_str)
                 else:
                     # Обычное уведомление об очистке неизвестного IP
-                    alert_text = (
-                        f"⚠️ <b>Обнаружена неизвестная блокировка на роутере!</b>\n\n"
-                        f"Бот обнаружил правила блокировки для IP: <code>{ip}</code>, которых нет в базе данных временных банов бота.\n\n"
-                        f"<b>Найденные и удаленные правила:</b>\n"
-                        f"<pre>{rules_str}</pre>\n\n"
-                        f"В целях безопасности и синхронизации, данная блокировка была автоматически снята."
-                    )
+                    alert_text = get_router_unknown_block_alert(ip, rules_str)
 
                 try:
                     await send_alert_to_admins(alert_text)

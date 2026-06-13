@@ -8,6 +8,7 @@ from modules.proxmox.api import proxmox
 from .state import lxc_name_cache, lxc_state_cache, lxc_alert_throttle
 from .utils import send_alert_to_admins
 from .firewall import setup_vpn_container_rules
+from core.messages import get_lxc_state_alert, get_lxc_cpu_alert, get_lxc_ram_alert, get_lxc_disk_alert
 
 # Период повторной отправки алертов о нагрузке по ресурсам (10 минут)
 ALERT_THROTTLE_INTERVAL = 600
@@ -49,11 +50,7 @@ async def monitor_lxc_resources():
                         emoji = "🟢" if state == "running" else "🔴"
                         status_text = "ЗАПУЩЕН" if state == "running" else "ОСТАНОВЛЕН"
                         
-                        msg = (f"{emoji} <b>Изменение статуса LXC контейнера!</b>\n\n"
-                               f"📦 ID: <b>{vmid}</b>\n"
-                               f"🏷 Имя: <b>{name}</b>\n"
-                               f"⚡️ Сервер: <b>{node_name}</b>\n"
-                               f"ℹ️ Статус: <b>{status_text}</b>")
+                        msg = get_lxc_state_alert(emoji, vmid, name, node_name, status_text)
                         
                         await send_alert_to_admins(msg)
                         
@@ -89,9 +86,7 @@ async def monitor_lxc_resources():
                                     last_alert = lxc_alert_throttle.get((vmid, 'cpu'), 0)
                                     if now - last_alert > ALERT_THROTTLE_INTERVAL:
                                         lxc_alert_throttle[(vmid, 'cpu')] = now
-                                        msg = (f"⚠️ <b>Внимание: Высокая нагрузка CPU (более 5 минут)!</b>\n\n"
-                                               f"📦 LXC: <b>{vmid} ({name})</b>\n"
-                                               f"🔴 CPU: <b>{cpu:.1f}%</b> (Порог: {settings.monitor_lxc_cpu}%)")
+                                        msg = get_lxc_cpu_alert(vmid, name, cpu)
                                         await send_alert_to_admins(msg)
                             else:
                                 lxc_high_load_start.pop((vmid, 'cpu'), None)
@@ -105,9 +100,7 @@ async def monitor_lxc_resources():
                                     last_alert = lxc_alert_throttle.get((vmid, 'ram'), 0)
                                     if now - last_alert > ALERT_THROTTLE_INTERVAL:
                                         lxc_alert_throttle[(vmid, 'ram')] = now
-                                        msg = (f"⚠️ <b>Внимание: Высокое потребление RAM (более 5 минут)!</b>\n\n"
-                                               f"📦 LXC: <b>{vmid} ({name})</b>\n"
-                                               f"🔴 ОЗУ: <b>{mem_pct:.1f}%</b> ({mem / (1024**3):.1f} / {maxmem / (1024**3):.1f} GB) (Порог: {settings.monitor_lxc_ram}%)")
+                                        msg = get_lxc_ram_alert(vmid, name, mem_pct, mem, maxmem)
                                         await send_alert_to_admins(msg)
                             else:
                                 lxc_high_load_start.pop((vmid, 'ram'), None)
@@ -118,9 +111,7 @@ async def monitor_lxc_resources():
                                 last_alert = lxc_alert_throttle.get((vmid, 'disk'), 0)
                                 if now - last_alert > ALERT_THROTTLE_INTERVAL:
                                     lxc_alert_throttle[(vmid, 'disk')] = now
-                                    msg = (f"⚠️ <b>Внимание: Переполнение Диска LXC!</b>\n\n"
-                                           f"📦 LXC: <b>{vmid} ({name})</b>\n"
-                                           f"🔴 Диск: <b>{disk_pct:.1f}%</b> ({disk / (1024**3):.1f} / {maxdisk / (1024**3):.1f} GB) (Порог: {settings.monitor_lxc_disk}%)")
+                                    msg = get_lxc_disk_alert(vmid, name, disk_pct, disk, maxdisk)
                                     await send_alert_to_admins(msg)
                             else:
                                 lxc_alert_throttle.pop((vmid, 'disk'), None)

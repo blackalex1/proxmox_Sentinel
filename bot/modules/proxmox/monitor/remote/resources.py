@@ -4,6 +4,7 @@ import time
 from core.config import settings
 from modules.proxmox.monitor.remote.ssh import run_remote_ssh_cmd
 from modules.proxmox.monitor.utils import send_alert_to_admins
+from core.messages import get_vps_cpu_alert, get_vps_ram_alert, get_vps_disk_alert
 
 # Период повторной отправки алертов о нагрузке по ресурсам (10 минут)
 ALERT_THROTTLE_INTERVAL = 600
@@ -64,9 +65,7 @@ async def monitor_remote_resources():
                         last_alert = vps_alert_throttle.get((ip, 'cpu'), 0)
                         if now - last_alert > ALERT_THROTTLE_INTERVAL:
                             vps_alert_throttle[(ip, 'cpu')] = now
-                            msg = (f"⚠️ <b>[VPS Monitor] Высокая нагрузка CPU (более 5 минут)!</b>\n\n"
-                                   f"🌐 VPS IP: <b>{ip}</b>\n"
-                                   f"🔴 CPU: <b>{cpu:.1f}%</b> (Порог: {settings.monitor_lxc_cpu}%)")
+                            msg = get_vps_cpu_alert(ip, cpu)
                             await send_alert_to_admins(msg)
                 else:
                     vps_high_load_start.pop((ip, 'cpu'), None)
@@ -80,9 +79,7 @@ async def monitor_remote_resources():
                         last_alert = vps_alert_throttle.get((ip, 'ram'), 0)
                         if now - last_alert > ALERT_THROTTLE_INTERVAL:
                             vps_alert_throttle[(ip, 'ram')] = now
-                            msg = (f"⚠️ <b>[VPS Monitor] Высокое потребление RAM (более 5 минут)!</b>\n\n"
-                                   f"🌐 VPS IP: <b>{ip}</b>\n"
-                                   f"🔴 ОЗУ: <b>{ram_pct:.1f}%</b> (Порог: {settings.monitor_lxc_ram}%)")
+                            msg = get_vps_ram_alert(ip, ram_pct)
                             await send_alert_to_admins(msg)
                 else:
                     vps_high_load_start.pop((ip, 'ram'), None)
@@ -93,9 +90,7 @@ async def monitor_remote_resources():
                     last_alert = vps_alert_throttle.get((ip, 'disk'), 0)
                     if now - last_alert > ALERT_THROTTLE_INTERVAL:
                         vps_alert_throttle[(ip, 'disk')] = now
-                        msg = (f"⚠️ <b>[VPS Monitor] Переполнение Диска VPS!</b>\n\n"
-                               f"🌐 VPS IP: <b>{ip}</b>\n"
-                               f"🔴 Диск: <b>{disk_pct:.1f}%</b> (Порог: {settings.monitor_lxc_disk}%)")
+                        msg = get_vps_disk_alert(ip, disk_pct)
                         await send_alert_to_admins(msg)
                 else:
                     vps_alert_throttle.pop((ip, 'disk'), None)

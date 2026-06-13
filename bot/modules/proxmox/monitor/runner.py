@@ -2,6 +2,7 @@ import asyncio
 import logging
 
 from core.config import settings
+from core.messages import get_ips_autoblock_alert_audit, get_login_success_alert, get_spectre_2fa_alert
 from .resources import monitor_lxc_resources
 from .auth import monitor_lxc_auth
 from .traffic import monitor_lxc_traffic
@@ -187,10 +188,7 @@ async def monitor_panel_audit_logs():
                             except Exception:
                                 time_str = datetime.datetime.now().strftime("%H:%M:%S")
                                 
-                            msg = (f"🛑 <b>[IPS: Авто-блокировка на {panel.name}]</b>\n\n"
-                                   f"👤 Пользователь: <code>{email}</code>\n"
-                                   f"ℹ️ Причина: <b>{details}</b>\n"
-                                   f"🕒 Время: <code>{time_str}</code>")
+                            msg = get_ips_autoblock_alert_audit(panel.name, email, details, time_str)
                                    
                             # Отправляем алерт всем администраторам контроллера
                             for admin_id in settings.admin_ids:
@@ -210,11 +208,7 @@ async def monitor_panel_audit_logs():
                             except Exception:
                                 time_str = datetime.datetime.now().strftime("%H:%M:%S")
                                 
-                            msg = (f"🔑 <b>[Вход выполнен на {panel.name}]</b>\n\n"
-                                   f"👤 Логин: <code>{username}</code>\n"
-                                   f"🌐 IP-адрес: <code>{ip}</code>\n"
-                                   f"ℹ️ Детали: <b>{details}</b>\n"
-                                   f"🕒 Время: <code>{time_str}</code>")
+                            msg = get_login_success_alert(panel.name, username, ip, details, time_str)
                                    
                             # Отправляем алерт всем администраторам контроллера
                             for admin_id in settings.admin_ids:
@@ -303,13 +297,10 @@ async def monitor_panel_2fa_logs():
         
         for admin_id in settings.admin_ids:
             try:
+                msg_text = get_spectre_2fa_alert(panel.name, username, client_ip, datetime.datetime.now().strftime('%H:%M:%S'))
                 await bot.send_message(
                     chat_id=admin_id,
-                    text=f"🔑 <b>[Spectre 2FA: Попытка входа]</b>\n\n"
-                         f"🖥 Панель: <b>{panel.name}</b>\n"
-                         f"👤 Пользователь: <code>{username}</code>\n"
-                         f"🌐 IP-адрес: <code>{client_ip}</code>\n"
-                         f"🕒 Время: <code>{datetime.datetime.now().strftime('%H:%M:%S')}</code>",
+                    text=msg_text,
                     reply_markup=kb,
                     parse_mode="HTML"
                 )
