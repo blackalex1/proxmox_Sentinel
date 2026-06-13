@@ -33,7 +33,7 @@ def clean_html_for_telegram(text: str) -> str:
     # 2. Линия hr -> разделитель
     text = re.sub(r'<hr\s*/?>', '⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯\n', text)
     
-    # 3. Табличные теги: парсим двухколоночные строки как Key: Value
+    # 3. Табличные теги: парсим двухколоночные строки с разделителем |
     def clean_tr(match):
         row_content = match.group(1)
         # Находим все теги th/td в строке
@@ -41,10 +41,7 @@ def clean_html_for_telegram(text: str) -> str:
         if len(cols) == 2:
             val1 = re.sub(r'\s+', ' ', cols[0]).strip()
             val2 = re.sub(r'\s+', ' ', cols[1]).strip()
-            # Пропускаем заголовки вида "Параметр: Значение"
-            if "Параметр" in val1 or "Parameter" in val1:
-                return ""
-            return f"{val1}: {val2}\n"
+            return f"{val1} | {val2}\n"
         elif cols:
             vals = [re.sub(r'\s+', ' ', c).strip() for c in cols]
             return " | ".join(vals) + "\n"
