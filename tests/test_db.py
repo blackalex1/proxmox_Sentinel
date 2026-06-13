@@ -136,3 +136,82 @@ async def test_node_segregated_whitelists():
     assert await is_whitelisted(node="vps_1.2.3.4", ip="8.8.8.8", port=80) is True
     assert await is_whitelisted(node="vps_1.2.3.4", ip="8.8.8.8", port=443) is True
 
+
+@pytest.mark.asyncio
+async def test_save_vpn_connect_disconnect():
+    from core.db import save_vpn_connect, save_vpn_disconnect, execute_read_all, execute_write
+    
+    # Очищаем таблицу для теста
+    await execute_write("DELETE FROM vpn_sessions")
+    
+    # 1. Первое подключение (новый IP)
+    session_id_1 = await save_vpn_connect(
+        username="test_user_hist",
+        ip="1.2.3.4",
+        connect_time_str="2026-06-13 12:00:00",
+        tx=1000,
+        rx=2000
+    )
+    assert session_id_1 is not None
+    
+    # Проверяем, что сессия успешно сохранена
+    rows = await execute_read_all("SELECT * FROM vpn_sessions WHERE username = 'test_user_hist'")
+    assert len(rows) == 1
+    assert rows[0]['session_id'] == session_id_1
+    assert rows[0]['is_new_ip'] == 1
+    assert rows[0]['download_bytes'] == 1000
+    assert rows[0]['upload_bytes'] == 2000
+    assert rows[0]['disconnect_time'] is None
+    
+    # 2. Второе подключение (тот же IP) - не должен быть новым
+    session_id_2 = await save_vpn_connect(
+        username="test_user_hist",
+        ip="1.2.3.4",
+        connect_time_str="2026-06-13 12:05:00",
+        tx=1500,
+        rx=2500
+    )
+    rows = await execute_read_all("SELECT * FROM vpn_sessions WHERE username = 'test_user_hist' ORDER BY connect_time DESC")
+    assert len(rows) == 2
+    assert rows[0]['session_id'] == session_id_2
+    assert rows[0]['is_new_ip'] == 0 # IP "1.2.3.4" уже встречался для "test_user_hist"
+    
+    # 3. Отключение последней сессии (12:05:00)
+    # Итоговые: tx = 1800 (потребление = 1800 - 1500 = 300), rx = 3000 (потребление = 3000 - 2500 = 500)
+    await save_vpn_disconnect(
+        username="test_user_hist",
+        ip="1.2.3.4",
+        disconnect_time_str="2026-06-13 12:10:00",
+        tx=1800,
+        rx=3000
+    )
+    
+    # Проверяем, что обновилась именно нужная сессия
+    session_updated = await execute_read_all("SELECT * FROM vpn_sessions WHERE session_id = ?", (session_id_2,))
+    assert len(session_updated) == 1
+    assert session_updated[0]['disconnect_time'] == "2026-06-13 12:10:00"
+    assert session_updated[0]['duration'] == "5 мин 0 сек" # с 12:05:00 по 12:10:00
+    assert session_updated[0]['download_bytes'] == 300
+    assert session_updated[0]['upload_bytes'] == 500
+    
+    # Проверяем, что первая сессия (12:00:00) осталась активной (disconnect_time is None)
+    session_first = await execute_read_all("SELECT * FROM vpn_sessions WHERE session_id = ?", (session_id_1,))
+    assert session_first[0]['disconnect_time'] is None
+    
+    # 4. Отключение без активной сессии (резервный сценарий)
+    await save_vpn_disconnect(
+        username="test_user_hist",
+        ip="5.5.5.5", # Другой IP, подключений не было
+        disconnect_time_str="2026-06-13 12:15:00",
+        tx=999,
+        rx=999
+    )
+    # Должна создаться закрытая сессия с длительностью "неизвестно" и нулевым трафиком
+    rows_fallback = await execute_read_all("SELECT * FROM vpn_sessions WHERE username = 'test_user_hist' AND ip = '5.5.5.5'")
+    assert len(rows_fallback) == 1
+    assert rows_fallback[0]['disconnect_time'] == "2026-06-13 12:15:00"
+    assert rows_fallback[0]['duration'] == "неизвестно"
+    assert rows_fallback[0]['download_bytes'] == 0
+    assert rows_fallback[0]['upload_bytes'] == 0
+
+

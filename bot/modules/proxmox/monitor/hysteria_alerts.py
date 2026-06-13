@@ -138,6 +138,17 @@ async def process_hysteria_audit_event(panel, action, client_ip, log_timestamp, 
     card = active_activity_cards.get(key)
     
     if action in ("xray_connect", "hysteria_connect"):
+        # Записываем событие подключения в SQLite БД
+        try:
+            from core.db import save_vpn_connect
+            try:
+                conn_time_str = datetime.datetime.fromtimestamp(log_timestamp).strftime("%Y-%m-%d %H:%M:%S")
+            except Exception:
+                conn_time_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            await save_vpn_connect(username, client_ip, conn_time_str, tx, rx)
+        except Exception as db_err:
+            logging.error(f"[Controller Database] Ошибка сохранения подключения: {db_err}")
+
         # Check for new IP connection on controller
         try:
             success, res = await panel.get_audit_logs(limit=100)
@@ -197,6 +208,17 @@ async def process_hysteria_audit_event(panel, action, client_ip, log_timestamp, 
             }
             
     elif action in ("xray_disconnect", "hysteria_disconnect"):
+        # Записываем событие отключения в SQLite БД
+        try:
+            from core.db import save_vpn_disconnect
+            try:
+                disc_time_str = datetime.datetime.fromtimestamp(log_timestamp).strftime("%Y-%m-%d %H:%M:%S")
+            except Exception:
+                disc_time_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            await save_vpn_disconnect(username, client_ip, disc_time_str, tx, rx)
+        except Exception as db_err:
+            logging.error(f"[Controller Database] Ошибка сохранения отключения: {db_err}")
+
         if card and is_card_active(card, now_time):
             card['last_activity_at'] = now_time
             

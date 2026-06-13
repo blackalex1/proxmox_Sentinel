@@ -256,3 +256,90 @@ async def is_whitelisted(node: str, ip: Optional[str] = None, port: Optional[int
     return False
 
 
+async def save_vpn_connect(username: str, ip: str, connect_time_str: str, tx: int, rx: int) -> str:
+    """
+    Сохраняет событие подключения к VPN в базу данных.
+    Проверяет, является ли данный IP новым для этого пользователя.
+    Возвращает сгенерированный session_id.
+    """
+    import uuid
+    # 1. Проверяем, встречался ли IP ранее для этого пользователя
+    row = await execute_read_one(
+        "SELECT 1 FROM vpn_sessions WHERE username = ? AND ip = ? LIMIT 1",
+        (username, ip)
+    )
+    is_new_ip = 0 if row else 1
+    
+    # 2. Генерируем уникальный session_id
+    session_id = str(uuid.uuid4())
+    
+    # 3. Записываем в базу данных
+    await execute_write(
+        "INSERT INTO vpn_sessions (session_id, username, ip, connect_time, disconnect_time, duration, is_new_ip, download_bytes, upload_bytes) VALUES (?, ?, ?, ?, NULL, NULL, ?, ?, ?)",
+        (session_id, username, ip, connect_time_str, is_new_ip, tx, rx)
+    )
+    logging.info(f"[Database] Зарегистрировано подключение: {username} ({ip}), session_id: {session_id}")
+    return session_id
+
+
+async def save_vpn_disconnect(username: str, ip: str, disconnect_time_str: str, tx: int, rx: int):
+    """
+    Обновляет сессию VPN информацией о времени отключения, длительности и потреблении трафика.
+    """
+    # 1. Ищем последнюю активную сессию пользователя с этого IP
+    session = await execute_read_one(
+        "SELECT session_id, connect_time, download_bytes, upload_bytes FROM vpn_sessions WHERE username = ? AND ip = ? AND disconnect_time IS NULL ORDER BY connect_time DESC LIMIT 1",
+        (username, ip)
+    )
+    
+    if session:
+        session_id = session['session_id']
+        connect_time_str = session['connect_time']
+        initial_tx = session['download_bytes'] or 0
+        initial_rx = session['upload_bytes'] or 0
+        
+        # Расчет потребленного трафика за сессию (положительные значения)
+        diff_tx = max(0, tx - initial_tx)
+        diff_rx = max(0, rx - initial_rx)
+        
+        # Расчет длительности
+        try:
+            import datetime
+            conn_dt = datetime.datetime.strptime(connect_time_str, "%Y-%m-%d %H:%M:%S")
+            disc_dt = datetime.datetime.strptime(disconnect_time_str, "%Y-%m-%d %H:%M:%S")
+            duration_sec = int((disc_dt - conn_dt).total_seconds())
+        except Exception:
+            duration_sec = 0
+            
+        if duration_sec < 60:
+            duration_str = f"{duration_sec} сек"
+        elif duration_sec < 3600:
+            duration_str = f"{duration_sec // 60} мин {duration_sec % 60} сек"
+        else:
+            duration_str = f"{duration_sec // 3600} ч {(duration_sec % 3600) // 60} мин"
+            
+        await execute_write(
+            "UPDATE vpn_sessions SET disconnect_time = ?, duration = ?, download_bytes = ?, upload_bytes = ? WHERE username = ? AND session_id = ?",
+            (disconnect_time_str, duration_str, diff_tx, diff_rx, username, session_id)
+        )
+        logging.info(f"[Database] Зарегистрировано отключение: {username} ({ip}), использовано {diff_tx} tx / {diff_rx} rx, session_id: {session_id}")
+    else:
+        # Резервный вариант: если сессия не найдена (пропустили подключение), создаем завершенную с нулевым трафиком
+        import uuid
+        session_id = str(uuid.uuid4())
+        
+        row = await execute_read_one(
+            "SELECT 1 FROM vpn_sessions WHERE username = ? AND ip = ? LIMIT 1",
+            (username, ip)
+        )
+        is_new_ip = 0 if row else 1
+        duration_str = "неизвестно"
+        
+        await execute_write(
+            "INSERT INTO vpn_sessions (session_id, username, ip, connect_time, disconnect_time, duration, is_new_ip, download_bytes, upload_bytes) VALUES (?, ?, ?, ?, ?, ?, ?, 0, 0)",
+            (session_id, username, ip, disconnect_time_str, disconnect_time_str, duration_str, is_new_ip)
+        )
+        logging.info(f"[Database] Зарегистрировано отключение (без подключения): {username} ({ip}), session_id: {session_id}")
+
+
+
