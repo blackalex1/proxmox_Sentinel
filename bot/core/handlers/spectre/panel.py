@@ -457,7 +457,7 @@ async def cb_spectre_clients(callback: CallbackQuery):
         return
         
     # Сортируем клиентов по email для удобства
-    clients = sorted(clients, key=lambda x: x.get("email", "").lower())
+    clients = sorted(clients, key=lambda x: (x.get("client", {}).get("email") if isinstance(x, dict) and "client" in x else x.get("email", "")).lower())
     
     PAGE_SIZE = 8
     total_clients = len(clients)
@@ -473,7 +473,8 @@ async def cb_spectre_clients(callback: CallbackQuery):
     
     buttons = []
     for c in page_clients:
-        email = c.get("email", "unknown")
+        client_info = c.get("client") if isinstance(c, dict) and "client" in c else c
+        email = client_info.get("email", "unknown")
         buttons.append([InlineKeyboardButton(
             text=f"👤 {email}", 
             callback_data=f"spectre_client_view:{panel_key}:{email}"
@@ -526,7 +527,8 @@ async def cb_spectre_client_view(callback: CallbackQuery):
         await callback.answer()
         return
         
-    c = res["clients"][0]
+    item = res["clients"][0]
+    c = item.get("client") if isinstance(item, dict) and "client" in item else item
     up_gb = c["up"] / (1024**3)
     down_gb = c["down"] / (1024**3)
     total_gb = c["total"] / (1024**3) if c["total"] > 0 else "Без лимита"
