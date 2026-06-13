@@ -3,6 +3,7 @@ import logging
 from core.bot import bot
 from core.config import settings
 from modules.proxmox.api import proxmox
+from core.messages import get_node_offline_alert, get_node_online_alert
 
 # Кэш для мониторинга
 offline_nodes_cache = set()
@@ -23,9 +24,10 @@ async def monitor_nodes():
                             offline_nodes_cache.add(node_name)
                             for admin_id in settings.admin_ids:
                                 try:
+                                    msg = get_node_offline_alert(node_name, node['status'])
                                     await bot.send_message(
                                         admin_id, 
-                                        f"⚠️ <b>АЛЕРТ!</b> Сервер <b>{node_name}</b> отключен или недоступен (статус: {node['status']})!", 
+                                        msg, 
                                         parse_mode="HTML"
                                     )
                                 except:
@@ -35,9 +37,10 @@ async def monitor_nodes():
                             offline_nodes_cache.remove(node_name)
                             for admin_id in settings.admin_ids:
                                 try:
+                                    msg = get_node_online_alert(node_name)
                                     await bot.send_message(
                                         admin_id, 
-                                        f"✅ <b>ВОССТАНОВЛЕНИЕ:</b> Сервер <b>{node_name}</b> снова в сети!", 
+                                        msg, 
                                         parse_mode="HTML"
                                     )
                                 except:

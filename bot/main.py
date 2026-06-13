@@ -202,9 +202,9 @@ async def main():
                     logging.info(f"[Proxy Monitor] Успешно переключено на бесплатный прокси: {new_proxy}")
                     # Отправляем алерт в фоне, чтобы не задерживать запуск бота
                     from modules.proxmox.monitor.utils import send_alert_to_admins
+                    from core.messages import get_proxy_switch_alert
                     asyncio.create_task(send_alert_to_admins(
-                        f"⚠️ <b>[Proxy Monitor]</b> Основной прокси ({primary_proxy_endpoint}) не отвечает на старте!\n"
-                        f"🔄 Бот автоматически переключился на бесплатный прокси: <code>{new_proxy}</code>"
+                        get_proxy_switch_alert(primary_proxy_endpoint, new_proxy)
                     ))
                 else:
                     logging.error("[Proxy Monitor] Не удалось найти живой бесплатный прокси. Остаемся на основном в надежде на чудо...")

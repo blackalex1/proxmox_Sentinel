@@ -327,8 +327,8 @@ async def test_handle_remote_ssh_auth_line_unauthorized_ip():
             
             mock_send.assert_called_once()
             alert_text = mock_send.call_args[0][0]
-            assert "КРИТИЧЕСКОЕ ПРЕДУПРЕЖДЕНИЕ БЕЗОПАСНОСТИ" in alert_text
-            assert "Возможна утечка и компрометация приватного ключа" in alert_text
+            assert "КРИТИЧЕСКАЯ УГРОЗА" in alert_text
+            assert "Возможна утечка приватного ключа" in alert_text
             mock_refresh.assert_not_called()
     finally:
         settings.remote_monitor_ignore_keys = original_keys
@@ -366,8 +366,8 @@ async def test_handle_remote_ssh_auth_line_compromised_container():
             
             mock_send.assert_called_once()
             alert_text = mock_send.call_args[0][0]
-            assert "КРИТИЧЕСКОЕ ПРЕДУПРЕЖДЕНИЕ БЕЗОПАСНОСТИ" in alert_text
-            assert "Крайне высокий риск компрометации контейнера/хоста бота" in alert_text
+            assert "КРИТИЧЕСКАЯ УГРОЗА" in alert_text
+            assert "Высокий риск компрометации хоста/контейнера" in alert_text
             mock_refresh.assert_not_called()
     finally:
         settings.remote_monitor_ignore_keys = original_keys

@@ -2,6 +2,7 @@ import asyncio
 import logging
 from core.config import settings
 from modules.proxmox.monitor.utils import LogTailer
+from core.messages import get_vps_offline_alert, get_vps_online_alert
 from .ssh import get_ssh_base_cmd
 from .auth import handle_remote_ssh_auth_line
 from .traffic import handle_remote_traffic_line, cleanup_remote_blocks_on_startup
@@ -48,9 +49,7 @@ async def monitor_remote_task(server, service_name, command_args, callback):
                         if _servers_online_status.get(server['ip'], True):
                             _servers_online_status[server['ip']] = False
                             from modules.proxmox.monitor.utils import send_alert_to_admins
-                            await send_alert_to_admins(
-                                f"⚠️ <b>[Remote Monitor]</b> Удаленный VPS-сервер <b>{server['ip']}</b> отключен или недоступен!"
-                            )
+                            await send_alert_to_admins(get_vps_offline_alert(server['ip']))
                 
                 # Ждем открытия порта, опрашивая его раз в 10 секунд
                 while not is_open:
@@ -62,9 +61,7 @@ async def monitor_remote_task(server, service_name, command_args, callback):
                     if not _servers_online_status.get(server['ip'], True):
                         _servers_online_status[server['ip']] = True
                         from modules.proxmox.monitor.utils import send_alert_to_admins
-                        await send_alert_to_admins(
-                            f"✅ <b>[Remote Monitor]</b> Связь с удаленным VPS-сервером <b>{server['ip']}</b> успешно восстановлена!"
-                        )
+                        await send_alert_to_admins(get_vps_online_alert(server['ip']))
                 
                 logging.info(f"[Remote Monitor {server['ip']}] SSH порт ({port}) открылся. Возобновляем подключение для {service_name}...")
 

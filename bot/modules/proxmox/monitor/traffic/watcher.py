@@ -6,6 +6,7 @@ import datetime
 from core.config import settings
 from modules.proxmox.monitor.state import lxc_name_cache, lxc_traffic_history, recent_local_conns, lxc_alert_throttle, recent_bot_ports
 from modules.proxmox.monitor.utils import LogTailer, send_alert_to_admins
+from core.messages import get_local_traffic_alert
 from modules.proxmox.monitor.firewall import setup_iptables
 
 # Импортируем хелперы из соседних файлов
@@ -200,15 +201,37 @@ async def handle_traffic_log_line(line):
                     client_info += f"\n🚨 <b>Статус авто-блокировки аккаунта:</b>\n{block_details_str}\n"
                     desc_with_client += " [АККАУНТ АВТОБЛОКИРОВАН И СЕССИЯ СБРОШЕНА]"
             
-            msg = (f"{title}\n\n"
-                   f"📦 Контейнер: <b>{vmid} ({container_name})</b>\n"
-                   f"🏷 Угроза: <b>{label}</b>\n"
-                   f"ℹ️ Описание: <i>{desc_with_client}</i>\n\n"
-                   f"🌐 Протокол: <code>{proto}</code>\n"
-                   f"🧭 Направление: <b>{'ВХОДЯЩЕЕ' if direction == 'IN' else 'ИСХОДЯЩЕЕ'}</b>\n"
-                   f"👤 Источник: <code>{src}:{spt}</code>{client_info}\n"
-                   f"🎯 Назначение: <code>{dst}:{dpt}</code>\n"
-                   f"🕒 Время: <code>{timestamp}</code>")
+            clean_h1 = "⚠️ Traffic Alert"
+            if "Разрешенное соединение" in title:
+                clean_h1 = "ℹ️ Connection Allowed"
+            elif "Атака заблокирована" in title:
+                clean_h1 = "🚨 Attack Blocked"
+            elif "КРИТИЧЕСКАЯ УГРОЗА" in title:
+                clean_h1 = "🚨 Critical Alert"
+            elif "ПОДОЗРИТЕЛЬНАЯ АКТИВНОСТЬ" in title:
+                clean_h1 = "⚠️ Warning Alert"
+
+            vpn_ip_row = ""
+            if real_client_ip and real_client_ip != src:
+                vpn_ip_row = f"  <tr>\n    <td><b>👤 Реальный IP</b></td>\n    <td><code>{real_client_ip}</code></td>\n  </tr>\n"
+            
+            vpn_client_row = ""
+            if xray_client_email:
+                vpn_client_row = f"  <tr>\n    <td><b>👤 Клиент VPN</b></td>\n    <td><code>{xray_client_email}</code></td>\n  </tr>\n"
+                
+            block_details_block = ""
+            if xray_client_email and risk_level == 'CRITICAL':
+                block_details_block = (
+                    f"\n\n<details>\n"
+                    f"  <summary>🚨 <b>Показать статус авто-блокировки аккаунта</b></summary>\n"
+                    f"  <pre><code>{block_details_str}</code></pre>\n"
+                    f"</details>"
+                )
+
+            msg = get_local_traffic_alert(
+                clean_h1, title, desc_with_client, vmid, container_name, label,
+                proto, direction, src, spt, dst, dpt, vpn_ip_row, vpn_client_row, block_details_block, timestamp
+            )
             
             # Добавляем кнопки быстрого добавления в белый список
             from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
