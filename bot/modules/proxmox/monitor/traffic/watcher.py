@@ -213,11 +213,11 @@ async def handle_traffic_log_line(line):
 
             vpn_ip_row = ""
             if real_client_ip and real_client_ip != src:
-                vpn_ip_row = f"  <tr>\n    <td><b>👤 Реальный IP</b></td>\n    <td><code>{real_client_ip}</code></td>\n  </tr>\n"
+                vpn_ip_row = f"| **👤 Реальный IP** | `{real_client_ip}` |\n"
             
             vpn_client_row = ""
             if xray_client_email:
-                vpn_client_row = f"  <tr>\n    <td><b>👤 Клиент VPN</b></td>\n    <td><code>{xray_client_email}</code></td>\n  </tr>\n"
+                vpn_client_row = f"| **👤 Клиент VPN** | `{xray_client_email}` |\n"
                 
             block_details_block = ""
             if xray_client_email and risk_level == 'CRITICAL':
