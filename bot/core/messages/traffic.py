@@ -139,14 +139,35 @@ def get_ips_process_warning_alert(server_ip, proc_name, proto, src, spt, dst, dp
         f"*Примечание: Процесс уже завершил работу или не найден. • Время: {timestamp}*"
     )
 
-def get_local_traffic_alert(clean_h1, title, desc_with_client, vmid, container_name, label, proto, direction, src, spt, dst, dpt, vpn_ip_row, vpn_client_row, block_details_block, timestamp):
-    vpn_ip_row = vpn_ip_row.strip()
-    if vpn_ip_row:
-        vpn_ip_row = "\n" + vpn_ip_row
-    vpn_client_row = vpn_client_row.strip()
-    if vpn_client_row:
-        vpn_client_row = "\n" + vpn_client_row
+def get_local_traffic_alert(title, desc_with_client, vmid, container_name, label, proto, direction, src, spt, dst, dpt, real_client_ip, xray_client_email, block_details_list, timestamp):
+    clean_h1 = "⚠️ Traffic Alert"
+    if "Разрешенное соединение" in title:
+        clean_h1 = "ℹ️ Connection Allowed"
+    elif "Атака заблокирована" in title:
+        clean_h1 = "🚨 Attack Blocked"
+    elif "КРИТИЧЕСКАЯ УГРОЗА" in title:
+        clean_h1 = "🚨 Critical Alert"
+    elif "ПОДОЗРИТЕЛЬНАЯ АКТИВНОСТЬ" in title:
+        clean_h1 = "⚠️ Warning Alert"
+
+    vpn_ip_row = ""
+    if real_client_ip and real_client_ip != src:
+        vpn_ip_row = f"\n| **👤 Реальный IP** | `{real_client_ip}` |"
+    
+    vpn_client_row = ""
+    if xray_client_email:
+        vpn_client_row = f"\n| **👤 Клиент VPN** | `{xray_client_email}` |"
         
+    block_details_block = ""
+    if block_details_list:
+        block_details_str = "\n".join(block_details_list)
+        block_details_block = (
+            f"\n\n<details>\n"
+            f"  <summary>🚨 <b>Показать статус авто-блокировки аккаунта</b></summary>\n"
+            f"  <pre><code>{block_details_str}</code></pre>\n"
+            f"</details>"
+        )
+
     return (
         f"# {clean_h1}\n"
         f"---\n\n"

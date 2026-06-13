@@ -95,7 +95,7 @@ async def reconcile_router_bans():
                     alert_text = get_router_unknown_block_alert(ip, rules_str)
 
                 try:
-                    await send_alert_to_admins(alert_text)
+                    await send_alert_to_admins(alert_text, parse_mode="markdown")
                 except Exception as tg_err:
                     logging.error(f"[Router Reconciliation] Ошибка отправки Telegram-оповещения: {tg_err}")
             else:

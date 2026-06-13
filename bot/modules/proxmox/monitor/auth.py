@@ -90,7 +90,7 @@ async def handle_auth_log_line(line, vmid):
                 
                 reply_markup = InlineKeyboardMarkup(inline_keyboard=kb)
                 
-            await send_alert_to_admins(msg, reply_markup=reply_markup)
+            await send_alert_to_admins(msg, parse_mode="markdown", reply_markup=reply_markup)
 
     except Exception as e:
         logging.error(f"Ошибка парсинга лога авторизации: {e}")

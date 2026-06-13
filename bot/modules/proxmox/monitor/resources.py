@@ -52,7 +52,7 @@ async def monitor_lxc_resources():
                         
                         msg = get_lxc_state_alert(emoji, vmid, name, node_name, status_text)
                         
-                        await send_alert_to_admins(msg)
+                        await send_alert_to_admins(msg, parse_mode="markdown")
                         
                         # Если это запуск VPN-контейнера, заново инициализируем внутренние правила
                         if vmid == settings.vpn_vmid and state == "running":
@@ -87,7 +87,7 @@ async def monitor_lxc_resources():
                                     if now - last_alert > ALERT_THROTTLE_INTERVAL:
                                         lxc_alert_throttle[(vmid, 'cpu')] = now
                                         msg = get_lxc_cpu_alert(vmid, name, cpu)
-                                        await send_alert_to_admins(msg)
+                                        await send_alert_to_admins(msg, parse_mode="markdown")
                             else:
                                 lxc_high_load_start.pop((vmid, 'cpu'), None)
                                 lxc_alert_throttle.pop((vmid, 'cpu'), None)
@@ -101,7 +101,7 @@ async def monitor_lxc_resources():
                                     if now - last_alert > ALERT_THROTTLE_INTERVAL:
                                         lxc_alert_throttle[(vmid, 'ram')] = now
                                         msg = get_lxc_ram_alert(vmid, name, mem_pct, mem, maxmem)
-                                        await send_alert_to_admins(msg)
+                                        await send_alert_to_admins(msg, parse_mode="markdown")
                             else:
                                 lxc_high_load_start.pop((vmid, 'ram'), None)
                                 lxc_alert_throttle.pop((vmid, 'ram'), None)
@@ -112,7 +112,7 @@ async def monitor_lxc_resources():
                                 if now - last_alert > ALERT_THROTTLE_INTERVAL:
                                     lxc_alert_throttle[(vmid, 'disk')] = now
                                     msg = get_lxc_disk_alert(vmid, name, disk_pct, disk, maxdisk)
-                                    await send_alert_to_admins(msg)
+                                    await send_alert_to_admins(msg, parse_mode="markdown")
                             else:
                                 lxc_alert_throttle.pop((vmid, 'disk'), None)
                                 

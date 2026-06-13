@@ -1,7 +1,17 @@
 # bot/core/messages/spectre.py
 """Шаблоны сообщений для Spectre VPN панели (входы, 2FA, сессии, новые IP) на GFM Markdown."""
 
-def get_new_ip_alert(protocol, panel_name, username, client_ip, timestamp_str, history_text, geoip_info=None):
+def get_new_ip_alert(protocol, panel_name, username, client_ip, timestamp_str, history_list, geoip_info=None):
+    import datetime
+    history_lines = []
+    for h in history_list:
+        try:
+            time_formatted = datetime.datetime.fromtimestamp(h["timestamp"]).strftime("%d.%m %H:%M")
+        except Exception:
+            time_formatted = "неизвестно"
+        history_lines.append(f"• `{h['ip']}` ({time_formatted}) — {h['duration']}")
+    history_text = "\n".join(history_lines) if history_lines else "нет предыдущих подключений"
+
     geo_row = ""
     if geoip_info:
         geo_row = f"| **🗺️ Гео** | `{geoip_info}` |\n"
@@ -21,7 +31,25 @@ def get_new_ip_alert(protocol, panel_name, username, client_ip, timestamp_str, h
         f"</details>"
     )
 
-def get_session_activity_card(protocol, panel_name, username, download, upload, timeline):
+def get_session_activity_card(protocol, panel_name, username, download_bytes, upload_bytes, timeline_lines):
+    def format_bytes(b):
+        if b < 1024:
+            return f"{b} B"
+        elif b < 1024 * 1024:
+            return f"{b / 1024:.2f} KB"
+        elif b < 1024 * 1024 * 1024:
+            return f"{b / (1024 * 1024):.2f} MB"
+        else:
+            return f"{b / (1024 * 1024 * 1024):.2f} GB"
+
+    download = format_bytes(download_bytes)
+    upload = format_bytes(upload_bytes)
+    
+    displayed_lines = timeline_lines[-15:]
+    timeline = "\n".join(displayed_lines)
+    if len(timeline_lines) > 15:
+        timeline = "*... показать ещё ...*\n" + timeline
+
     return (
         f"# 📊 Session Activity\n"
         f"---\n\n"
@@ -95,7 +123,20 @@ def get_spectre_2fa_alert(panel_name, username, client_ip, time_str, geoip_info=
         f"{geo_row}"
     )
 
-def get_panel_status_message(panel_name, cpu, mem_curr, mem_tot, mem_pct, cpu_bar, mem_bar, uptime_str, total_inbounds, total_clients, active_clients, online_clients, blocked_clients):
+def get_panel_status_message(panel_name, cpu, mem_curr, mem_tot, mem_pct, uptime, total_inbounds, total_clients, active_clients, online_clients, blocked_clients):
+    def make_bar(pct, length=10):
+        pct = max(0.0, min(100.0, pct))
+        filled_length = int(round(length * pct / 100))
+        return "■" * filled_length + "□" * (length - filled_length)
+        
+    cpu_bar = make_bar(cpu)
+    mem_bar = make_bar(mem_pct)
+    
+    days = uptime // 86400
+    hours = (uptime % 86400) // 3600
+    minutes = (uptime % 3600) // 60
+    uptime_str = f"{days}д {hours}ч {minutes}м"
+
     return (
         f"# 📊 Server Status: {panel_name}\n"
         f"---\n\n"

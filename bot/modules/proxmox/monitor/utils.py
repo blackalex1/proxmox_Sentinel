@@ -172,18 +172,19 @@ def convert_rich_html_to_standard(html):
 async def send_rich_message(chat_id, text, parse_mode="HTML", reply_markup=None):
     """
     Отправка Rich Message (Bot API 10.1) для поддержки HTML-таблиц и кастомного рендеринга.
-    При сбое автоматически преобразует в стандартное сообщение и отправляет через sendMessage.
+    Возвращает объект Message при успехе, или None при ошибке.
     """
     import aiohttp
     import json
     import re
+    from aiogram.types import Message
     
     url_rich = bot.session.api.api_url(token=settings.bot_token, method="sendRichMessage")
-    success = False
+    sent_msg = None
     
     # Авто-детект markdown формата, если передан HTML, но текст содержит заголовки или таблицы Markdown
     actual_parse_mode = parse_mode
-    if parse_mode.lower() == "html" and text:
+    if parse_mode and parse_mode.lower() == "html" and text:
         if re.search(r'^#\s+', text, re.MULTILINE) or re.search(r'^###\s+', text, re.MULTILINE) or ('| ---' in text) or ('| :---' in text) or re.search(r'^---\s*$', text, re.MULTILINE):
             actual_parse_mode = "markdown"
 
@@ -192,7 +193,7 @@ async def send_rich_message(chat_id, text, parse_mode="HTML", reply_markup=None)
             "chat_id": chat_id,
             "rich_message": {}
         }
-        if actual_parse_mode.lower() in ("markdown", "markdownv2"):
+        if actual_parse_mode and actual_parse_mode.lower() in ("markdown", "markdownv2"):
             payload["rich_message"]["markdown"] = text
         else:
             payload["rich_message"]["html"] = text
@@ -209,22 +210,83 @@ async def send_rich_message(chat_id, text, parse_mode="HTML", reply_markup=None)
         async with session.post(url_rich, json=payload, timeout=5) as response:
             res = await response.json()
             if res.get("ok"):
-                success = True
+                sent_msg = Message.model_validate(res["result"])
             else:
                 logging.warning(f"[Rich Message] Не удалось отправить Rich Message для {chat_id}, код: {res.get('description')}")
     except Exception as e:
         logging.warning(f"[Rich Message] Исключение при отправке Rich Message для {chat_id}: {e}")
         
-    if not success:
+    if not sent_msg:
         try:
             fallback_text = text
-            if actual_parse_mode.lower() == "html":
+            if actual_parse_mode and actual_parse_mode.lower() == "html":
                 fallback_text = convert_rich_html_to_standard(text)
-            await bot.send_message(chat_id, fallback_text, parse_mode=actual_parse_mode, reply_markup=reply_markup)
+            sent_msg = await bot.send_message(chat_id, fallback_text, parse_mode=actual_parse_mode, reply_markup=reply_markup)
         except Exception as e:
             logging.error(f"Не удалось отправить стандартное сообщение для {chat_id}: {e}")
             raise e
-    return success
+    return sent_msg
+
+
+async def edit_rich_message(chat_id, message_id, text, parse_mode="HTML", reply_markup=None):
+    """
+    Редактирование Rich Message (Bot API 10.1).
+    Возвращает объект Message при успехе, или None при ошибке.
+    """
+    import aiohttp
+    import json
+    import re
+    from aiogram.types import Message
+    
+    url_rich = bot.session.api.api_url(token=settings.bot_token, method="editMessageText")
+    edited_msg = None
+    
+    # Авто-детект markdown формата
+    actual_parse_mode = parse_mode
+    if parse_mode and parse_mode.lower() == "html" and text:
+        if re.search(r'^#\s+', text, re.MULTILINE) or re.search(r'^###\s+', text, re.MULTILINE) or ('| ---' in text) or ('| :---' in text) or re.search(r'^---\s*$', text, re.MULTILINE):
+            actual_parse_mode = "markdown"
+
+    try:
+        payload = {
+            "chat_id": chat_id,
+            "message_id": message_id,
+            "rich_message": {}
+        }
+        if actual_parse_mode and actual_parse_mode.lower() in ("markdown", "markdownv2"):
+            payload["rich_message"]["markdown"] = text
+        else:
+            payload["rich_message"]["html"] = text
+            
+        if reply_markup:
+            if hasattr(reply_markup, "model_dump"):
+                payload["reply_markup"] = reply_markup.model_dump(exclude_none=True)
+            elif hasattr(reply_markup, "to_python"):
+                payload["reply_markup"] = reply_markup.to_python()
+            else:
+                payload["reply_markup"] = reply_markup
+                
+        session = await bot.session.create_session()
+        async with session.post(url_rich, json=payload, timeout=5) as response:
+            res = await response.json()
+            if res.get("ok"):
+                edited_msg = Message.model_validate(res["result"])
+            else:
+                logging.warning(f"[Rich Message Edit] Не удалось отредактировать Rich Message, код: {res.get('description')}")
+    except Exception as e:
+        logging.warning(f"[Rich Message Edit] Исключение при редактировании Rich Message: {e}")
+        
+    if not edited_msg:
+        try:
+            fallback_text = text
+            if actual_parse_mode and actual_parse_mode.lower() == "html":
+                fallback_text = convert_rich_html_to_standard(text)
+            edited_msg = await bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=fallback_text, parse_mode=actual_parse_mode, reply_markup=reply_markup)
+        except Exception as e:
+            if "message is not modified" not in str(e).lower():
+                logging.error(f"Не удалось отредактировать стандартное сообщение: {e}")
+                raise e
+    return edited_msg
 
 
 async def send_alert_to_admins(text, parse_mode="HTML", reply_markup=None):

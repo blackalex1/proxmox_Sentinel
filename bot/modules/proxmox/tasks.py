@@ -24,11 +24,12 @@ async def monitor_nodes():
                             offline_nodes_cache.add(node_name)
                             for admin_id in settings.admin_ids:
                                 try:
+                                    from modules.proxmox.monitor import send_rich_message
                                     msg = get_node_offline_alert(node_name, node['status'])
-                                    await bot.send_message(
+                                    await send_rich_message(
                                         admin_id, 
                                         msg, 
-                                        parse_mode="HTML"
+                                        parse_mode="markdown"
                                     )
                                 except:
                                     pass
@@ -37,11 +38,12 @@ async def monitor_nodes():
                             offline_nodes_cache.remove(node_name)
                             for admin_id in settings.admin_ids:
                                 try:
+                                    from modules.proxmox.monitor import send_rich_message
                                     msg = get_node_online_alert(node_name)
-                                    await bot.send_message(
+                                    await send_rich_message(
                                         admin_id, 
                                         msg, 
-                                        parse_mode="HTML"
+                                        parse_mode="markdown"
                                     )
                                 except:
                                     pass
