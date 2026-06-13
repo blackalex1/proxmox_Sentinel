@@ -213,8 +213,15 @@ async def monitor_panel_audit_logs():
                             msg = get_login_success_alert(panel.name, username, ip, details, time_str, geoip_info=geoip_info)
                                    
                             # Отправляем алерт всем администраторам контроллера
+                            from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+                            kb = InlineKeyboardMarkup(inline_keyboard=[
+                                [
+                                    InlineKeyboardButton(text="❌ Сбросить сессию", callback_data=f"ctrl_term_sess:{p_key}:{username}:{ip}"),
+                                    InlineKeyboardButton(text="🔑 Сбросить пароль", callback_data=f"ctrl_reset_pwd:{p_key}:{username}")
+                                ]
+                            ])
                             try:
-                                await send_alert_to_admins(msg)
+                                await send_alert_to_admins(msg, reply_markup=kb)
                             except Exception as e:
                                 logging.error(f"[Audit Monitor] Не удалось отправить алерт: {e}")
                         
