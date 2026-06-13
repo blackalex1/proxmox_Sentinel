@@ -15,6 +15,37 @@ OUTBOX_FILE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__fil
 
 import re
 
+def clean_markdown_tables(text: str) -> str:
+    if not text:
+        return text
+    lines = text.split('\n')
+    new_lines = []
+    in_table = False
+    
+    for line in lines:
+        stripped = line.strip()
+        if stripped.startswith('|') and stripped.endswith('|'):
+            # Check if it's a separator line (contains only |, -, :, spaces)
+            if re.match(r'^\|[\s\-:|]*\|$', stripped):
+                # Skip separator line
+                continue
+            
+            # Parse columns
+            cols = [c.strip() for c in stripped.split('|')[1:-1]]
+            if cols:
+                # For 2 columns, we can format as "Col1 | Col2"
+                if len(cols) == 2:
+                    new_lines.append(f"{cols[0]} | {cols[1]}")
+                else:
+                    new_lines.append(" | ".join(cols))
+            in_table = True
+        else:
+            if in_table:
+                in_table = False
+            new_lines.append(line)
+            
+    return '\n'.join(new_lines)
+
 def clean_mixed_html_to_markdown(text: str) -> str:
     if not text:
         return text
@@ -36,6 +67,15 @@ def clean_mixed_html_to_markdown(text: str) -> str:
     
     # Clean up double bold markups like ****
     text = re.sub(r'\*{4,}', '**', text)
+    
+    # Convert markdown headers: # Title -> **Title**
+    text = re.sub(r'^#+\s+(.*?)$', r'**\1**', text, flags=re.MULTILINE)
+    
+    # Convert horizontal rules: --- -> ⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯
+    text = re.sub(r'^---\s*$', '⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯', text, flags=re.MULTILINE)
+    
+    # Clean markdown tables
+    text = clean_markdown_tables(text)
     
     return text
 
@@ -156,12 +196,39 @@ class ResilientOutbox:
             for idx, msg in enumerate(self.queue, 1):
                 chat_id = msg["chat_id"]
                 text = msg["text"]
-                kwargs = msg.get("kwargs", {})
+                kwargs = msg.get("kwargs", {}).copy()
                 
-                # Добавляем пометку с номером сообщения в очереди
-                resilient_text = f"{text}\n\n[Отложенное сообщение {idx}/{total_count}]"
+                # Пометка с номером сообщения в очереди
+                queue_tag = f"\n\n[Отложенное сообщение {idx}/{total_count}]"
                 
                 try:
+                    # Сначала пробуем отправить как Rich Message
+                    parse_mode = kwargs.get("parse_mode", "HTML")
+                    reply_markup = kwargs.get("reply_markup", None)
+                    
+                    rich_text = f"{text}{queue_tag}"
+                    
+                    rich_msg = await self._send_rich_message_impl(bot, chat_id, rich_text, parse_mode=parse_mode, reply_markup=reply_markup)
+                    if rich_msg:
+                        logger.info(f"[Outbox] Сообщение для {chat_id} успешно доставлено как Rich Message из очереди ({idx}/{total_count}).")
+                        await asyncio.sleep(0.5)
+                        continue
+                    
+                    # Если Rich Message не сработал, очищаем форматирование для стандартного API
+                    actual_parse_mode = parse_mode
+                    if parse_mode and parse_mode.lower() == "html" and text:
+                        if re.search(r'^#\s+', text, re.MULTILINE) or re.search(r'^###\s+', text, re.MULTILINE) or ('| ---' in text) or ('| :---' in text) or re.search(r'^---\s*$', text, re.MULTILINE):
+                            actual_parse_mode = "markdown"
+                            
+                    if actual_parse_mode and actual_parse_mode.lower() in ("markdown", "markdownv2"):
+                        cleaned_text = clean_mixed_html_to_markdown(text)
+                        kwargs['parse_mode'] = actual_parse_mode
+                    else:
+                        cleaned_text = clean_html_for_telegram(text)
+                        kwargs['parse_mode'] = "HTML"
+                        
+                    resilient_text = f"{cleaned_text}{queue_tag}"
+                    
                     # Используем оригинальный метод класса Bot для отправки без перехвата
                     await bot._original_send_message(chat_id, resilient_text, **kwargs)
                     logger.info(f"[Outbox] Сообщение для {chat_id} успешно доставлено из очереди ({idx}/{total_count}).")
@@ -301,6 +368,10 @@ class ResilientOutbox:
             if rich_msg:
                 return rich_msg
                 
+            # Сохраняем оригинальные значения для очереди на случай сбоя
+            original_text = text
+            original_kwargs = kwargs.copy()
+            
             # Если не удалось, делаем очистку и шлем стандартно
             actual_parse_mode = parse_mode
             if parse_mode and parse_mode.lower() == "html" and text:
@@ -308,14 +379,14 @@ class ResilientOutbox:
                     actual_parse_mode = "markdown"
             
             if actual_parse_mode and actual_parse_mode.lower() in ("markdown", "markdownv2"):
-                text = clean_mixed_html_to_markdown(text)
+                cleaned_text = clean_mixed_html_to_markdown(text)
                 kwargs['parse_mode'] = actual_parse_mode
             else:
-                text = clean_html_for_telegram(text)
+                cleaned_text = clean_html_for_telegram(text)
                 kwargs['parse_mode'] = "HTML"
                 
             try:
-                return await bot._original_send_message(chat_id, text, *args, **kwargs)
+                return await bot._original_send_message(chat_id, cleaned_text, *args, **kwargs)
             except Exception as e:
                 # Проверяем, является ли ошибка сетевой
                 is_network = isinstance(e, (TelegramNetworkError, ClientOSError, asyncio.TimeoutError))
@@ -323,7 +394,7 @@ class ResilientOutbox:
                 
                 if is_network or any(x in err_msg for x in ["connection", "timeout", "reset", "abort"]):
                     logger.warning(f"[Outbox] Сбой сети при отправке сообщения для {chat_id} ({e}). Перенаправляем в исходящую очередь...")
-                    await self.add_message(chat_id, text, **kwargs)
+                    await self.add_message(chat_id, original_text, **original_kwargs)
                     return None
                 else:
                     # Обычные ошибки (API, Validation) пробрасываем дальше

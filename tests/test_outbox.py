@@ -113,7 +113,7 @@ async def test_outbox_flush_success(clean_outbox):
     await outbox.flush_queue(bot)
     
     # Метод отправки должен быть вызван с прикрепленным номером сообщения в очереди
-    bot._original_send_message.assert_called_once_with(55555, "Ура, сеть есть!\n\n[Отложенное сообщение 1/1]")
+    bot._original_send_message.assert_called_once_with(55555, "Ура, сеть есть!\n\n[Отложенное сообщение 1/1]", parse_mode="HTML")
     
     # Очередь должна полностью очиститься
     assert len(outbox.queue) == 0
@@ -156,7 +156,43 @@ async def test_outbox_flood_control(clean_outbox):
         mock_sleep.assert_any_call(5)
         
         # Первая отправка должна быть вызвана с прикрепленным номером сообщения
-        bot._original_send_message.assert_called_once_with(111, "Msg 1\n\n[Отложенное сообщение 1/2]")
+        bot._original_send_message.assert_called_once_with(111, "Msg 1\n\n[Отложенное сообщение 1/2]", parse_mode="HTML")
         
         # Обе отправки должны остаться в очереди (т.к. первая провалилась и выбросила прерывание)
         assert len(outbox.queue) == 2
+
+
+def test_clean_mixed_html_to_markdown_formatting():
+    from core.outbox import clean_mixed_html_to_markdown
+    
+    input_text = (
+        "# 📊 Session Activity\n"
+        "---\n\n"
+        "### 📊 Hysteria Активность сессии на VPS 198.51.100.42\n\n"
+        "| Параметр | Значение |\n"
+        "| :--- | :--- |\n"
+        "| **👤 Пользователь** | `my_double` |\n"
+        "| **📥 Скачано** | `9.89 MB` |\n"
+        "| **📤 Загружено** | `41.74 MB` |\n\n"
+        "<details>\n"
+        "  <summary>📋 <b>Хронология событий</b></summary>\n"
+        "  <pre><code>line 1\nline 2</code></pre>\n"
+        "</details>"
+    )
+    
+    cleaned = clean_mixed_html_to_markdown(input_text)
+    
+    # Check header conversions
+    assert "**📊 Session Activity**" in cleaned
+    assert "⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯" in cleaned
+    assert "**📊 Hysteria Активность сессии на VPS 198.51.100.42**" in cleaned
+    
+    # Check table conversions
+    assert "Параметр | Значение" in cleaned
+    assert "**👤 Пользователь** | `my_double`" in cleaned
+    assert "**📥 Скачано** | `9.89 MB`" in cleaned
+    assert "**📤 Загружено** | `41.74 MB`" in cleaned
+    
+    # Check details/summary/pre/code cleanup
+    assert "**📋 Хронология событий**" in cleaned
+    assert "```\nline 1\nline 2\n```" in cleaned
