@@ -105,14 +105,27 @@ async def process_hysteria_audit_event(panel, action, client_ip, log_timestamp, 
         return
         
     username = details.get("username", "Unknown")
-    tx = details.get("tx", 0)
-    rx = details.get("rx", 0)
     duration_str = details.get("duration", "неизвестно")
     
     panel_name = panel.name
     protocol = "Xray" if "xray" in action else "Hysteria"
-    if protocol == "Xray":
-        tx, rx = rx, tx  # Swap: tx becomes client download, rx becomes client upload
+    
+    # Получаем актуальный совокупный трафик из базы панели
+    db_download, db_upload = 0, 0
+    success, res = await panel.request("GET", "/api/security/search-client", params={"key": username})
+    if success and res.get("success") and res.get("clients"):
+        for item in res["clients"]:
+            c_data = item.get("client", {})
+            db_download += c_data.get("down", 0)
+            db_upload += c_data.get("up", 0)
+        tx = db_download
+        rx = db_upload
+    else:
+        # Резервный фолбек на данные из лога события
+        tx = details.get("tx", 0)
+        rx = details.get("rx", 0)
+        if protocol == "Xray":
+            tx, rx = rx, tx  # Swap: tx becomes client download, rx becomes client upload
         
     key = (panel_name, username, protocol)
     now_time = time.time()
@@ -246,7 +259,8 @@ async def update_controller_active_cards_traffic():
         if success and res.get("success"):
             clients = res.get("clients", [])
             tx, rx = 0, 0
-            for c in clients:
+            for item in clients:
+                c = item.get("client", {})
                 tx += c.get("up", 0)
                 rx += c.get("down", 0)
             
