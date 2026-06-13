@@ -432,12 +432,13 @@ async def cb_spectre_clients(callback: CallbackQuery):
         await callback.answer("❌ Панель не найдена.", show_alert=True)
         return
         
-    await callback.message.edit_text(f"⏳ Загрузка списка клиентов для <b>{panel.name}</b>...")
+    await callback.message.edit_text(f"⏳ Загрузка списка клиентов для <b>{panel.name}</b>...", parse_mode="HTML")
     
     success, res = await panel.request("GET", "/api/security/search-client", params={"key": ""})
     if not success or not res.get("success"):
         await callback.message.edit_text(
             f"❌ <b>Не удалось загрузить клиентов с панели {panel.name}</b>",
+            parse_mode="HTML",
             reply_markup=InlineKeyboardMarkup(inline_keyboard=[
                 [InlineKeyboardButton(text="🔙 Назад", callback_data=f"spectre_menu:{panel_key}")]
             ])
@@ -449,6 +450,7 @@ async def cb_spectre_clients(callback: CallbackQuery):
     if not clients:
         await callback.message.edit_text(
             f"👥 <b>Список клиентов на панели {panel.name} пуст.</b>",
+            parse_mode="HTML",
             reply_markup=InlineKeyboardMarkup(inline_keyboard=[
                 [InlineKeyboardButton(text="🔙 Назад", callback_data=f"spectre_menu:{panel_key}")]
             ])
