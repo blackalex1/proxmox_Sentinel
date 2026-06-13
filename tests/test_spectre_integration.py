@@ -2,7 +2,7 @@ import pytest
 import asyncio
 from unittest.mock import AsyncMock, patch, MagicMock
 from core.spectre_client import parse_env_content, SpectrePanelInstance, SpectreClientManager, spectre_manager
-from core.handlers.spectre_handlers import cmd_panel, cmd_backup, cmd_status_spectre, cmd_my_spectre, cmd_ban_client, cmd_unban_client
+from core.handlers.spectre import cmd_panel, cmd_backup, cmd_status_spectre, cmd_my_spectre, cmd_ban_client, cmd_unban_client
 
 
 def test_parse_env_content():
@@ -65,6 +65,7 @@ async def test_discover_panels():
          patch("asyncio.create_subprocess_exec", return_value=mock_proc), \
          patch("core.config.settings.proxmox_host", "192.168.1.100:8006"), \
          patch("core.config.settings.remote_servers", [mock_server]), \
+         patch("core.spectre_client.manager.probe_panel_url", AsyncMock(side_effect=lambda ip, port: f"http://{ip}:{port}")), \
          patch("modules.proxmox.monitor.remote.ssh.run_remote_ssh_cmd", AsyncMock(return_value=(
              True,
              "PANEL_PORT=15000\nAPI_TOKEN=vps_token\nPANEL_SECRET_PATH=ui",
@@ -286,7 +287,7 @@ async def test_callback_unban_tunnel(monkeypatch):
     """
     Тестирование callback хэндлера unban_tunnel.
     """
-    from core.handlers.spectre_handlers import cb_unban_tunnel
+    from core.handlers.spectre import cb_unban_tunnel
     from core.spectre_client import spectre_manager, SpectrePanelInstance
     
     panel = SpectrePanelInstance("Panel", "http://127.0.0.1:15000", "token", "ui", "vps", "1.1.1.1")
@@ -395,7 +396,7 @@ async def test_spectre_panel_get_audit_logs():
 
 @pytest.mark.asyncio
 async def test_spectre_handlers_audit(monkeypatch):
-    from core.handlers.spectre_handlers import cmd_audit
+    from core.handlers.spectre import cmd_audit
     from core.spectre_client import spectre_manager, SpectrePanelInstance
     
     panel = SpectrePanelInstance("Panel", "http://127.0.0.1:15000", "token", "ui", "vps", "1.1.1.1")
@@ -434,7 +435,7 @@ async def test_spectre_handlers_audit(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_spectre_handlers_add_slave(monkeypatch):
-    from core.handlers.spectre_handlers import cb_add_slave
+    from core.handlers.spectre import cb_add_slave
     from core.spectre_client import spectre_manager, SpectrePanelInstance
     
     panel = SpectrePanelInstance("Panel", "http://127.0.0.1:15000", "token", "ui", "vps", "1.1.1.1")
@@ -460,7 +461,7 @@ async def test_spectre_handlers_add_slave(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_spectre_handlers_add_master(monkeypatch):
-    from core.handlers.spectre_handlers import cb_add_master
+    from core.handlers.spectre import cb_add_master
     
     mock_callback = AsyncMock()
     mock_callback.data = "spectre_add_master"
@@ -474,7 +475,7 @@ async def test_spectre_handlers_add_master(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_spectre_handlers_setup_slave(monkeypatch):
-    from core.handlers.spectre_handlers import cmd_setup_slave
+    from core.handlers.spectre import cmd_setup_slave
     
     # Mock aiohttp client session post
     mock_response = MagicMock()
