@@ -180,7 +180,7 @@ async def send_alert_to_admins(text, parse_mode="HTML", reply_markup=None):
     elif isinstance(settings.admin_ids, str):
         admin_ids = [int(i.strip()) for i in settings.admin_ids.split(",") if i.strip().isdigit()]
 
-    url_rich = f"https://api.telegram.org/bot{settings.bot_token}/sendRichMessage"
+    url_rich = bot.session.api.api_url(token=settings.bot_token, method="sendRichMessage")
     
     for admin_id in admin_ids:
         success = False
@@ -202,14 +202,13 @@ async def send_alert_to_admins(text, parse_mode="HTML", reply_markup=None):
                 else:
                     payload["reply_markup"] = reply_markup
                     
-            connector = aiohttp.TCPConnector(ssl=False)
-            async with aiohttp.ClientSession(connector=connector) as session:
-                async with session.post(url_rich, json=payload, timeout=5) as response:
-                    res = await response.json()
-                    if res.get("ok"):
-                        success = True
-                    else:
-                        logging.warning(f"[Rich Alert] Не удалось отправить Rich Message, код: {res.get('description')}")
+            session = await bot.session.create_session()
+            async with session.post(url_rich, json=payload, timeout=5) as response:
+                res = await response.json()
+                if res.get("ok"):
+                    success = True
+                else:
+                    logging.warning(f"[Rich Alert] Не удалось отправить Rich Message, код: {res.get('description')}")
         except Exception as e:
             logging.warning(f"[Rich Alert] Исключение при отправке Rich Message: {e}")
             
