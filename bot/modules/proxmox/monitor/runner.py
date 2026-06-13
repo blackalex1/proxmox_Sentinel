@@ -323,6 +323,13 @@ async def monitor_panel_2fa_logs():
                     continue
                 current_keys.add(p_key)
                 
+                # Check if tailer task has ended/crashed, and clean it up to allow restart
+                if p_key in active_tailers:
+                    tailer = active_tailers[p_key]
+                    if tailer.task and tailer.task.done():
+                        logging.warning(f"[2FA Monitor] Tailer task for {p_key} was terminated. Removing from active tailers to restart.")
+                        active_tailers.pop(p_key)
+                
                 if p_key not in active_tailers:
                     log_path = panel.env_path.replace(".env", "2fa.log")
                     

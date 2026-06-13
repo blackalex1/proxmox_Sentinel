@@ -13,6 +13,8 @@ def get_ssh_base_cmd(server):
         "-i", server['key'],
         "-o", "StrictHostKeyChecking=no",
         "-o", "ConnectTimeout=5",
+        "-o", "ServerAliveInterval=15",
+        "-o", "ServerAliveCountMax=3",
         f"{server['user']}@{server['ip']}"
     ]
 
