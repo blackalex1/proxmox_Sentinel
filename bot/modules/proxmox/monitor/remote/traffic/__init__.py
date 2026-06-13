@@ -137,7 +137,7 @@ async def investigate_and_resolve_remote_attack(server, dst_ip, dpt, tunnel_emai
             xray_client, tunnel_email, target_panel.name if target_panel else 'LXC',
             server['ip'], dst_ip, dpt, block_details_str, unblock_details_str, timestamp
         )
-        await send_alert_to_admins(msg)
+        await send_alert_to_admins(msg, parse_mode="markdown")
         
         # Отчёт мастер-панели (если этот бот — слейв, иначе no-op)
         await spectre_manager.report_investigation_to_master(
@@ -183,7 +183,7 @@ async def investigate_and_resolve_remote_attack(server, dst_ip, dpt, tunnel_emai
         msg = get_ips_investigation_failed_alert(
             tunnel_email, dst_ip, dpt, logs_text, timestamp
         )
-        await send_alert_to_admins(msg, reply_markup=keyboard)
+        await send_alert_to_admins(msg, parse_mode="markdown", reply_markup=keyboard)
         
         # Отчёт мастер-панели (если этот бот — слейв, иначе no-op)
         await spectre_manager.report_investigation_to_master(
@@ -234,7 +234,7 @@ async def handle_remote_traffic_line(line, server=None):
                 msg = get_ips_sensitive_access_alert(
                     server['ip'], proto, src, spt, dst, dpt, timestamp
                 )
-                await send_alert_to_admins(msg)
+                await send_alert_to_admins(msg, parse_mode="markdown")
         elif direction == 'OUT' and is_sensitive:
             node_name = f"vps_{server['ip']}"
             from core.db import is_whitelisted
@@ -287,7 +287,7 @@ async def handle_remote_traffic_line(line, server=None):
                     msg = get_ips_hysteria_attack_alert(
                         server['ip'], email, proto, src, spt, dst, dpt, block_details_str, timestamp
                     )
-                    await send_alert_to_admins(msg)
+                    await send_alert_to_admins(msg, parse_mode="markdown")
                     
                     # Запускаем расследование в фоновом таске
                     asyncio.create_task(investigate_and_resolve_remote_attack(server, dst, dpt, email, proto, src, spt))
@@ -315,7 +315,7 @@ async def handle_remote_traffic_line(line, server=None):
                     msg = get_ips_xray_attack_alert(
                         server['ip'], email, proto, src, spt, dst, dpt, block_details_str, proc_info, timestamp
                     )
-                    await send_alert_to_admins(msg)
+                    await send_alert_to_admins(msg, parse_mode="markdown")
                     return
             
             # Если клиент не определен, пытаемся найти и завершить процесс по порту
@@ -339,6 +339,6 @@ async def handle_remote_traffic_line(line, server=None):
                 msg = get_ips_process_warning_alert(
                     server['ip'], proc_name, proto, src, spt, dst, dpt, timestamp
                 )
-            await send_alert_to_admins(msg)
+            await send_alert_to_admins(msg, parse_mode="markdown")
     except Exception as e:
         logging.error(f"Ошибка в обработчике логов трафика удаленного сервера {server['ip']}: {e}")

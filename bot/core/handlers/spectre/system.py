@@ -94,7 +94,6 @@ async def cb_status(callback: CallbackQuery):
 from core.messages.spectre import get_panel_status_message
 
 async def run_status_for_panel(message: types.Message, panel_key: str):
-    from modules.proxmox.monitor.utils import make_progress_bar
     panel = spectre_manager.panels.get(panel_key)
     if not panel:
         await message.answer("❌ Панель не найдена.")
@@ -114,23 +113,13 @@ async def run_status_for_panel(message: types.Message, panel_key: str):
         mem_pct = (mem_curr / mem_tot) * 100.0 if mem_tot else 0.0
         uptime = stats.get("uptime", 0)
         
-        days = uptime // 86400
-        hours = (uptime % 86400) // 3600
-        minutes = (uptime % 3600) // 60
-        uptime_str = f"{days}д {hours}ч {minutes}м"
-        
-        cpu_bar = make_progress_bar(cpu)
-        mem_bar = make_progress_bar(mem_pct)
-        
         msg = get_panel_status_message(
             panel_name=panel.name,
             cpu=cpu,
             mem_curr=mem_curr,
             mem_tot=mem_tot,
             mem_pct=mem_pct,
-            cpu_bar=cpu_bar,
-            mem_bar=mem_bar,
-            uptime_str=uptime_str,
+            uptime=uptime,
             total_inbounds=counts.get('total_inbounds', 0),
             total_clients=counts.get('total_clients', 0),
             active_clients=counts.get('active_clients', 0),
@@ -142,7 +131,7 @@ async def run_status_for_panel(message: types.Message, panel_key: str):
         await send_rich_message(
             chat_id=message.chat.id,
             text=msg,
-            parse_mode="HTML"
+            parse_mode="markdown"
         )
     else:
         error_info = res.get("msg") or res.get("error") or "Неизвестная ошибка"

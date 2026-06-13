@@ -201,36 +201,22 @@ async def handle_traffic_log_line(line):
                     client_info += f"\n🚨 <b>Статус авто-блокировки аккаунта:</b>\n{block_details_str}\n"
                     desc_with_client += " [АККАУНТ АВТОБЛОКИРОВАН И СЕССИЯ СБРОШЕНА]"
             
-            clean_h1 = "⚠️ Traffic Alert"
-            if "Разрешенное соединение" in title:
-                clean_h1 = "ℹ️ Connection Allowed"
-            elif "Атака заблокирована" in title:
-                clean_h1 = "🚨 Attack Blocked"
-            elif "КРИТИЧЕСКАЯ УГРОЗА" in title:
-                clean_h1 = "🚨 Critical Alert"
-            elif "ПОДОЗРИТЕЛЬНАЯ АКТИВНОСТЬ" in title:
-                clean_h1 = "⚠️ Warning Alert"
-
-            vpn_ip_row = ""
-            if real_client_ip and real_client_ip != src:
-                vpn_ip_row = f"| **👤 Реальный IP** | `{real_client_ip}` |\n"
-            
-            vpn_client_row = ""
-            if xray_client_email:
-                vpn_client_row = f"| **👤 Клиент VPN** | `{xray_client_email}` |\n"
-                
-            block_details_block = ""
-            if xray_client_email and risk_level == 'CRITICAL':
-                block_details_block = (
-                    f"\n\n<details>\n"
-                    f"  <summary>🚨 <b>Показать статус авто-блокировки аккаунта</b></summary>\n"
-                    f"  <pre><code>{block_details_str}</code></pre>\n"
-                    f"</details>"
-                )
-
             msg = get_local_traffic_alert(
-                clean_h1, title, desc_with_client, vmid, container_name, label,
-                proto, direction, src, spt, dst, dpt, vpn_ip_row, vpn_client_row, block_details_block, timestamp
+                title=title,
+                desc_with_client=desc_with_client,
+                vmid=vmid,
+                container_name=container_name,
+                label=label,
+                proto=proto,
+                direction=direction,
+                src=src,
+                spt=spt,
+                dst=dst,
+                dpt=dpt,
+                real_client_ip=real_client_ip,
+                xray_client_email=xray_client_email,
+                block_details_list=block_details if (xray_client_email and risk_level == 'CRITICAL') else None,
+                timestamp=timestamp
             )
             
             # Добавляем кнопки быстрого добавления в белый список
@@ -258,7 +244,7 @@ async def handle_traffic_log_line(line):
                 
             kb = InlineKeyboardMarkup(inline_keyboard=buttons)
             
-            await send_alert_to_admins(msg, reply_markup=kb)
+            await send_alert_to_admins(msg, parse_mode="markdown", reply_markup=kb)
 
     except Exception as e:
         logging.error(f"Ошибка в обработчике трафика: {e}")

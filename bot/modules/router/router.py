@@ -26,7 +26,7 @@ async def run_router_ssh_cmd(command):
             'port': settings.router_ssh_port,
             'username': settings.router_ssh_user,
             'known_hosts': None,
-            'connect_timeout': 5,
+            'connect_timeout': 15,
         }
         
         if settings.router_ssh_password:

@@ -9,25 +9,8 @@ from core.messages import get_session_activity_card, get_new_ip_alert, get_clien
 # In-memory cards state: (panel_name, username, protocol) -> card dict
 active_activity_cards = {}
 
-def format_bytes(b):
-    if b < 1024:
-        return f"{b} B"
-    elif b < 1024 * 1024:
-        return f"{b / 1024:.2f} KB"
-    elif b < 1024 * 1024 * 1024:
-        return f"{b / (1024 * 1024):.2f} MB"
-    else:
-        return f"{b / (1024 * 1024 * 1024):.2f} GB"
-
 def format_card_msg(panel_name, username, protocol, lines, tx, rx):
-    displayed_lines = lines[-15:]
-    timeline = "\n".join(displayed_lines)
-    if len(lines) > 15:
-        timeline = "<i>... показать ещё ...</i>\n" + timeline
-        
-    download = format_bytes(tx)
-    upload = format_bytes(rx)
-    return get_session_activity_card(protocol, panel_name, username, download, upload, timeline)
+    return get_session_activity_card(protocol, panel_name, username, tx, rx, lines)
 
 def is_card_active(card, now_time):
     if not card:
@@ -149,19 +132,13 @@ async def process_hysteria_audit_event(panel, action, client_ip, log_timestamp, 
                 logs_list = res.get("logs", [])
                 is_new_ip, history = check_new_ip_and_get_history(username, client_ip, log_timestamp, logs_list)
                 if is_new_ip:
-                    history_lines = []
-                    for h in history:
-                        time_formatted = datetime.datetime.fromtimestamp(h["timestamp"]).strftime("%d.%m %H:%M")
-                        history_lines.append(f"• <code>{h['ip']}</code> ({time_formatted}) — {h['duration']}")
-                    
-                    history_text = "\n".join(history_lines) if history_lines else "нет предыдущих подключений"
-                    
                     from .utils import get_geoip_info
                     geoip_info = await get_geoip_info(client_ip)
-                    alert_text = get_new_ip_alert(protocol, panel_name, username, client_ip, timestamp_str, history_text, geoip_info=geoip_info)
+                    alert_text = get_new_ip_alert(protocol, panel_name, username, client_ip, timestamp_str, history, geoip_info=geoip_info)
+                    from .utils import send_rich_message
                     for admin_id in settings.admin_ids:
                         try:
-                            await bot.send_message(chat_id=admin_id, text=alert_text, parse_mode="HTML")
+                            await send_rich_message(admin_id, alert_text, parse_mode="markdown")
                         except Exception as e:
                             logging.error(f"[Controller Alerts] Error sending new IP alert to admin {admin_id}: {e}")
         except Exception as e:
@@ -176,9 +153,10 @@ async def process_hysteria_audit_event(panel, action, client_ip, log_timestamp, 
             card['connections'][client_ip].append(datetime.datetime.now())
             
             msg_text = format_card_msg(panel_name, username, protocol, card['lines'], tx, rx)
+            from .utils import edit_rich_message
             for msg in card['admin_messages']:
                 try:
-                    await bot.edit_message_text(chat_id=msg['admin_id'], message_id=msg['message_id'], text=msg_text, parse_mode="HTML")
+                    await edit_rich_message(chat_id=msg['admin_id'], message_id=msg['message_id'], text=msg_text, parse_mode="markdown")
                 except Exception as e:
                     if "message is not modified" not in str(e).lower():
                         logging.error(f"[Controller Alerts] Error editing card: {e}")
@@ -188,10 +166,12 @@ async def process_hysteria_audit_event(panel, action, client_ip, log_timestamp, 
             msg_text = format_card_msg(panel_name, username, protocol, lines, tx, rx)
             
             admin_messages = []
+            from .utils import send_rich_message
             for admin_id in settings.admin_ids:
                 try:
-                    m = await bot.send_message(chat_id=admin_id, text=msg_text, parse_mode="HTML")
-                    admin_messages.append({'admin_id': admin_id, 'message_id': m.message_id})
+                    m = await send_rich_message(admin_id, msg_text, parse_mode="markdown")
+                    if m:
+                        admin_messages.append({'admin_id': admin_id, 'message_id': m.message_id})
                 except Exception as e:
                     logging.error(f"[Controller Alerts] Error sending card to admin {admin_id}: {e}")
                     
@@ -227,9 +207,10 @@ async def process_hysteria_audit_event(panel, action, client_ip, log_timestamp, 
             card['lines'].append(event_line)
             
             msg_text = format_card_msg(panel_name, username, protocol, card['lines'], tx, rx)
+            from .utils import edit_rich_message
             for msg in card['admin_messages']:
                 try:
-                    await bot.edit_message_text(chat_id=msg['admin_id'], message_id=msg['message_id'], text=msg_text, parse_mode="HTML")
+                    await edit_rich_message(chat_id=msg['admin_id'], message_id=msg['message_id'], text=msg_text, parse_mode="markdown")
                 except Exception as e:
                     if "message is not modified" not in str(e).lower():
                         logging.error(f"[Controller Alerts] Error editing card on disconnect: {e}")
@@ -237,9 +218,10 @@ async def process_hysteria_audit_event(panel, action, client_ip, log_timestamp, 
             from .utils import get_geoip_info
             geoip_info = await get_geoip_info(client_ip)
             msg_text = get_client_disconnected_alert(protocol, panel_name, username, client_ip, timestamp_str, geoip_info=geoip_info)
+            from .utils import send_rich_message
             for admin_id in settings.admin_ids:
                 try:
-                    await bot.send_message(chat_id=admin_id, text=msg_text, parse_mode="HTML")
+                    await send_rich_message(admin_id, msg_text, parse_mode="markdown")
                 except Exception as e:
                     logging.error(f"[Controller Alerts] Error sending disconnect message: {e}")
 
@@ -270,9 +252,10 @@ async def update_controller_active_cards_traffic():
             
             # In database, up is client upload (rx from server perspective), down is download (tx from server perspective)
             msg_text = format_card_msg(panel_name, username, protocol, card['lines'], rx, tx)
+            from .utils import edit_rich_message
             for msg in card['admin_messages']:
                 try:
-                    await bot.edit_message_text(chat_id=msg['admin_id'], message_id=msg['message_id'], text=msg_text, parse_mode="HTML")
+                    await edit_rich_message(chat_id=msg['admin_id'], message_id=msg['message_id'], text=msg_text, parse_mode="markdown")
                 except Exception as e:
                     if "message is not modified" not in str(e).lower():
                         logging.error(f"[Controller Alerts] Error editing card during traffic poll: {e}")
