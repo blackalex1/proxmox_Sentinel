@@ -106,6 +106,13 @@ class LogTailer:
             logging.error(f"Ошибка при вызове callback в tailer: {ex}")
 
 
+def make_progress_bar(pct, length=10):
+    """Генерирует текстовую шкалу прогресса из символов ■ и □."""
+    pct = max(0.0, min(100.0, pct))
+    filled_length = int(round(length * pct / 100))
+    return "■" * filled_length + "□" * (length - filled_length)
+
+
 def convert_rich_html_to_standard(html):
     import re
     # Convert header tags to bold
