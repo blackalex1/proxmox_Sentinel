@@ -93,7 +93,11 @@ async def cmd_my_spectre(message: types.Message):
                 msg += f"<code>{html.escape(link)}</code>\n\n"
                 
             msg += "<i>Нажмите на ссылку, чтобы скопировать её.</i>"
-            await message.answer(msg, parse_mode="HTML")
+            
+            kb = InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="📊 История подключений и IP", callback_data=f"vpn_hist:{c['email']}:0")]
+            ])
+            await message.answer(msg, parse_mode="HTML", reply_markup=kb)
             
             # Генерируем и отправляем QR-коды медиагруппой
             media_group = []
