@@ -94,6 +94,7 @@ async def cb_status(callback: CallbackQuery):
 from core.messages.spectre import get_panel_status_message
 
 async def run_status_for_panel(message: types.Message, panel_key: str):
+    from modules.proxmox.monitor.utils import make_progress_bar
     panel = spectre_manager.panels.get(panel_key)
     if not panel:
         await message.answer("❌ Панель не найдена.")
