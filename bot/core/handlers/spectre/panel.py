@@ -283,3 +283,127 @@ async def cmd_setup_slave(message: types.Message):
     except Exception as e:
         logging.error(f"Error in setup_slave handler: {e}")
         await status_msg.edit_text(f"❌ <b>Произошла ошибка при настройке слейв-ноды:</b>\n<code>{e}</code>")
+
+
+@router.callback_query(F.data.startswith("ctrl_term_sess:"))
+async def cb_ctrl_term_sess(callback: CallbackQuery):
+    # Format: ctrl_term_sess:<p_key>:<username>:<ip>
+    parts = callback.data.split(":", 3)
+    if len(parts) < 4:
+        await callback.answer("Ошибка формата данных", show_alert=True)
+        return
+    p_key = parts[1]
+    username = parts[2]
+    ip = parts[3]
+
+    panel = spectre_manager.panels.get(p_key)
+    if not panel:
+        await callback.answer("Панель не найдена или отключена", show_alert=True)
+        return
+
+    try:
+        # 1. Получаем список сессий
+        success, res = await panel.request("GET", "/api/security/sessions")
+        if not success or not res.get("success"):
+            await callback.answer("Не удалось получить сессии с панели", show_alert=True)
+            return
+
+        sessions = res.get("sessions", [])
+        terminated = 0
+        for s in sessions:
+            if s["username"] == username and (s["ip_address"] == ip or ip == "unknown" or not ip):
+                # 2. Терминируем сессию
+                term_success, term_res = await panel.request("POST", "/api/security/sessions/terminate", json={"session_id": s["session_id"]})
+                if term_success and term_res.get("success"):
+                    terminated += 1
+
+        if terminated > 0:
+            await callback.message.edit_text(callback.message.html_text + f"\n\n❌ <b>Сессии пользователя {username} с IP {ip} успешно сброшены ({terminated} сесс.).</b>", parse_mode="HTML")
+            await callback.answer("Сессии успешно сброшены", show_alert=False)
+        else:
+            await callback.answer("Активные сессии не найдены на панели", show_alert=True)
+    except Exception as e:
+        logging.error(f"Error terminating session via controller callback: {e}")
+        await callback.answer(f"Ошибка: {e}", show_alert=True)
+
+
+@router.callback_query(F.data.startswith("ctrl_reset_pwd:"))
+async def cb_ctrl_reset_pwd(callback: CallbackQuery):
+    # Format: ctrl_reset_pwd:<p_key>:<username>
+    parts = callback.data.split(":", 2)
+    if len(parts) < 3:
+        await callback.answer("Ошибка формата данных", show_alert=True)
+        return
+    p_key = parts[1]
+    username = parts[2]
+
+    panel = spectre_manager.panels.get(p_key)
+    if not panel:
+        await callback.answer("Панель не найдена или отключена", show_alert=True)
+        return
+
+    try:
+        import secrets
+        import string
+
+        # Генерируем надежный новый пароль
+        alphabet = string.ascii_letters + string.digits + "!@#$%&*+?="
+        new_pwd = "".join(secrets.choice(alphabet) for _ in range(16))
+
+        # Выполняем смену пароля через shell/docker exec/pct exec на VPS или LXC
+        success = False
+        error_msg = ""
+        
+        # Подготавливаем Python однострочник для выполнения внутри контейнера spectre-panel
+        py_cmd = f"from backend.database.crud.auth import update_admin_password; import sys; sys.exit(0 if update_admin_password('{username}', '{new_pwd}') else 1)"
+        docker_cmd = ["docker", "exec", "spectre-panel", "python", "-c", py_cmd]
+
+        if panel.source_type == "lxc":
+            # На Proxmox LXC: pct exec <vmid> -- docker exec spectre-panel python -c "..."
+            vmid = panel.identifier
+            full_cmd = ["pct", "exec", str(vmid), "--"] + docker_cmd
+            proc = await asyncio.create_subprocess_exec(
+                *full_cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+            stdout, stderr = await proc.communicate()
+            if proc.returncode == 0:
+                success = True
+            else:
+                error_msg = stderr.decode('utf-8', errors='ignore').strip() or f"exit code {proc.returncode}"
+                
+        elif panel.source_type == "vps":
+            # На удаленном VPS: выполняем по SSH
+            from modules.proxmox.monitor.remote.ssh import run_remote_ssh_cmd
+            # Нам нужен конфиг сервера для SSH подключения. Найдем его в remote_servers по IP
+            from core.config import settings
+            server_cfg = None
+            for s in settings.remote_servers:
+                if s["ip"] == panel.identifier:
+                    server_cfg = s
+                    break
+            
+            if not server_cfg:
+                await callback.answer("Конфиг удаленного сервера не найден", show_alert=True)
+                return
+                
+            ssh_ok, stdout, stderr = await run_remote_ssh_cmd(server_cfg, docker_cmd)
+            if ssh_ok:
+                success = True
+            else:
+                error_msg = stderr.strip() or "SSH execution failed"
+        else:
+            # Ручные/мануальные панели, у нас нет прямого доступа к шеллу ноды
+            await callback.answer("Невозможно сбросить пароль для панели с ручной настройкой (.env)", show_alert=True)
+            return
+
+        if success:
+            await callback.message.edit_text(callback.message.html_text + f"\n\n🔑 <b>Пароль пользователя {username} успешно изменен!</b>\nНовый пароль: <code>{new_pwd}</code>", parse_mode="HTML")
+            await callback.answer("Пароль успешно изменен", show_alert=False)
+        else:
+            await callback.answer(f"Не удалось сбросить пароль: {error_msg}", show_alert=True)
+            
+    except Exception as e:
+        logging.error(f"Error resetting password via controller callback: {e}")
+        await callback.answer(f"Ошибка: {e}", show_alert=True)
