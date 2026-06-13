@@ -6,6 +6,7 @@ import time
 from aiogram import Bot
 from aiogram.exceptions import TelegramNetworkError, TelegramAPIError, TelegramRetryAfter
 from aiohttp.client_exceptions import ClientOSError
+from core.config import settings
 
 logger = logging.getLogger(__name__)
 
