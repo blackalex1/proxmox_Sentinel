@@ -91,6 +91,8 @@ async def cb_status(callback: CallbackQuery):
     await run_status_for_panel(callback.message, panel_key)
     await callback.answer()
 
+from core.messages.spectre import get_panel_status_message
+
 async def run_status_for_panel(message: types.Message, panel_key: str):
     panel = spectre_manager.panels.get(panel_key)
     if not panel:
@@ -108,6 +110,7 @@ async def run_status_for_panel(message: types.Message, panel_key: str):
         mem = stats.get("mem", {})
         mem_curr = mem.get("current", 0) / (1024**3)
         mem_tot = mem.get("total", 0) / (1024**3)
+        mem_pct = (mem_curr / mem_tot) * 100.0 if mem_tot else 0.0
         uptime = stats.get("uptime", 0)
         
         days = uptime // 86400
@@ -115,21 +118,31 @@ async def run_status_for_panel(message: types.Message, panel_key: str):
         minutes = (uptime % 3600) // 60
         uptime_str = f"{days}д {hours}ч {minutes}м"
         
-        msg = (
-            f"📊 <b>Статус сервера: {panel.name}</b>\n"
-            f"━━━━━━━━━━━━━━━━━━━━━━━━\n"
-            f"🖥️ Загрузка CPU: <b>{cpu}%</b>\n"
-            f"💾 Оперативная память: <b>{mem_curr:.2f} ГБ / {mem_tot:.2f} ГБ</b>\n"
-            f"⏱ Время работы (Uptime): <b>{uptime_str}</b>\n"
-            f"━━━━━━━━━━━━━━━━━━━━━━━━\n"
-            f"🖧 Всего подключений (Inbounds): <b>{counts.get('total_inbounds', 0)}</b>\n"
-            f"👥 Всего клиентов: <b>{counts.get('total_clients', 0)}</b>\n"
-            f"🟢 Активных пользователей: <b>{counts.get('active_clients', 0)}</b>\n"
-            f"🔵 В сети (Онлайн): <b>{counts.get('online_clients', 0)}</b>\n"
-            f"🔴 Заблокированных: <b>{counts.get('blocked_clients', 0)}</b>"
+        cpu_bar = make_progress_bar(cpu)
+        mem_bar = make_progress_bar(mem_pct)
+        
+        msg = get_panel_status_message(
+            panel_name=panel.name,
+            cpu=cpu,
+            mem_curr=mem_curr,
+            mem_tot=mem_tot,
+            mem_pct=mem_pct,
+            cpu_bar=cpu_bar,
+            mem_bar=mem_bar,
+            uptime_str=uptime_str,
+            total_inbounds=counts.get('total_inbounds', 0),
+            total_clients=counts.get('total_clients', 0),
+            active_clients=counts.get('active_clients', 0),
+            online_clients=counts.get('online_clients', 0),
+            blocked_clients=counts.get('blocked_clients', 0)
         )
         await status_msg.delete()
-        await message.answer(msg, parse_mode="HTML")
+        from modules.proxmox.monitor.utils import send_rich_message
+        await send_rich_message(
+            chat_id=message.chat.id,
+            text=msg,
+            parse_mode="HTML"
+        )
     else:
         error_info = res.get("msg") or res.get("error") or "Неизвестная ошибка"
         await status_msg.edit_text(f"❌ <b>Ошибка получения статуса {panel.name}:</b>\n<code>{error_info}</code>")
