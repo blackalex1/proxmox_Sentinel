@@ -144,9 +144,12 @@ async def cb_add_slave(callback: CallbackQuery):
             f"━━━━━━━━━━━━━━━━━━━━━━━━\n"
             f"🔑 Код подключения (Join Code):\n<code>{join_code}</code>\n"
             f"⏱ Истекает: <b>{expiry_str}</b>\n\n"
-            f"💻 <b>Команда для запуска на слейв-сервере:</b>\n"
-            f"<code>python register_node.py --master \"{master_url}\" --join-code \"{join_code}\"</code>\n\n"
-            f"<i>Запустите эту команду в директории слейв-панели для регистрации публичного ключа.</i>"
+            f"💻 <b>Команда для запуска на слейв-сервере:</b>\n\n"
+            f"🐳 <b>Вариант А (в Docker-контейнере):</b>\n"
+            f"<code>docker compose exec -T spectre-panel python register_node.py --master \"{master_url}\" --join-code \"{join_code}\"</code>\n\n"
+            f"🐍 <b>Вариант Б (локально на хосте через Virtualenv):</b>\n"
+            f"<code>.venv/bin/python register_node.py --master \"{master_url}\" --join-code \"{join_code}\"</code>\n\n"
+            f"<i>Запустите подходящую команду в директории слейв-панели для регистрации публичного ключа.</i>"
         )
         
         back_data = f"spectre_menu:{panel_key}" if len(spectre_manager.panels) > 1 else "spectre_list"
