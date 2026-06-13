@@ -156,7 +156,9 @@ async def process_hysteria_audit_event(panel, action, client_ip, log_timestamp, 
                     
                     history_text = "\n".join(history_lines) if history_lines else "нет предыдущих подключений"
                     
-                    alert_text = get_new_ip_alert(protocol, panel_name, username, client_ip, timestamp_str, history_text)
+                    from .utils import get_geoip_info
+                    geoip_info = await get_geoip_info(client_ip)
+                    alert_text = get_new_ip_alert(protocol, panel_name, username, client_ip, timestamp_str, history_text, geoip_info=geoip_info)
                     for admin_id in settings.admin_ids:
                         try:
                             await bot.send_message(chat_id=admin_id, text=alert_text, parse_mode="HTML")
@@ -232,7 +234,9 @@ async def process_hysteria_audit_event(panel, action, client_ip, log_timestamp, 
                     if "message is not modified" not in str(e).lower():
                         logging.error(f"[Controller Alerts] Error editing card on disconnect: {e}")
         else:
-            msg_text = get_client_disconnected_alert(protocol, panel_name, username, client_ip, timestamp_str)
+            from .utils import get_geoip_info
+            geoip_info = await get_geoip_info(client_ip)
+            msg_text = get_client_disconnected_alert(protocol, panel_name, username, client_ip, timestamp_str, geoip_info=geoip_info)
             for admin_id in settings.admin_ids:
                 try:
                     await bot.send_message(chat_id=admin_id, text=msg_text, parse_mode="HTML")

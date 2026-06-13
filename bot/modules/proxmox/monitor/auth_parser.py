@@ -8,7 +8,7 @@ from core.messages import (
     get_ssh_close_alert
 )
 
-def parse_auth_line(line: str, vmid: int, timestamp: str, container_name: str):
+async def parse_auth_line(line: str, vmid: int, timestamp: str, container_name: str):
     """Парсинг логов аутентификации контейнера/хоста.
     Возвращает кортеж (event_dict, alert_message) или (None, None).
     """
@@ -32,6 +32,8 @@ def parse_auth_line(line: str, vmid: int, timestamp: str, container_name: str):
     pve_fail_match = re.search(r"pvedaemon\[\d+\]: authentication failure; rhost=(?:::ffff:)?(\S+) user=(\S+) msg=(.*)", line)
     if pve_fail_match:
         ip, user, reason = pve_fail_match.groups()
+        from .utils import get_geoip_info
+        geoip_info = await get_geoip_info(ip)
         event = {
             'time': timestamp,
             'type': 'FAILED',
@@ -41,13 +43,15 @@ def parse_auth_line(line: str, vmid: int, timestamp: str, container_name: str):
         }
         
         target_str = "Хост Proxmox VE" if vmid == 0 else f"LXC {vmid} ({container_name})"
-        msg = get_pve_web_fail_alert(target_str, user, ip, reason, timestamp, line)
+        msg = get_pve_web_fail_alert(target_str, user, ip, reason, timestamp, line, geoip_info=geoip_info)
         return event, msg
     
     # 1. Успешный вход по SSH
     ssh_ok_match = re.search(r"sshd(?:-session)?\[(\d+)\]: Accepted (password|publickey) for (\S+) from (\S+) port (\d+)(?: ssh2: \S+ (\S+))?", line)
     if ssh_ok_match:
         pid_str, method, user, ip, port, fingerprint = ssh_ok_match.groups()
+        from .utils import get_geoip_info
+        geoip_info = await get_geoip_info(ip)
         pid = int(pid_str)
         event = {
             'time': timestamp,
@@ -64,13 +68,15 @@ def parse_auth_line(line: str, vmid: int, timestamp: str, container_name: str):
         emoji_str = "🖥" if vmid == 0 else "🔒"
         title_str = "Успешная SSH авторизация на Хосте!" if vmid == 0 else "Успешная SSH авторизация в LXC!"
         
-        msg = get_ssh_login_alert(title_str, emoji_str, target_str, user, ip, method, fingerprint, timestamp, line)
+        msg = get_ssh_login_alert(title_str, emoji_str, target_str, user, ip, method, fingerprint, timestamp, line, geoip_info=geoip_info)
         return event, msg
 
     # 2. Неудачный вход по SSH (пароль или публичный ключ)
     ssh_fail_match = re.search(r"sshd(?:-session)?\[\d+\]: Failed (password|publickey) for (?:invalid user )?(\S+) from (\S+) port (\d+)", line)
     if ssh_fail_match:
         method, user, ip, port = ssh_fail_match.groups()
+        from .utils import get_geoip_info
+        geoip_info = await get_geoip_info(ip)
         method_ru = "Неверный пароль" if method == "password" else "Неверный SSH-ключ"
         event = {
             'time': timestamp,
@@ -84,7 +90,7 @@ def parse_auth_line(line: str, vmid: int, timestamp: str, container_name: str):
         emoji_str = "🖥" if vmid == 0 else "🔒"
         title_str = "ОШИБКА SSH АВТОРИЗАЦИИ на Хосте!" if vmid == 0 else "ОШИБКА АВТОРИЗАЦИИ в LXC!"
         
-        msg = get_ssh_fail_alert(title_str, emoji_str, target_str, user, ip, method_ru, timestamp, line)
+        msg = get_ssh_fail_alert(title_str, emoji_str, target_str, user, ip, method_ru, timestamp, line, geoip_info=geoip_info)
         return event, msg
 
     # 3. Выполнение команд через SUDO

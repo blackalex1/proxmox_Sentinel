@@ -155,10 +155,12 @@ async def handle_remote_ssh_auth_line(line, server=None):
                     )
                     return
 
+                from modules.proxmox.monitor.utils import get_geoip_info
+                geoip_info = await get_geoip_info(client_ip)
                 timestamp = datetime.datetime.now().strftime("%H:%M:%S")
-                
+
                 msg = get_vps_ssh_login_alert(
-                    server['ip'], username, client_ip, auth_method, key_name, fingerprint, timestamp, security_warning_str, line
+                    server['ip'], username, client_ip, auth_method, key_name, fingerprint, timestamp, security_warning_str, line, geoip_info=geoip_info
                 )
                 reply_markup = None
                 if sshd_pid:

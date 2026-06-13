@@ -1,7 +1,7 @@
 # bot/core/messages/auth.py
 """Шаблоны сообщений для авторизаций (SSH, Web GUI, SUDO)."""
 
-def get_vps_ssh_login_alert(ip, username, client_ip, auth_method, key_name, fingerprint, timestamp, security_warning_str, line):
+def get_vps_ssh_login_alert(ip, username, client_ip, auth_method, key_name, fingerprint, timestamp, security_warning_str, line, geoip_info=None):
     key_info = ""
     if auth_method == "publickey" and fingerprint:
         key_val = key_name or fingerprint
@@ -12,6 +12,14 @@ def get_vps_ssh_login_alert(ip, username, client_ip, auth_method, key_name, fing
         security_aside = f"\n<blockquote>{security_warning_str}</blockquote>\n"
 
     raw_line = line.strip()
+    geo_row = ""
+    if geoip_info:
+        geo_row = (
+            f"  <tr>\n"
+            f"    <td><b>🗺️ Гео</b></td>\n"
+            f"    <td><code>{geoip_info}</code></td>\n"
+            f"  </tr>\n"
+        )
 
     return (
         f"<h1>🖥️ VPS SSH Security: {ip}</h1>\n"
@@ -30,6 +38,7 @@ def get_vps_ssh_login_alert(ip, username, client_ip, auth_method, key_name, fing
         f"    <td><b>🌐 IP-адрес</b></td>\n"
         f"    <td><code>{client_ip}</code></td>\n"
         f"  </tr>\n"
+        f"{geo_row}"
         f"  <tr>\n"
         f"    <td><b>🔑 Метод</b></td>\n"
         f"    <td><code>{auth_method}</code>{key_info}</td>\n"
@@ -71,7 +80,15 @@ def get_pve_web_login_alert(target_str, user, timestamp, line):
         f"</details>"
     )
 
-def get_pve_web_fail_alert(target_str, user, ip, reason, timestamp, line):
+def get_pve_web_fail_alert(target_str, user, ip, reason, timestamp, line, geoip_info=None):
+    geo_row = ""
+    if geoip_info:
+        geo_row = (
+            f"  <tr>\n"
+            f"    <td><b>🗺️ Гео</b></td>\n"
+            f"    <td><code>{geoip_info}</code></td>\n"
+            f"  </tr>\n"
+        )
     return (
         f"<h1>🖥 Web GUI Alert</h1>\n"
         f"<hr/>\n\n"
@@ -93,6 +110,7 @@ def get_pve_web_fail_alert(target_str, user, ip, reason, timestamp, line):
         f"    <td><b>🌐 IP-адрес</b></td>\n"
         f"    <td><code>{ip}</code></td>\n"
         f"  </tr>\n"
+        f"{geo_row}"
         f"  <tr>\n"
         f"    <td><b>📝 Причина</b></td>\n"
         f"    <td><code>{reason}</code></td>\n"
@@ -104,13 +122,21 @@ def get_pve_web_fail_alert(target_str, user, ip, reason, timestamp, line):
         f"</details>"
     )
 
-def get_ssh_login_alert(title_str, emoji_str, target_str, user, ip, method, fingerprint, timestamp, line):
+def get_ssh_login_alert(title_str, emoji_str, target_str, user, ip, method, fingerprint, timestamp, line, geoip_info=None):
     key_row = ""
     if fingerprint:
         key_row = (
             f"  <tr>\n"
             f"    <td><b>🔑 Использован ключ</b></td>\n"
             f"    <td><code>{fingerprint}</code></td>\n"
+            f"  </tr>\n"
+        )
+    geo_row = ""
+    if geoip_info:
+        geo_row = (
+            f"  <tr>\n"
+            f"    <td><b>🗺️ Гео</b></td>\n"
+            f"    <td><code>{geoip_info}</code></td>\n"
             f"  </tr>\n"
         )
     return (
@@ -134,6 +160,7 @@ def get_ssh_login_alert(title_str, emoji_str, target_str, user, ip, method, fing
         f"    <td><b>🌐 IP-адрес</b></td>\n"
         f"    <td><code>{ip}</code></td>\n"
         f"  </tr>\n"
+        f"{geo_row}"
         f"  <tr>\n"
         f"    <td><b>🔑 Метод</b></td>\n"
         f"    <td><code>{method}</code></td>\n"
@@ -146,7 +173,15 @@ def get_ssh_login_alert(title_str, emoji_str, target_str, user, ip, method, fing
         f"</details>"
     )
 
-def get_ssh_fail_alert(title_str, emoji_str, target_str, user, ip, method_ru, timestamp, line):
+def get_ssh_fail_alert(title_str, emoji_str, target_str, user, ip, method_ru, timestamp, line, geoip_info=None):
+    geo_row = ""
+    if geoip_info:
+        geo_row = (
+            f"  <tr>\n"
+            f"    <td><b>🗺️ Гео</b></td>\n"
+            f"    <td><code>{geoip_info}</code></td>\n"
+            f"  </tr>\n"
+        )
     return (
         f"<h1>{emoji_str} SSH Auth Alert</h1>\n"
         f"<hr/>\n\n"
@@ -168,6 +203,7 @@ def get_ssh_fail_alert(title_str, emoji_str, target_str, user, ip, method_ru, ti
         f"    <td><b>🌐 IP-адрес</b></td>\n"
         f"    <td><code>{ip}</code></td>\n"
         f"  </tr>\n"
+        f"{geo_row}"
         f"  <tr>\n"
         f"    <td><b>🔑 Способ</b></td>\n"
         f"    <td><code>{method_ru}</code></td>\n"
