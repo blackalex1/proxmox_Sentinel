@@ -3,6 +3,7 @@ import logging
 
 from core.config import settings
 from core.messages import get_ips_autoblock_alert_audit, get_login_success_alert, get_spectre_2fa_alert
+from .utils import send_alert_to_admins
 from .resources import monitor_lxc_resources
 from .auth import monitor_lxc_auth
 from .traffic import monitor_lxc_traffic
@@ -191,11 +192,10 @@ async def monitor_panel_audit_logs():
                             msg = get_ips_autoblock_alert_audit(panel.name, email, details, time_str)
                                    
                             # Отправляем алерт всем администраторам контроллера
-                            for admin_id in settings.admin_ids:
-                                try:
-                                    await bot.send_message(chat_id=admin_id, text=msg, parse_mode="HTML")
-                                except Exception as e:
-                                    logging.error(f"[Audit Monitor] Не удалось отправить алерт админу {admin_id}: {e}")
+                            try:
+                                await send_alert_to_admins(msg)
+                            except Exception as e:
+                                logging.error(f"[Audit Monitor] Не удалось отправить алерт: {e}")
                                     
                         elif is_login_success:
                             username = log.get("username") or "unknown"
@@ -211,11 +211,10 @@ async def monitor_panel_audit_logs():
                             msg = get_login_success_alert(panel.name, username, ip, details, time_str)
                                    
                             # Отправляем алерт всем администраторам контроллера
-                            for admin_id in settings.admin_ids:
-                                try:
-                                    await bot.send_message(chat_id=admin_id, text=msg, parse_mode="HTML")
-                                except Exception as e:
-                                    logging.error(f"[Audit Monitor] Не удалось отправить алерт админу {admin_id}: {e}")
+                            try:
+                                await send_alert_to_admins(msg)
+                            except Exception as e:
+                                logging.error(f"[Audit Monitor] Не удалось отправить алерт: {e}")
                         
                         elif is_client_event:
                             try:
@@ -295,17 +294,10 @@ async def monitor_panel_2fa_logs():
             ]
         ])
         
-        for admin_id in settings.admin_ids:
-            try:
-                msg_text = get_spectre_2fa_alert(panel.name, username, client_ip, datetime.datetime.now().strftime('%H:%M:%S'))
-                await bot.send_message(
-                    chat_id=admin_id,
-                    text=msg_text,
-                    reply_markup=kb,
-                    parse_mode="HTML"
-                )
-            except Exception as e:
-                logging.error(f"[2FA Monitor] Не удалось отправить 2FA алерт админу {admin_id}: {e}")
+        try:
+            await send_alert_to_admins(msg_text, reply_markup=kb)
+        except Exception as e:
+            logging.error(f"[2FA Monitor] Не удалось отправить 2FA алерт: {e}")
 
     while True:
         try:
