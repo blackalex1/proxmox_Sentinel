@@ -12,6 +12,53 @@ logger = logging.getLogger(__name__)
 # Путь к файлу очереди отложенных сообщений
 OUTBOX_FILE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'config', 'outbox_queue.json')
 
+import re
+
+def clean_html_for_telegram(text: str) -> str:
+    if not text:
+        return text
+        
+    # Маскируем блоки <pre><code> и <code>, чтобы регулярки не поломали их форматирование
+    code_blocks = []
+    def mask_code(match):
+        code_blocks.append(match.group(0))
+        return f"__CODE_BLOCK_MASK_{len(code_blocks)-1}__"
+        
+    text = re.sub(r'<pre\b[^>]*>.*?</pre>', mask_code, text, flags=re.DOTALL)
+    text = re.sub(r'<code\b[^>]*>.*?</code>', mask_code, text, flags=re.DOTALL)
+    
+    # 1. Заголовки h1-h6 -> жирный текст с переносом строки
+    text = re.sub(r'</?h[1-6][^>]*>', lambda m: '<b>' if m.group(0).startswith('<h') else '</b>\n', text)
+    
+    # 2. Линия hr -> разделитель
+    text = re.sub(r'<hr\s*/?>', '⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯\n', text)
+    
+    # 3. Табличные теги
+    text = re.sub(r'<tr>', '', text)
+    text = re.sub(r'</tr>', '\n', text)
+    
+    text = re.sub(r'<th[^>]*>', '<b>', text)
+    text = re.sub(r'</th>', '</b> ', text)
+    
+    text = re.sub(r'<td[^>]*>', '', text)
+    text = re.sub(r'</td>', ' ', text)
+    
+    text = re.sub(r'</?table[^>]*>', '', text)
+    
+    # 4. Коллапсирующие блоки details/summary
+    text = re.sub(r'</?details[^>]*>', '', text)
+    text = re.sub(r'<summary[^>]*>', '<b>', text)
+    text = re.sub(r'</summary>', '</b>\n', text)
+    
+    # 5. Лишние пробелы
+    text = re.sub(r' +', ' ', text)
+    
+    # Возвращаем замаскированные блоки кода
+    for idx, block in enumerate(code_blocks):
+        text = text.replace(f"__CODE_BLOCK_MASK_{idx}__", block)
+        
+    return text.strip()
+
 class ResilientOutbox:
     def __init__(self):
         self.queue = []
@@ -113,11 +160,12 @@ class ResilientOutbox:
             self.save_to_disk()
 
     def patch_bot(self, bot: Bot):
-        """Динамически подменяет метод send_message у инстанса бота."""
-        # Сохраняем оригинальный метод
+        """Динамически подменяет метод send_message и edit_message_text у инстанса бота."""
+        # Сохраняем оригинальные методы
         bot._original_send_message = bot.send_message
         
         async def resilient_send_message(chat_id, text, *args, **kwargs):
+            text = clean_html_for_telegram(text)
             try:
                 return await bot._original_send_message(chat_id, text, *args, **kwargs)
             except Exception as e:
@@ -134,7 +182,19 @@ class ResilientOutbox:
                     raise e
                     
         bot.send_message = resilient_send_message
-        logger.info("[Outbox] Бот успешно пропатчен: все отправляемые сообщения защищены от сбоев прокси/сети.")
+
+        bot._original_edit_message_text = bot.edit_message_text
+        
+        async def resilient_edit_message_text(*args, **kwargs):
+            args_list = list(args)
+            if 'text' in kwargs:
+                kwargs['text'] = clean_html_for_telegram(kwargs['text'])
+            elif args_list:
+                args_list[0] = clean_html_for_telegram(args_list[0])
+            return await bot._original_edit_message_text(*args_list, **kwargs)
+            
+        bot.edit_message_text = resilient_edit_message_text
+        logger.info("[Outbox] Бот успешно пропатчен: все отправляемые сообщения защищены от сбоев прокси/сети и очищены от несовместимых HTML тегов.")
 
 # Глобальный инстанс исходящей очереди
 outbox = ResilientOutbox()
