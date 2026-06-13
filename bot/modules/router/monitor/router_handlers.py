@@ -2,6 +2,7 @@ import datetime
 import logging
 from core.config import settings
 from modules.proxmox.monitor.utils import send_alert_to_admins
+from core.messages import get_router_autoblock_alert, get_router_port_alert
 from modules.proxmox.monitor.state import lxc_alert_throttle
 from modules.router.router import ban_router_ip
 from .parser import parse_router_conntrack_line, parse_router_iptables_line
@@ -54,11 +55,7 @@ async def handle_router_iptables_log_line(line):
                         [InlineKeyboardButton(text="🟢 Разблокировать IP на роутере", callback_data=f"router_unblock:{src_ip}")]
                     ])
                     
-                    msg = (f"🛑 <b>[Router Security: Auto-Block] Устройство заблокировано автоматически!</b>\n\n"
-                           f"👤 <b>Заблокированный IP:</b> <code>{src_ip}</code>\n"
-                           f"🎯 <b>Причина:</b> Превышен лимит сетевых нарушений ({settings.router_max_violations}+ попыток доступа к чувствительным портам за 10 минут).\n"
-                           f"🧭 <b>Последняя цель:</b> <code>{dst_host}:{dst_port}</code> ({proto})\n"
-                           f"🕒 <b>Время блокировки:</b> <code>{timestamp}</code>")
+                    msg = get_router_autoblock_alert(src_ip, dst_host, dst_port, proto, timestamp)
                              
                     await send_alert_to_admins(msg, reply_markup=kb)
                     logging.warning(f"[Router IPS] Устройство {src_ip} автоматически забанено на роутере!")
@@ -80,11 +77,7 @@ async def handle_router_iptables_log_line(line):
         kb = InlineKeyboardMarkup(inline_keyboard=buttons) if buttons else None
         
         timestamp = datetime.datetime.now().strftime("%H:%M:%S")
-        msg = (f"🚨 <b>[Router Security: IPTables] Обнаружен доступ к чувствительному порту!</b>\n\n"
-               f"🌐 Протокол: <code>{proto}</code>\n"
-               f"👤 Устройство (Источник): <code>{src_ip}:{src_port}</code>\n"
-               f"🎯 Назначение: <code>{dst_host}:{dst_port}</code>\n"
-               f"🕒 Время: <code>{timestamp}</code>")
+        msg = get_router_port_alert("IPTables", proto, src_ip, src_port, dst_host, dst_port, timestamp)
                 
         await send_alert_to_admins(msg, reply_markup=kb)
         logging.warning(f"[Router IPS] Устройство {src_ip} обратилось к чувствительному порту {dst_host}:{dst_port}")
@@ -137,11 +130,7 @@ async def handle_router_conntrack_log_line(line):
                         [InlineKeyboardButton(text="🟢 Разблокировать IP на роутере", callback_data=f"router_unblock:{src_ip}")]
                     ])
                     
-                    msg = (f"🛑 <b>[Router Security: Auto-Block] Устройство заблокировано автоматически!</b>\n\n"
-                           f"👤 <b>Заблокированный IP:</b> <code>{src_ip}</code>\n"
-                           f"🎯 <b>Причина:</b> Превышен лимит сетевых нарушений ({settings.router_max_violations}+ попыток доступа к чувствительным портам за 10 минут).\n"
-                           f"🧭 <b>Последняя цель:</b> <code>{dst_host}:{dst_port}</code> ({proto})\n"
-                           f"🕒 <b>Время блокировки:</b> <code>{timestamp}</code>")
+                    msg = get_router_autoblock_alert(src_ip, dst_host, dst_port, proto, timestamp)
                              
                     await send_alert_to_admins(msg, reply_markup=kb)
                     logging.warning(f"[Router IPS] Устройство {src_ip} автоматически забанено на роутере!")
@@ -163,11 +152,7 @@ async def handle_router_conntrack_log_line(line):
         kb = InlineKeyboardMarkup(inline_keyboard=buttons) if buttons else None
         
         timestamp = datetime.datetime.now().strftime("%H:%M:%S")
-        msg = (f"🚨 <b>[Router Security: Conntrack] Обнаружен доступ к чувствительному порту!</b>\n\n"
-               f"🌐 Протокол: <code>{proto}</code>\n"
-               f"👤 Устройство (Источник): <code>{src_ip}:{src_port}</code>\n"
-               f"🎯 Назнажение: <code>{dst_host}:{dst_port}</code>\n"
-               f"🕒 Время: <code>{timestamp}</code>")
+        msg = get_router_port_alert("Conntrack", proto, src_ip, src_port, dst_host, dst_port, timestamp)
                 
         await send_alert_to_admins(msg, reply_markup=kb)
         logging.warning(f"[Router IPS: Conntrack] Устройство {src_ip} обратилось к чувствительному порту {dst_host}:{dst_port}")

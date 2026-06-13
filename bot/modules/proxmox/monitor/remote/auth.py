@@ -3,6 +3,7 @@ import logging
 import datetime
 import re
 from modules.proxmox.monitor.utils import send_alert_to_admins
+from core.messages import get_vps_ssh_login_alert
 from .ssh import run_remote_ssh_cmd
 from .helpers import (
     get_active_ssh_ports_for_vps,
@@ -126,9 +127,8 @@ async def handle_remote_ssh_auth_line(line, server=None):
                                     f"Использован служебный ключ '{key_name or fingerprint}', но вход выполнен с чужого IP: {client_ip}!"
                                 )
                                 security_warning_str = (
-                                    f"\n\n⚠️ <b>КРИТИЧЕСКОЕ ПРЕДУПРЕЖДЕНИЕ БЕЗОПАСНОСТИ!</b>\n"
-                                    f"Использован служебный SSH-ключ мониторинга, но вход выполнен с неавторизованного IP-адреса!\n"
-                                    f"<b>Возможна утечка и компрометация приватного ключа!</b>"
+                                    "⚠️ <b>КРИТИЧЕСКАЯ УГРОЗА!</b> Вход по служебному SSH-ключу с неавторизованного IP! "
+                                    "Возможна утечка приватного ключа."
                                 )
                             else:
                                 # Кейс 2: Вход с IP бота, но процесс сторонний (компрометация контейнера!)
@@ -138,10 +138,8 @@ async def handle_remote_ssh_auth_line(line, server=None):
                                     f"но порт {client_port} не принадлежит боту!"
                                 )
                                 security_warning_str = (
-                                    f"\n\n⚠️ <b>КРИТИЧЕСКОЕ ПРЕДУПРЕЖДЕНИЕ БЕЗОПАСНОСТИ!</b>\n"
-                                    f"Использован служебный SSH-ключ с IP-адреса вашего бота, "
-                                    f"но соединение инициировано <b>сторонним процессом</b> (не ботом)!\n"
-                                    f"<b>Крайне высокий риск компрометации контейнера/хоста бота!</b>"
+                                    "⚠️ <b>КРИТИЧЕСКАЯ УГРОЗА!</b> Вход по служебному SSH-ключу с IP бота сторонним процессом. "
+                                    "Высокий риск компрометации хоста/контейнера!"
                                 )
 
                 ignore_by_ip = False
@@ -158,11 +156,10 @@ async def handle_remote_ssh_auth_line(line, server=None):
                     return
 
                 timestamp = datetime.datetime.now().strftime("%H:%M:%S")
-                msg = (f"🖥 <b>[VPS SSH Security: {server['ip']}] Успешный вход по SSH!</b>\n\n"
-                       f"👤 Пользователь: <code>{username}</code>\n"
-                       f"🌐 IP-адрес: <code>{client_ip}</code>\n"
-                       f"🔑 Метод: <code>{auth_method}</code>{key_info_str}\n"
-                       f"🕒 Время: <code>{timestamp}</code>{security_warning_str}")
+                
+                msg = get_vps_ssh_login_alert(
+                    server['ip'], username, client_ip, auth_method, key_name, fingerprint, timestamp, security_warning_str, line
+                )
                 reply_markup = None
                 if sshd_pid:
                     from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton

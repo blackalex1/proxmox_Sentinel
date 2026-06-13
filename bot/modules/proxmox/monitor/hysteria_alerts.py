@@ -4,6 +4,7 @@ import time
 import datetime
 from core.bot import bot
 from core.config import settings
+from core.messages import get_session_activity_card, get_new_ip_alert, get_client_disconnected_alert
 
 # In-memory cards state: (panel_name, username, protocol) -> card dict
 active_activity_cards = {}
@@ -26,18 +27,7 @@ def format_card_msg(panel_name, username, protocol, lines, tx, rx):
         
     download = format_bytes(tx)
     upload = format_bytes(rx)
-    # tx is download (sent to client), rx is upload (received from client)
-    traffic_str = f"📥 <b>Скачано:</b> <code>{download}</code> | 📤 <b>Загружено:</b> <code>{upload}</code>\n\n"
-    
-    text = (
-        f"📊 <b>[{protocol}: {panel_name}] Активность сессии</b>\n"
-        f"━━━━━━━━━━━━━━━━━━━━━━━━\n"
-        f"👤 <b>Пользователь:</b> <code>{username}</code>\n\n"
-        f"{traffic_str}"
-        f"📋 <b>Хронология событий:</b>\n"
-        f"{timeline}"
-    )
-    return text
+    return get_session_activity_card(protocol, panel_name, username, download, upload, timeline)
 
 def is_card_active(card, now_time):
     if not card:
@@ -166,14 +156,7 @@ async def process_hysteria_audit_event(panel, action, client_ip, log_timestamp, 
                     
                     history_text = "\n".join(history_lines) if history_lines else "нет предыдущих подключений"
                     
-                    alert_text = (
-                        f"🚨 <b>[{protocol} Security: {panel_name}] Обнаружено подключение с нового IP!</b>\n\n"
-                        f"👤 <b>Пользователь:</b> <code>{username}</code>\n"
-                        f"🌐 <b>Новый IP-адрес:</b> <code>{client_ip}</code> ⚠️ [ВНИМАНИЕ]\n"
-                        f"🕒 <b>Время:</b> <code>{timestamp_str}</code>\n\n"
-                        f"📋 <b>Предыдущие подключения (для сравнения):</b>\n"
-                        f"{history_text}"
-                    )
+                    alert_text = get_new_ip_alert(protocol, panel_name, username, client_ip, timestamp_str, history_text)
                     for admin_id in settings.admin_ids:
                         try:
                             await bot.send_message(chat_id=admin_id, text=alert_text, parse_mode="HTML")
@@ -249,12 +232,7 @@ async def process_hysteria_audit_event(panel, action, client_ip, log_timestamp, 
                     if "message is not modified" not in str(e).lower():
                         logging.error(f"[Controller Alerts] Error editing card on disconnect: {e}")
         else:
-            msg_text = (
-                f"🔴 <b>[{protocol}: {panel_name}] Клиент отключился</b>\n\n"
-                f"👤 Пользователь: <code>{username}</code>\n"
-                f"🌐 IP-адрес: <code>{client_ip}</code>\n"
-                f"🕒 Время: <code>{timestamp_str}</code>"
-            )
+            msg_text = get_client_disconnected_alert(protocol, panel_name, username, client_ip, timestamp_str)
             for admin_id in settings.admin_ids:
                 try:
                     await bot.send_message(chat_id=admin_id, text=msg_text, parse_mode="HTML")

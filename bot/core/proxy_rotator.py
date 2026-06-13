@@ -5,6 +5,7 @@ import re
 import logging
 import aiohttp
 from aiohttp_socks import ProxyConnector
+from core.messages import get_proxy_switch_alert, get_proxy_restored_alert
 
 logger = logging.getLogger(__name__)
 
@@ -208,8 +209,7 @@ async def proxy_monitor_loop(bot, primary_proxy, session_kwargs, start_active_pr
                 logging.info(f"[Proxy Monitor] Успешно переключено на бесплатный прокси: {new_proxy}")
                 from modules.proxmox.monitor.utils import send_alert_to_admins
                 asyncio.create_task(send_alert_to_admins(
-                    f"⚠️ <b>[Proxy Monitor]</b> Основной прокси ({primary_proxy}) не отвечает на старте!\n"
-                    f"🔄 Бот автоматически переключился на бесплатный прокси: <code>{new_proxy}</code>"
+                    get_proxy_switch_alert(primary_proxy, new_proxy)
                 ))
             else:
                 logging.error("[Proxy Monitor] Не удалось найти живой бесплатный прокси. Остаемся на основном в надежде на чудо...")
@@ -239,8 +239,7 @@ async def proxy_monitor_loop(bot, primary_proxy, session_kwargs, start_active_pr
                         logging.info(f"[Proxy Monitor] Успешно переключено на новый бесплатный прокси: {new_proxy}")
                         from modules.proxmox.monitor.utils import send_alert_to_admins
                         await send_alert_to_admins(
-                            f"⚠️ <b>[Proxy Monitor]</b> Основной прокси ({primary_proxy}) перестал отвечать!\n"
-                            f"🔄 Бот автоматически переключился на бесплатный прокси: <code>{new_proxy}</code>"
+                            get_proxy_switch_alert(primary_proxy, new_proxy)
                         )
                     else:
                         logging.error("[Proxy Monitor] Не удалось найти рабочий бесплатный прокси. Попробуем в следующей итерации.")
@@ -261,8 +260,7 @@ async def proxy_monitor_loop(bot, primary_proxy, session_kwargs, start_active_pr
                         logging.info("[Proxy Monitor] Успешно возвращено соединение с основным прокси.")
                         from modules.proxmox.monitor.utils import send_alert_to_admins
                         await send_alert_to_admins(
-                            f"✅ <b>[Proxy Monitor]</b> Мой основной прокси снова доступен!\n"
-                            f"🔄 Успешно вернулись на основное подключение: <code>{primary_proxy}</code>"
+                            get_proxy_restored_alert(primary_proxy)
                         )
                     else:
                         logging.info("[Proxy Monitor] Основной прокси всё еще недоступен. Продолжаем работу на резервном.")

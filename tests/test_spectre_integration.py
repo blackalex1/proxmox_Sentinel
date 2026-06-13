@@ -195,7 +195,7 @@ async def test_two_phase_ips_success(monkeypatch):
     assert "tunnel@hysteria.com" in alert_1
     assert "Нарушитель найден" in alert_2
     assert "attacker@xray.com" in alert_2
-    assert "Снята временная блокировка с туннеля Hysteria" in alert_2
+    assert "Разблокирован" in alert_2
     
     disabled_emails = [call[3].get("data", {}).get("email") for call in api_calls if call[2] == "/api/security/disable-client"]
     enabled_emails = [call[3].get("data", {}).get("email") for call in api_calls if call[2] == "/api/security/enable-client"]
@@ -274,7 +274,7 @@ async def test_two_phase_ips_failure(monkeypatch):
     
     assert "Обнаружена атака через Hysteria-туннель" in alert_1
     assert "Виновник не обнаружен" in alert_2
-    assert "Туннель Hysteria оставлен в бане" in alert_2
+    assert "Оставлен в бане" in alert_2
     assert "mock xray logs" in alert_2
     assert "mock hysteria logs" in alert_2
     
