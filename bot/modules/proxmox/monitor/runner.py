@@ -120,34 +120,32 @@ async def start_auto_backup_scheduler():
 
 async def monitor_panel_audit_logs():
     """
-    Периодически опрашивает логи аудита всех панелей Spectre Panel и пересылает
-    уведомления об авто-блокировках IPS-Sentinel администраторам в Telegram.
+    Фоновый мониторинг логов аудита всех подключенных панелей Spectre Panel.
+    Опрашивает эндпоинт /api/security/audit-logs каждые 10 секунд и отправляет
+    уведомления об IPS-блокировках и успешных авторизациях.
     """
     from core.spectre_client import spectre_manager
     from core.bot import bot
-    import time
     
-    # Хранит последний обработанный ID лога для каждой панели
     last_log_ids = {}
-    
     logging.info("[Audit Monitor] Запущен фоновый мониторинг логов аудита панелей.")
+    traffic_update_counter = 0
     
-    # Даем немного времени на стартовое обнаружение панелей
-    await asyncio.sleep(10)
-    
-    # Инициализируем начальные ID, чтобы не спамить старыми алертами при перезапуске бота
-    for p_key, panel in list(spectre_manager.panels.items()):
-        try:
-            success, res = await panel.get_audit_logs(limit=1)
-            if success and res.get("success") and res.get("logs"):
-                last_log_ids[p_key] = res["logs"][0]["id"]
-        except Exception:
-            pass
-            
     while True:
         try:
-            panels = list(spectre_manager.panels.items())
-            for p_key, panel in panels:
+            for panel in list(spectre_manager.panels.values()):
+                p_key = panel.name
+                
+                # При первом запуске инициализируем ID последнего лога, чтобы не слать старые алерты
+                if p_key not in last_log_ids:
+                    success, res = await panel.get_audit_logs(limit=1)
+                    if success and res.get("success") and res.get("logs"):
+                        last_log_ids[p_key] = res["logs"][0]["id"]
+                    else:
+                        last_log_ids[p_key] = 0
+                    continue
+                    
+                # Запрашиваем новые логи
                 try:
                     success, res = await panel.get_audit_logs(limit=20)
                     if not success or not res.get("success"):
@@ -177,6 +175,7 @@ async def monitor_panel_audit_logs():
                             "IPS Auto-blocked" in str(log.get("details"))
                         )
                         is_login_success = log.get("action") in ["login_success", "login_telegram_success"]
+                        is_client_event = log.get("action") in ("xray_connect", "xray_disconnect", "hysteria_connect", "hysteria_disconnect")
                         
                         if is_ips_block:
                             email = log.get("target") or "unknown"
@@ -223,6 +222,19 @@ async def monitor_panel_audit_logs():
                                     await bot.send_message(chat_id=admin_id, text=msg, parse_mode="HTML")
                                 except Exception as e:
                                     logging.error(f"[Audit Monitor] Не удалось отправить алерт админу {admin_id}: {e}")
+                        
+                        elif is_client_event:
+                            try:
+                                from .hysteria_alerts import process_hysteria_audit_event
+                                await process_hysteria_audit_event(
+                                    panel=panel,
+                                    action=log.get("action"),
+                                    client_ip=log.get("target"),
+                                    log_timestamp=log.get("timestamp"),
+                                    details_str=log.get("details")
+                                )
+                            except Exception as ex:
+                                logging.error(f"[Audit Monitor] Ошибка обработки события клиента: {ex}")
                                     
                     last_log_ids[p_key] = new_max_id
                 except Exception as panel_err:
@@ -230,6 +242,15 @@ async def monitor_panel_audit_logs():
         except Exception as e:
             logging.error(f"[Audit Monitor] Ошибка в цикле мониторинга аудит-логов: {e}")
             
+        traffic_update_counter += 1
+        if traffic_update_counter >= 3:
+            traffic_update_counter = 0
+            try:
+                from .hysteria_alerts import update_controller_active_cards_traffic
+                await update_controller_active_cards_traffic()
+            except Exception as ex:
+                logging.error(f"[Audit Monitor] Ошибка при обновлении трафика активных карточек: {ex}")
+                
         await asyncio.sleep(10)
 
 
