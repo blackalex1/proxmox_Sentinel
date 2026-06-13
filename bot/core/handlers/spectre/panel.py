@@ -135,9 +135,11 @@ async def cb_add_slave(callback: CallbackQuery):
         dt = datetime.datetime.fromtimestamp(expires_at)
         expiry_str = dt.strftime("%d.%m %H:%M:%S")
         
-        master_url = f"{panel.url}"
-        if panel.secret_path:
-            master_url += f"/{panel.secret_path}"
+        master_url = res.get("master_url")
+        if not master_url:
+            master_url = f"{panel.url}"
+            if panel.secret_path:
+                master_url += f"/{panel.secret_path}"
             
         msg = (
             f"➕ <b>Добавление слейв-ноды для {panel.name}</b>\n"
