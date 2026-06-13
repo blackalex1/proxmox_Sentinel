@@ -15,6 +15,30 @@ OUTBOX_FILE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__fil
 
 import re
 
+def clean_mixed_html_to_markdown(text: str) -> str:
+    if not text:
+        return text
+    # Convert details/summary
+    text = re.sub(r'</?details[^>]*>', '', text)
+    text = re.sub(r'<summary\b[^>]*>(.*?)</summary>', lambda m: f"**{re.sub(r'</?(?:b|strong)[^>]*>', '', m.group(1))}**\n", text, flags=re.DOTALL | re.IGNORECASE)
+    
+    # Convert pre/code blocks
+    text = re.sub(r'<pre\b[^>]*>\s*<code\b[^>]*>', '```\n', text)
+    text = re.sub(r'</code>\s*</pre>', '\n```', text)
+    text = re.sub(r'</?code[^>]*>', '`', text)
+    
+    # Convert bold/italic
+    text = re.sub(r'</?(?:b|strong)[^>]*>', '**', text)
+    text = re.sub(r'</?(?:i|em)[^>]*>', '*', text)
+    
+    # Remove any other HTML tags
+    text = re.sub(r'<[^>]+>', '', text)
+    
+    # Clean up double bold markups like ****
+    text = re.sub(r'\*{4,}', '**', text)
+    
+    return text
+
 def clean_html_for_telegram(text: str) -> str:
     if not text:
         return text
@@ -278,7 +302,18 @@ class ResilientOutbox:
                 return rich_msg
                 
             # Если не удалось, делаем очистку и шлем стандартно
-            text = clean_html_for_telegram(text)
+            actual_parse_mode = parse_mode
+            if parse_mode and parse_mode.lower() == "html" and text:
+                if re.search(r'^#\s+', text, re.MULTILINE) or re.search(r'^###\s+', text, re.MULTILINE) or ('| ---' in text) or ('| :---' in text) or re.search(r'^---\s*$', text, re.MULTILINE):
+                    actual_parse_mode = "markdown"
+            
+            if actual_parse_mode and actual_parse_mode.lower() in ("markdown", "markdownv2"):
+                text = clean_mixed_html_to_markdown(text)
+                kwargs['parse_mode'] = actual_parse_mode
+            else:
+                text = clean_html_for_telegram(text)
+                kwargs['parse_mode'] = "HTML"
+                
             try:
                 return await bot._original_send_message(chat_id, text, *args, **kwargs)
             except Exception as e:
@@ -315,10 +350,22 @@ class ResilientOutbox:
                     return rich_edit
             
             # Стандартный фолбек с очисткой
+            actual_parse_mode = parse_mode
+            if parse_mode and parse_mode.lower() == "html" and text:
+                if re.search(r'^#\s+', text, re.MULTILINE) or re.search(r'^###\s+', text, re.MULTILINE) or ('| ---' in text) or ('| :---' in text) or re.search(r'^---\s*$', text, re.MULTILINE):
+                    actual_parse_mode = "markdown"
+            
+            if actual_parse_mode and actual_parse_mode.lower() in ("markdown", "markdownv2"):
+                cleaned_text = clean_mixed_html_to_markdown(text)
+                kwargs['parse_mode'] = actual_parse_mode
+            else:
+                cleaned_text = clean_html_for_telegram(text)
+                kwargs['parse_mode'] = "HTML"
+                
             if 'text' in kwargs:
-                kwargs['text'] = clean_html_for_telegram(kwargs['text'])
+                kwargs['text'] = cleaned_text
             elif args_list:
-                args_list[0] = clean_html_for_telegram(args_list[0])
+                args_list[0] = cleaned_text
             return await bot._original_edit_message_text(*args_list, **kwargs)
             
         bot.edit_message_text = resilient_edit_message_text
