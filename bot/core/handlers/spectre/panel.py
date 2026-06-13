@@ -471,12 +471,30 @@ async def cb_spectre_clients(callback: CallbackQuery):
     offset = page * PAGE_SIZE
     page_clients = clients[offset:offset + PAGE_SIZE]
     
+    # Запрашиваем список онлайн-клиентов для отображения статусов
+    online_list = []
+    try:
+        success_online, online_res = await panel.request("POST", "/panel/api/clients/onlines")
+        if success_online and online_res.get("success"):
+            online_list = online_res.get("obj", [])
+    except Exception as e:
+        logging.error(f"Error getting online list in cb_spectre_clients: {e}")
+    
     buttons = []
     for c in page_clients:
         client_info = c.get("client") if isinstance(c, dict) and "client" in c else c
         email = client_info.get("email", "unknown")
+        
+        # Определяем статус-иконку для кнопки
+        if client_info.get("enable") != 1:
+            status_icon = "🔴"
+        elif email in online_list:
+            status_icon = "🟢"
+        else:
+            status_icon = "⚪"
+            
         buttons.append([InlineKeyboardButton(
-            text=f"👤 {email}", 
+            text=f"{status_icon} {email}", 
             callback_data=f"spectre_client_view:{panel_key}:{email}"
         )])
         
@@ -534,8 +552,19 @@ async def cb_spectre_client_view(callback: CallbackQuery):
     total_gb = c["total"] / (1024**3) if c["total"] > 0 else "Без лимита"
     total_gb_str = f"{total_gb:.2f} GB" if isinstance(total_gb, float) else total_gb
     
+    # Запрашиваем онлайн статус через API панели
+    is_online = False
+    try:
+        success_online, online_res = await panel.request("POST", "/panel/api/clients/onlines")
+        if success_online and online_res.get("success"):
+            online_list = online_res.get("obj", [])
+            if email in online_list:
+                is_online = True
+    except Exception as e:
+        logging.error(f"Error checking online status for {email}: {e}")
+        
     if c.get("enable") == 1:
-        status_str = "🟢 Активен"
+        status_str = "🟢 Онлайн" if is_online else "⚪ Офлайн"
         action_btn = InlineKeyboardButton(text="🛑 Заблокировать", callback_data=f"spectre_client_act:{panel_key}:{email}:ban")
     else:
         reason = c.get('block_reason') or "Заблокирован администратором"
