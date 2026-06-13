@@ -66,7 +66,7 @@ async def monitor_remote_resources():
                         if now - last_alert > ALERT_THROTTLE_INTERVAL:
                             vps_alert_throttle[(ip, 'cpu')] = now
                             msg = get_vps_cpu_alert(ip, cpu)
-                            await send_alert_to_admins(msg)
+                            await send_alert_to_admins(msg, parse_mode="markdown")
                 else:
                     vps_high_load_start.pop((ip, 'cpu'), None)
                     vps_alert_throttle.pop((ip, 'cpu'), None)
@@ -80,7 +80,7 @@ async def monitor_remote_resources():
                         if now - last_alert > ALERT_THROTTLE_INTERVAL:
                             vps_alert_throttle[(ip, 'ram')] = now
                             msg = get_vps_ram_alert(ip, ram_pct)
-                            await send_alert_to_admins(msg)
+                            await send_alert_to_admins(msg, parse_mode="markdown")
                 else:
                     vps_high_load_start.pop((ip, 'ram'), None)
                     vps_alert_throttle.pop((ip, 'ram'), None)
@@ -91,7 +91,7 @@ async def monitor_remote_resources():
                     if now - last_alert > ALERT_THROTTLE_INTERVAL:
                         vps_alert_throttle[(ip, 'disk')] = now
                         msg = get_vps_disk_alert(ip, disk_pct)
-                        await send_alert_to_admins(msg)
+                        await send_alert_to_admins(msg, parse_mode="markdown")
                 else:
                     vps_alert_throttle.pop((ip, 'disk'), None)
                     

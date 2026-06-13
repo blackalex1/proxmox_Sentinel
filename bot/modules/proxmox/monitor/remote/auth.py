@@ -176,7 +176,7 @@ async def handle_remote_ssh_auth_line(line, server=None):
                         kb.append([InlineKeyboardButton(text="🚫 Заблокировать SSH-ключ", callback_data=f"bankey:{server['ip']}:{sshd_pid}")])
                     
                     reply_markup = InlineKeyboardMarkup(inline_keyboard=kb)
-                await send_alert_to_admins(msg, reply_markup=reply_markup)
+                await send_alert_to_admins(msg, parse_mode="markdown", reply_markup=reply_markup)
                 logging.info(f"[Remote SSH Auth {server['ip']}] Successful login for {username} from {client_ip} via {auth_method} {key_details}")
 
         elif "Failed password" in line or ("Failed" in line and "ssh2" in line):

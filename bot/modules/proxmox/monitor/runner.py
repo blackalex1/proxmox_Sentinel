@@ -193,7 +193,7 @@ async def monitor_panel_audit_logs():
                                    
                             # Отправляем алерт всем администраторам контроллера
                             try:
-                                await send_alert_to_admins(msg)
+                                await send_alert_to_admins(msg, parse_mode="markdown")
                             except Exception as e:
                                 logging.error(f"[Audit Monitor] Не удалось отправить алерт: {e}")
                                     
@@ -221,7 +221,7 @@ async def monitor_panel_audit_logs():
                                 ]
                             ])
                             try:
-                                await send_alert_to_admins(msg, reply_markup=kb)
+                                await send_alert_to_admins(msg, parse_mode="markdown", reply_markup=kb)
                             except Exception as e:
                                 logging.error(f"[Audit Monitor] Не удалось отправить алерт: {e}")
                         
@@ -309,7 +309,7 @@ async def monitor_panel_2fa_logs():
         ])
         
         try:
-            await send_alert_to_admins(msg_text, reply_markup=kb)
+            await send_alert_to_admins(msg_text, parse_mode="markdown", reply_markup=kb)
         except Exception as e:
             logging.error(f"[2FA Monitor] Не удалось отправить 2FA алерт: {e}")
 

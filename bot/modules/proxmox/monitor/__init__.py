@@ -11,7 +11,9 @@ from .state import (
 from .utils import (
     LogTailer,
     send_alert_to_admins,
-    is_private_ip
+    is_private_ip,
+    send_rich_message,
+    edit_rich_message
 )
 from .firewall import (
     setup_vpn_container_rules,
@@ -48,6 +50,8 @@ __all__ = [
     'LogTailer',
     'send_alert_to_admins',
     'is_private_ip',
+    'send_rich_message',
+    'edit_rich_message',
     'setup_vpn_container_rules',
     'cleanup_vpn_container_rules',
     'setup_iptables',

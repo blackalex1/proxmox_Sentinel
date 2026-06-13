@@ -49,7 +49,7 @@ async def monitor_remote_task(server, service_name, command_args, callback):
                         if _servers_online_status.get(server['ip'], True):
                             _servers_online_status[server['ip']] = False
                             from modules.proxmox.monitor.utils import send_alert_to_admins
-                            await send_alert_to_admins(get_vps_offline_alert(server['ip']))
+                            await send_alert_to_admins(get_vps_offline_alert(server['ip']), parse_mode="markdown")
                 
                 # Ждем открытия порта, опрашивая его раз в 10 секунд
                 while not is_open:
@@ -61,7 +61,7 @@ async def monitor_remote_task(server, service_name, command_args, callback):
                     if not _servers_online_status.get(server['ip'], True):
                         _servers_online_status[server['ip']] = True
                         from modules.proxmox.monitor.utils import send_alert_to_admins
-                        await send_alert_to_admins(get_vps_online_alert(server['ip']))
+                        await send_alert_to_admins(get_vps_online_alert(server['ip']), parse_mode="markdown")
                 
                 logging.info(f"[Remote Monitor {server['ip']}] SSH порт ({port}) открылся. Возобновляем подключение для {service_name}...")
 
