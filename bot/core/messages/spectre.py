@@ -1,7 +1,15 @@
 # bot/core/messages/spectre.py
 """Шаблоны сообщений для Spectre VPN панели (входы, 2FA, сессии, новые IP)."""
 
-def get_new_ip_alert(protocol, panel_name, username, client_ip, timestamp_str, history_text):
+def get_new_ip_alert(protocol, panel_name, username, client_ip, timestamp_str, history_text, geoip_info=None):
+    geo_row = ""
+    if geoip_info:
+        geo_row = (
+            f"  <tr>\n"
+            f"    <td><b>🗺️ Гео</b></td>\n"
+            f"    <td><code>{geoip_info}</code></td>\n"
+            f"  </tr>\n"
+        )
     return (
         f"<h1>🚨 New IP Connection</h1>\n"
         f"<hr/>\n\n"
@@ -23,6 +31,7 @@ def get_new_ip_alert(protocol, panel_name, username, client_ip, timestamp_str, h
         f"    <td><b>🌐 Новый IP</b></td>\n"
         f"    <td><code>{client_ip}</code> ⚠️ [ВНИМАНИЕ]</td>\n"
         f"  </tr>\n"
+        f"{geo_row}"
         f"</table>\n\n"
         f"<details>\n"
         f"  <summary>📋 <b>Предыдущие подключения</b></summary>\n"
@@ -59,7 +68,15 @@ def get_session_activity_card(protocol, panel_name, username, download, upload, 
         f"</details>"
     )
 
-def get_client_disconnected_alert(protocol, panel_name, username, client_ip, timestamp_str):
+def get_client_disconnected_alert(protocol, panel_name, username, client_ip, timestamp_str, geoip_info=None):
+    geo_row = ""
+    if geoip_info:
+        geo_row = (
+            f"  <tr>\n"
+            f"    <td><b>🗺️ Гео</b></td>\n"
+            f"    <td><code>{geoip_info}</code></td>\n"
+            f"  </tr>\n"
+        )
     return (
         f"<h1>🔴 Client Disconnected</h1>\n"
         f"<hr/>\n\n"
@@ -77,6 +94,7 @@ def get_client_disconnected_alert(protocol, panel_name, username, client_ip, tim
         f"    <td><b>🌐 IP-адрес</b></td>\n"
         f"    <td><code>{client_ip}</code></td>\n"
         f"  </tr>\n"
+        f"{geo_row}"
         f"</table>"
     )
 
@@ -101,7 +119,15 @@ def get_ips_autoblock_alert_audit(panel_name, email, details, time_str):
         f"</table>"
     )
 
-def get_login_success_alert(panel_name, username, ip, details, time_str):
+def get_login_success_alert(panel_name, username, ip, details, time_str, geoip_info=None):
+    geo_row = ""
+    if geoip_info:
+        geo_row = (
+            f"  <tr>\n"
+            f"    <td><b>🗺️ Гео</b></td>\n"
+            f"    <td><code>{geoip_info}</code></td>\n"
+            f"  </tr>\n"
+        )
     return (
         f"<h1>🔑 Web GUI Access</h1>\n"
         f"<hr/>\n\n"
@@ -119,6 +145,7 @@ def get_login_success_alert(panel_name, username, ip, details, time_str):
         f"    <td><b>🌐 IP-адрес</b></td>\n"
         f"    <td><code>{ip}</code></td>\n"
         f"  </tr>\n"
+        f"{geo_row}"
         f"  <tr>\n"
         f"    <td><b>ℹ️ Детали</b></td>\n"
         f"    <td><b>{details}</b></td>\n"
@@ -126,7 +153,15 @@ def get_login_success_alert(panel_name, username, ip, details, time_str):
         f"</table>"
     )
 
-def get_spectre_2fa_alert(panel_name, username, client_ip, time_str):
+def get_spectre_2fa_alert(panel_name, username, client_ip, time_str, geoip_info=None):
+    geo_row = ""
+    if geoip_info:
+        geo_row = (
+            f"  <tr>\n"
+            f"    <td><b>🗺️ Гео</b></td>\n"
+            f"    <td><code>{geoip_info}</code></td>\n"
+            f"  </tr>\n"
+        )
     return (
         f"<h1>🔑 Spectre 2FA Prompt</h1>\n"
         f"<hr/>\n\n"
@@ -148,5 +183,6 @@ def get_spectre_2fa_alert(panel_name, username, client_ip, time_str):
         f"    <td><b>🌐 IP-адрес</b></td>\n"
         f"    <td><code>{client_ip}</code></td>\n"
         f"  </tr>\n"
+        f"{geo_row}"
         f"</table>"
     )
