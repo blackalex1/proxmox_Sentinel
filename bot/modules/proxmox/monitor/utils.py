@@ -106,120 +106,127 @@ class LogTailer:
             logging.error(f"Ошибка при вызове callback в tailer: {ex}")
 
 
+def convert_rich_html_to_standard(html):
+    import re
+    # Convert header tags to bold
+    html = re.sub(r'<h[1-6][^>]*>', '<b>', html)
+    html = re.sub(r'</h[1-6]>', '</b>\n', html)
+    
+    # Convert <hr> / <hr/> to separator
+    html = re.sub(r'<hr\s*/?>', '\n-------------------\n', html)
+    
+    # Convert <aside> to blockquote
+    html = re.sub(r'<aside[^>]*>', '<blockquote>', html)
+    html = re.sub(r'</aside>', '</blockquote>', html)
+    
+    # Convert footer/cite
+    html = re.sub(r'<footer[^>]*>', '<i>', html)
+    html = re.sub(r'</footer>', '</i>', html)
+    html = re.sub(r'<cite[^>]*>', '\n— ', html)
+    html = re.sub(r'</cite>', '', html)
+    
+    # Convert <br/> to newline
+    html = re.sub(r'<br\s*/?>', '\n', html)
+    
+    # For tables, extract rows and clean up
+    def process_table(table_match):
+        table_content = table_match.group(1)
+        rows = re.findall(r'<tr>(.*?)</tr>', table_content, re.DOTALL)
+        result_rows = []
+        for row in rows:
+            headers = re.findall(r'<th[^>]*>(.*?)</th>', row, re.DOTALL)
+            if headers:
+                continue
+            cells = re.findall(r'<td[^>]*>(.*?)</td>', row, re.DOTALL)
+            if len(cells) == 2:
+                result_rows.append(f"{cells[0].strip()}: {cells[1].strip()}")
+            elif cells:
+                result_rows.append(" - ".join([c.strip() for c in cells]))
+        return "\n" + "\n".join(result_rows) + "\n"
+
+    html = re.sub(r'<table[^>]*>(.*?)</table>', process_table, html, flags=re.DOTALL)
+    
+    # Strip any other unrecognized/unsupported HTML tags that might fail Telegram's parse_mode="HTML"
+    def strip_unsupported_tags(match):
+        tag = match.group(1).lower()
+        is_closing = tag.startswith('/')
+        tag_name = tag[1:] if is_closing else tag
+        if tag_name in ('a', 'b', 'strong', 'i', 'em', 'u', 'ins', 's', 'strike', 'del', 'span', 'code', 'pre', 'blockquote'):
+            return match.group(0)
+        return ''
+        
+    html = re.sub(r'<(/?[a-zA-Z0-9]+)(?:\s+[^>]*)?>', strip_unsupported_tags, html)
+    
+    # Clean up double newlines
+    html = re.sub(r'\n{3,}', '\n\n', html)
+    return html.strip()
+
+
+async def send_rich_message(chat_id, text, parse_mode="HTML", reply_markup=None):
+    """
+    Отправка Rich Message (Bot API 10.1) для поддержки HTML-таблиц и кастомного рендеринга.
+    При сбое автоматически преобразует в стандартное сообщение и отправляет через sendMessage.
+    """
+    import aiohttp
+    import json
+    
+    url_rich = bot.session.api.api_url(token=settings.bot_token, method="sendRichMessage")
+    success = False
+    try:
+        payload = {
+            "chat_id": chat_id,
+            "rich_message": {}
+        }
+        if parse_mode.lower() in ("markdown", "markdownv2"):
+            payload["rich_message"]["markdown"] = text
+        else:
+            payload["rich_message"]["html"] = text
+            
+        if reply_markup:
+            if hasattr(reply_markup, "model_dump"):
+                payload["reply_markup"] = reply_markup.model_dump(exclude_none=True)
+            elif hasattr(reply_markup, "to_python"):
+                payload["reply_markup"] = reply_markup.to_python()
+            else:
+                payload["reply_markup"] = reply_markup
+                
+        session = await bot.session.create_session()
+        async with session.post(url_rich, json=payload, timeout=5) as response:
+            res = await response.json()
+            if res.get("ok"):
+                success = True
+            else:
+                logging.warning(f"[Rich Message] Не удалось отправить Rich Message для {chat_id}, код: {res.get('description')}")
+    except Exception as e:
+        logging.warning(f"[Rich Message] Исключение при отправке Rich Message для {chat_id}: {e}")
+        
+    if not success:
+        try:
+            fallback_text = text
+            if parse_mode.lower() == "html":
+                fallback_text = convert_rich_html_to_standard(text)
+            await bot.send_message(chat_id, fallback_text, parse_mode=parse_mode, reply_markup=reply_markup)
+        except Exception as e:
+            logging.error(f"Не удалось отправить стандартное сообщение для {chat_id}: {e}")
+            raise e
+    return success
+
+
 async def send_alert_to_admins(text, parse_mode="HTML", reply_markup=None):
     """
-    Отправка алертов всем администраторам.
-    Пытается отправить как Rich Message (Bot API 10.1) для поддержки больших лимитов
-    и нативной блочной структуры, с бесшовным откатом к стандартному sendMessage при ошибке.
+    Отправка алертов всем администраторам с поддержкой Rich Message.
     """
     if not settings.admin_ids:
         return
         
-    import aiohttp
-    import json
-    import re
-    
-    # Вспомогательная функция для конвертации Rich HTML в стандартный HTML для Telegram
-    def convert_rich_html_to_standard(html):
-        # Convert header tags to bold
-        html = re.sub(r'<h[1-6][^>]*>', '<b>', html)
-        html = re.sub(r'</h[1-6]>', '</b>\n', html)
-        
-        # Convert <hr> / <hr/> to separator
-        html = re.sub(r'<hr\s*/?>', '\n-------------------\n', html)
-        
-        # Convert <aside> to blockquote
-        html = re.sub(r'<aside[^>]*>', '<blockquote>', html)
-        html = re.sub(r'</aside>', '</blockquote>', html)
-        
-        # Convert footer/cite
-        html = re.sub(r'<footer[^>]*>', '<i>', html)
-        html = re.sub(r'</footer>', '</i>', html)
-        html = re.sub(r'<cite[^>]*>', '\n— ', html)
-        html = re.sub(r'</cite>', '', html)
-        
-        # Convert <br/> to newline
-        html = re.sub(r'<br\s*/?>', '\n', html)
-        
-        # For tables, extract rows and clean up
-        def process_table(table_match):
-            table_content = table_match.group(1)
-            rows = re.findall(r'<tr>(.*?)</tr>', table_content, re.DOTALL)
-            result_rows = []
-            for row in rows:
-                headers = re.findall(r'<th[^>]*>(.*?)</th>', row, re.DOTALL)
-                if headers:
-                    continue
-                cells = re.findall(r'<td[^>]*>(.*?)</td>', row, re.DOTALL)
-                if len(cells) == 2:
-                    result_rows.append(f"{cells[0].strip()}: {cells[1].strip()}")
-                elif cells:
-                    result_rows.append(" - ".join([c.strip() for c in cells]))
-            return "\n" + "\n".join(result_rows) + "\n"
-
-        html = re.sub(r'<table[^>]*>(.*?)</table>', process_table, html, flags=re.DOTALL)
-        
-        # Strip any other unrecognized/unsupported HTML tags that might fail Telegram's parse_mode="HTML"
-        def strip_unsupported_tags(match):
-            tag = match.group(1).lower()
-            is_closing = tag.startswith('/')
-            tag_name = tag[1:] if is_closing else tag
-            if tag_name in ('a', 'b', 'strong', 'i', 'em', 'u', 'ins', 's', 'strike', 'del', 'span', 'code', 'pre', 'blockquote'):
-                return match.group(0)
-            return ''
-            
-        html = re.sub(r'<(/?[a-zA-Z0-9]+)(?:\s+[^>]*)?>', strip_unsupported_tags, html)
-        
-        # Clean up double newlines
-        html = re.sub(r'\n{3,}', '\n\n', html)
-        return html.strip()
-
     admin_ids = []
     if isinstance(settings.admin_ids, list):
         admin_ids = settings.admin_ids
     elif isinstance(settings.admin_ids, str):
         admin_ids = [int(i.strip()) for i in settings.admin_ids.split(",") if i.strip().isdigit()]
-
-    url_rich = bot.session.api.api_url(token=settings.bot_token, method="sendRichMessage")
-    
+        
     for admin_id in admin_ids:
-        success = False
-        try:
-            payload = {
-                "chat_id": admin_id,
-                "rich_message": {}
-            }
-            if parse_mode.lower() in ("markdown", "markdownv2"):
-                payload["rich_message"]["markdown"] = text
-            else:
-                payload["rich_message"]["html"] = text
-                
-            if reply_markup:
-                if hasattr(reply_markup, "model_dump"):
-                    payload["reply_markup"] = reply_markup.model_dump(exclude_none=True)
-                elif hasattr(reply_markup, "to_python"):
-                    payload["reply_markup"] = reply_markup.to_python()
-                else:
-                    payload["reply_markup"] = reply_markup
-                    
-            session = await bot.session.create_session()
-            async with session.post(url_rich, json=payload, timeout=5) as response:
-                res = await response.json()
-                if res.get("ok"):
-                    success = True
-                else:
-                    logging.warning(f"[Rich Alert] Не удалось отправить Rich Message, код: {res.get('description')}")
-        except Exception as e:
-            logging.warning(f"[Rich Alert] Исключение при отправке Rich Message: {e}")
-            
-        if not success:
-            try:
-                fallback_text = text
-                if parse_mode.lower() == "html":
-                    fallback_text = convert_rich_html_to_standard(text)
-                await bot.send_message(admin_id, fallback_text, parse_mode=parse_mode, reply_markup=reply_markup)
-            except Exception as e:
-                logging.error(f"Не удалось отправить стандартное уведомление админу {admin_id}: {e}")
+        await send_rich_message(admin_id, text, parse_mode=parse_mode, reply_markup=reply_markup)
 
 
 
