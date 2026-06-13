@@ -33,7 +33,7 @@ async def handle_auth_log_line(line, vmid):
         timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         
         from .auth_parser import parse_auth_line
-        event, msg = parse_auth_line(line, vmid, timestamp, container_name)
+        event, msg = await parse_auth_line(line, vmid, timestamp, container_name)
         if event and msg:
             if event.get('type') == 'CLOSE':
                 pid = event.get('pid')

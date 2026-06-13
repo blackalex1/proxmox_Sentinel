@@ -208,7 +208,9 @@ async def monitor_panel_audit_logs():
                             except Exception:
                                 time_str = datetime.datetime.now().strftime("%H:%M:%S")
                                 
-                            msg = get_login_success_alert(panel.name, username, ip, details, time_str)
+                            from modules.proxmox.monitor.utils import get_geoip_info
+                            geoip_info = await get_geoip_info(ip)
+                            msg = get_login_success_alert(panel.name, username, ip, details, time_str, geoip_info=geoip_info)
                                    
                             # Отправляем алерт всем администраторам контроллера
                             try:
@@ -284,8 +286,13 @@ async def monitor_panel_2fa_logs():
             log_time = float(timestamp)
             if time.time() - log_time > 120:
                 return
-        except (ValueError, TypeError):
-            pass
+            time_str = datetime.datetime.fromtimestamp(log_time).strftime("%H:%M:%S")
+        except (ValueError, TypeError, Exception):
+            time_str = datetime.datetime.now().strftime("%H:%M:%S")
+            
+        from modules.proxmox.monitor.utils import get_geoip_info
+        geoip_info = await get_geoip_info(client_ip)
+        msg_text = get_spectre_2fa_alert(panel.name, username, client_ip, time_str, geoip_info=geoip_info)
             
         kb = InlineKeyboardMarkup(inline_keyboard=[
             [

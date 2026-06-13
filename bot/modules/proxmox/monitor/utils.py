@@ -253,4 +253,38 @@ def is_private_ip(ip):
         return False
 
 
+async def get_geoip_info(ip: str) -> str:
+    """Получает геологикационную информацию (страна, город, провайдер) для IP-адреса."""
+    if not ip or ip == "unknown" or ip == "WEB_GUI" or ip == "LOCAL":
+        return "Локальная сеть"
+    
+    # Игнорируем RFC 1918 приватные адреса и IPv6 loopback
+    if ip.startswith("127.") or ip.startswith("192.168.") or ip.startswith("10.") or ip.startswith("172.16.") or ip.startswith("::1") or ip == "localhost":
+        return "Локальная сеть"
+        
+    try:
+        import aiohttp
+        url = f"http://ip-api.com/json/{ip}"
+        session = await bot.session.create_session()
+        async with session.get(url, timeout=3.0) as response:
+            if response.status == 200:
+                data = await response.json()
+                if data.get("status") == "success":
+                    country = data.get("country", "")
+                    city = data.get("city", "")
+                    org = data.get("org", "")
+                    geo_parts = []
+                    if country:
+                        geo_parts.append(country)
+                    if city:
+                        geo_parts.append(city)
+                    if org:
+                        geo_parts.append(f"ISP: {org}")
+                    return " - ".join(geo_parts) if geo_parts else "Определено"
+    except Exception as e:
+        logging.warning(f"[GeoIP] Не удалось получить данные для {ip}: {e}")
+    return "Неизвестно"
+
+
+
 
