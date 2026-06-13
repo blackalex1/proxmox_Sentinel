@@ -130,7 +130,7 @@ class Settings(BaseSettings):
 
     # Ручные настройки панелей Spectre
     spectre_panels_json: str = Field(default='[]', validation_alias='SPECTRE_PANELS')
-    spectre_panels: List[Dict[str, str]] = Field(default_factory=list)
+    spectre_panels: List[Dict[str, str]] = Field(default_factory=list, validation_alias='SPECTRE_PANELS_LIST_DUMMY')
 
     # Валидаторы полей
     @field_validator('bot_token')
