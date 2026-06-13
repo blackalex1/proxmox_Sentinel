@@ -214,6 +214,7 @@ async def proxy_monitor_loop(bot, primary_proxy, session_kwargs, start_active_pr
                 safe_swap_bot_session(bot, AiohttpSession(proxy=new_proxy, **session_kwargs))
                 active_proxy = new_proxy
                 using_fallback = True
+                last_primary_check = time.monotonic() - 15 # Проверить основной при первом шаге цикла
                 logging.info(f"[Proxy Monitor] Успешно переключено на бесплатный прокси: {new_proxy}")
                 from modules.proxmox.monitor.utils import send_alert_to_admins
                 asyncio.create_task(send_alert_to_admins(
@@ -247,6 +248,16 @@ async def proxy_monitor_loop(bot, primary_proxy, session_kwargs, start_active_pr
                     if not retry_success:
                         logging.warning(f"[Proxy Monitor] Текущий активный прокси ({active_proxy}) окончательно перестал отвечать!")
                         
+                        # Перед началом поиска резервных прокси пробуем подождать еще 2 секунды и проверить основной —
+                        # вдруг это был очень короткий сбой
+                        if not using_fallback and primary_proxy:
+                            logging.info("[Proxy Monitor] Подождем 2 секунды для повторного подключения к основному прокси...")
+                            await asyncio.sleep(2.0)
+                            is_alive_last_chance, _ = await proxy_rotator.test_proxy_alive(primary_proxy, timeout=4.0, verbose=False)
+                            if is_alive_last_chance:
+                                logging.info("[Proxy Monitor] Основной прокси восстановился после короткого сбоя. Продолжаем работу на нем.")
+                                continue
+                                
                         if not using_fallback:
                             logging.warning("[Proxy Monitor] Потерял соединение с моим прокси и пошел искать доступные бесплатные SOCKS5...")
                         else:
@@ -257,6 +268,7 @@ async def proxy_monitor_loop(bot, primary_proxy, session_kwargs, start_active_pr
                             safe_swap_bot_session(bot, AiohttpSession(proxy=new_proxy, **session_kwargs))
                             active_proxy = new_proxy
                             using_fallback = True
+                            last_primary_check = time.monotonic() - 15 # Проверить основной при следующем шаге цикла
                             logging.info(f"[Proxy Monitor] Успешно переключено на новый бесплатный прокси: {new_proxy}")
                             from modules.proxmox.monitor.utils import send_alert_to_admins
                             await send_alert_to_admins(
@@ -265,10 +277,10 @@ async def proxy_monitor_loop(bot, primary_proxy, session_kwargs, start_active_pr
                         else:
                             logging.error("[Proxy Monitor] Не удалось найти рабочий бесплатный прокси. Попробуем в следующей итерации.")
                             
-            # 2. Если мы сейчас на бесплатном прокси, раз в 2 минуты проверяем основной прокси
+            # 2. Если мы сейчас на бесплатном прокси, раз в 15 секунд проверяем основной прокси
             if using_fallback and primary_proxy:
                 now = time.monotonic()
-                if now - last_primary_check >= 120:
+                if now - last_primary_check >= 15:
                     last_primary_check = now
                     logging.info(f"[Proxy Monitor] Проверяем доступность основного прокси ({primary_proxy})...")
                     primary_alive, _ = await proxy_rotator.test_proxy_alive(primary_proxy, timeout=4.0, verbose=False)
