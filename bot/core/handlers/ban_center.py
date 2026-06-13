@@ -296,3 +296,50 @@ async def process_ban_center_unbankey(callback: CallbackQuery):
     except Exception as e:
         logging.error(f"[Ban Center] Исключение при ручном разбане ключа: {e}")
         await callback.answer(f"❌ Ошибка при восстановлении: {e}", show_alert=True)
+
+
+@router.message(Command("unban_login_ip"))
+async def cmd_unban_login_ip(message: types.Message):
+    """
+    Разблокирует IP-адрес, заблокированный через 2FA-оповещения, на всех панелях.
+    """
+    args = message.text.split(maxsplit=1)
+    if len(args) < 2:
+        await message.reply(
+            "🟢 <b>Разблокировка IP входа:</b>\n"
+            "Используйте команду: <code>/unban_login_ip &lt;ip&gt;</code>",
+            parse_mode="HTML"
+        )
+        return
+        
+    ip_to_unban = args[1].strip()
+    status_msg = await message.reply(f"⏳ Разблокировка IP <code>{ip_to_unban}</code> на всех панелях...")
+    
+    from core.spectre_client import spectre_manager
+    
+    results = []
+    any_success = False
+    
+    for panel in spectre_manager.panels.values():
+        try:
+            success, res = await panel.request("POST", "api/security/unban-ip", data={"ip": ip_to_unban})
+            if success and res.get("success"):
+                any_success = True
+                results.append(f"  • {panel.name}: 🟢 Разблокирован")
+            else:
+                msg = res.get("msg") or "Неизвестная ошибка"
+                results.append(f"  • {panel.name}: 🔴 Ошибка ({msg})")
+        except Exception as e:
+            results.append(f"  • {panel.name}: 🔴 Ошибка ({e})")
+            
+    details_str = "\n".join(results)
+    if any_success:
+        await status_msg.edit_text(
+            f"✅ <b>Результаты разблокировки IP <code>{ip_to_unban}</code>:</b>\n{details_str}",
+            parse_mode="HTML"
+        )
+    else:
+        await status_msg.edit_text(
+            f"❌ <b>Не удалось разблокировать IP <code>{ip_to_unban}</code>:</b>\n{details_str}",
+            parse_mode="HTML"
+        )
