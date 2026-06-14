@@ -211,7 +211,7 @@ class SpectreClientManager:
                 logging.error(f"[Spectre Discovery] Ошибка при поиске в Proxmox: {e}")
 
         # 2. Поиск на удаленных серверах VPS
-        if settings.remote_servers:
+        if settings.remote_monitor_enable and settings.remote_servers:
             for server in settings.remote_servers:
                 tasks.append(discover_vps_panel(server))
 
