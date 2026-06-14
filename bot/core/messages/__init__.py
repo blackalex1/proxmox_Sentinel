@@ -54,10 +54,18 @@ from .spectre import (
     get_ips_autoblock_alert_audit,
     get_login_success_alert,
     get_spectre_2fa_alert,
+    get_top_traffic_table,
 )
 from .proxy import (
     get_proxy_switch_alert,
     get_proxy_restored_alert,
+)
+from .whitelist import (
+    get_whitelist_view_table,
+    get_whitelist_view_all_table,
+)
+from .ban_center import (
+    get_ban_center_table,
 )
 
 __all__ = [
@@ -110,8 +118,16 @@ __all__ = [
     "get_ips_autoblock_alert_audit",
     "get_login_success_alert",
     "get_spectre_2fa_alert",
+    "get_top_traffic_table",
     
     # Proxy alerts
     "get_proxy_switch_alert",
     "get_proxy_restored_alert",
+    
+    # Whitelist templates
+    "get_whitelist_view_table",
+    "get_whitelist_view_all_table",
+    
+    # Ban Center templates
+    "get_ban_center_table",
 ]

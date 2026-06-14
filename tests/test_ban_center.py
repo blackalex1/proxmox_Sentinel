@@ -210,7 +210,11 @@ async def test_process_ban_center_unbankey_success():
     mock_proc.communicate = AsyncMock(return_value=(b"", b""))
     mock_proc.returncode = 0
     
-    with patch("asyncio.create_subprocess_exec", AsyncMock(return_value=mock_proc)) as mock_exec:
+    async def dummy_edit_rich(chat_id, message_id, text, parse_mode="HTML", reply_markup=None):
+        await mock_message.edit_text(text, parse_mode=parse_mode, reply_markup=reply_markup)
+        
+    with patch("asyncio.create_subprocess_exec", AsyncMock(return_value=mock_proc)) as mock_exec, \
+         patch("modules.proxmox.monitor.utils.edit_rich_message", side_effect=dummy_edit_rich) as mock_edit_rich:
         await process_ban_center_unbankey(mock_callback)
         
         # Проверяем, что ключ был дописан
