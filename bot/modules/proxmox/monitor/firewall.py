@@ -10,6 +10,9 @@ def setup_vpn_container_rules():
     """Установка logging-правил iptables внутри VPN-контейнера для контроля локальных процессов."""
     if platform.system() != 'Linux' or os.geteuid() != 0:
         return False
+    if not VPN_VMID:
+        logging.info("Мониторинг внутреннего трафика VPN-контейнера отключен (VPN_VMID=0).")
+        return False
     try:
         # Проверяем, запущен ли контейнер
         status_check = subprocess.run(
@@ -45,6 +48,8 @@ def setup_vpn_container_rules():
 def cleanup_vpn_container_rules():
     """Удаление logging-правил iptables из VPN-контейнера."""
     if platform.system() != 'Linux' or os.geteuid() != 0:
+        return
+    if not VPN_VMID:
         return
     try:
         # Проверяем статус контейнера перед удалением
