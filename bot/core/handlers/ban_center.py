@@ -70,46 +70,31 @@ async def render_ban_center(message_or_query) -> tuple[str, InlineKeyboardMarkup
     from core.db import get_state
     banned_keys = await get_state("banned_ssh_keys", [])
 
-    text = "🛑 <b>Центр блокировок Aegis IPS</b>\n"
-    text += "━━━━━━━━━━━━━━━━━━━━━━━━\n"
+    from core.messages import get_ban_center_table
+    text = get_ban_center_table(active_bans, banned_keys)
     
     kb_buttons = []
     
-    if not active_bans and not banned_keys:
-        text += "Активных блокировок в системе нет.\n\n"
-        text += "<i>Вся сетевая активность находится под контролем Active IPS Engine.</i>"
-    else:
-        if active_bans:
-            text += "Список активных временных блокировок IP:\n\n"
-            for idx, ban in enumerate(active_bans, 1):
-                text += f"{idx}. 👤 <code>{ban['dst_ip']}</code>\n"
-                text += f"   └ {ban['label']} • Истекает через: <b>{ban['remaining']}</b>\n\n"
-                
-                # Кнопка разблокировки для каждого IP
-                kb_buttons.append([
-                    InlineKeyboardButton(
-                        text=f"🔓 Разблокировать {ban['dst_ip']}",
-                        callback_data=f"ban_center_unban:{ban['server_ip']}:{ban['dst_ip']}"
-                    )
-                ])
-                
-        if banned_keys:
-            if active_bans:
-                text += "━━━━━━━━━━━━━━━━━━━━━━━━\n"
-            text += "Список заблокированных SSH-ключей:\n\n"
-            for idx, key in enumerate(banned_keys, 1):
-                short_fp = key['fingerprint'][-12:] if len(key['fingerprint']) > 12 else key['fingerprint']
-                target_lbl = get_target_label(key['target'])
-                text += f"{idx}. 👤 <code>{key['username']}</code> ({target_lbl})\n"
-                text += f"   └ Ключ: <code>...{short_fp}</code> • Забанен: <b>{key['banned_at']}</b>\n\n"
-                
-                # Кнопка разблокировки ключа
-                kb_buttons.append([
-                    InlineKeyboardButton(
-                        text=f"🔓 Восстановить ключ (...{short_fp})",
-                        callback_data=f"ban_center_unbankey:{key['id']}"
-                    )
-                ])
+    if active_bans:
+        for ban in active_bans:
+            # Кнопка разблокировки для каждого IP
+            kb_buttons.append([
+                InlineKeyboardButton(
+                    text=f"🔓 Разблокировать {ban['dst_ip']}",
+                    callback_data=f"ban_center_unban:{ban['server_ip']}:{ban['dst_ip']}"
+                )
+            ])
+            
+    if banned_keys:
+        for key in banned_keys:
+            short_fp = key['fingerprint'][-12:] if len(key['fingerprint']) > 12 else key['fingerprint']
+            # Кнопка разблокировки ключа
+            kb_buttons.append([
+                InlineKeyboardButton(
+                    text=f"🔓 Восстановить ключ (...{short_fp})",
+                    callback_data=f"ban_center_unbankey:{key['id']}"
+                )
+            ])
             
     # Добавляем кнопку возврата в главное меню
     kb_buttons.append([
@@ -123,8 +108,9 @@ async def render_ban_center(message_or_query) -> tuple[str, InlineKeyboardMarkup
 async def cmd_bans(message: types.Message):
     """Команда /bans для открытия Центра блокировок."""
     try:
+        from modules.proxmox.monitor.utils import send_rich_message
         text, reply_markup = await render_ban_center(message)
-        await message.answer(text, parse_mode="HTML", reply_markup=reply_markup)
+        await send_rich_message(chat_id=message.chat.id, text=text, parse_mode="HTML", reply_markup=reply_markup)
     except Exception as e:
         logging.error(f"[Ban Center] Ошибка в хэндлере /bans: {e}")
         await message.answer("❌ Ошибка при загрузке Центра блокировок.")
@@ -133,8 +119,15 @@ async def cmd_bans(message: types.Message):
 async def process_ban_center_main(callback: CallbackQuery):
     """Переход в Центр блокировок по кнопке из главного меню."""
     try:
+        from modules.proxmox.monitor.utils import edit_rich_message
         text, reply_markup = await render_ban_center(callback)
-        await callback.message.edit_text(text, parse_mode="HTML", reply_markup=reply_markup)
+        await edit_rich_message(
+            chat_id=callback.message.chat.id,
+            message_id=callback.message.message_id,
+            text=text,
+            parse_mode="HTML",
+            reply_markup=reply_markup
+        )
     except Exception as e:
         logging.error(f"[Ban Center] Ошибка при переходе в Центр блокировок: {e}")
         await callback.answer("❌ Ошибка при открытии Центра блокировок.", show_alert=True)
@@ -177,7 +170,14 @@ async def process_ban_center_unban(callback: CallbackQuery):
         # Обновляем сообщение Центра блокировок
         text, reply_markup = await render_ban_center(callback)
         try:
-            await callback.message.edit_text(text, parse_mode="HTML", reply_markup=reply_markup)
+            from modules.proxmox.monitor.utils import edit_rich_message
+            await edit_rich_message(
+                chat_id=callback.message.chat.id,
+                message_id=callback.message.message_id,
+                text=text,
+                parse_mode="HTML",
+                reply_markup=reply_markup
+            )
         except Exception:
             pass # Если текст не поменялся
             
@@ -289,7 +289,14 @@ async def process_ban_center_unbankey(callback: CallbackQuery):
         # Обновляем сообщение Центра блокировок
         text, reply_markup = await render_ban_center(callback)
         try:
-            await callback.message.edit_text(text, parse_mode="HTML", reply_markup=reply_markup)
+            from modules.proxmox.monitor.utils import edit_rich_message
+            await edit_rich_message(
+                chat_id=callback.message.chat.id,
+                message_id=callback.message.message_id,
+                text=text,
+                parse_mode="HTML",
+                reply_markup=reply_markup
+            )
         except Exception:
             pass
             

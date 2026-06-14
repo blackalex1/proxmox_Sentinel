@@ -161,39 +161,17 @@ async def cmd_top_spectre(message: types.Message):
     tasks = [fetch_top(p) for p in panels.values()]
     results = await asyncio.gather(*tasks, return_exceptions=True)
     
-    title = "🏆 <b>Топ потребителей трафика (Сегодня)</b>" if period == "today" else "🏆 <b>Топ потребителей трафика (За месяц)</b>"
-    msg = f"{title}\n"
+    from core.messages import get_top_traffic_table
+    from modules.proxmox.monitor.utils import edit_rich_message
     
-    has_any_data = False
-    for r in results:
-        if isinstance(r, Exception):
-            logging.error(f"Error fetching top traffic: {r}")
-            continue
-            
-        panel, success, res = r
-        if not success or not res.get("success"):
-            error_info = res.get("msg") or res.get("error") or "Неизвестная ошибка"
-            msg += f"\n❌ <b>{panel.name}</b>: <code>{error_info}</code>\n"
-            continue
-            
-        users = res.get("users", [])
-        if users:
-            has_any_data = True
-            msg += f"\n📌 <b>Панель {panel.name}:</b>\n"
-            msg += "━━━━━━━━━━━━━━━━━━━━━━━━\n"
-            for idx, user in enumerate(users[:10], 1):
-                gb = user["total"] / (1024**3)
-                msg += f"{idx}. 👤 <code>{html.escape(user['email'])}</code>: <b>{gb:.3f} GB</b>\n"
-        else:
-            msg += f"\n📌 <b>Панель {panel.name}:</b> Нет активности\n"
-            
-    if not has_any_data and len(panels) > 0:
-        msg += "\nНет данных об активности пользователей на панелях."
-        
-    msg += "\n\n<i>Для переключения используйте: <code>/top today</code> или <code>/top month</code></i>"
+    msg = get_top_traffic_table(results, period)
     
-    await status_msg.delete()
-    await message.reply(msg, parse_mode="HTML")
+    await edit_rich_message(
+        chat_id=message.chat.id,
+        message_id=status_msg.message_id,
+        text=msg,
+        parse_mode="HTML"
+    )
 
 @router.message(Command("audit", "logs"))
 async def cmd_audit(message: types.Message):

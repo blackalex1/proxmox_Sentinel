@@ -115,46 +115,24 @@ async def cb_whitelist_main(callback: CallbackQuery, state: FSMContext):
 
 @router.callback_query(F.data == "wl_view_all")
 async def cb_whitelist_view_all(callback: CallbackQuery):
+    from core.messages import get_whitelist_view_all_table
+    from modules.proxmox.monitor.utils import edit_rich_message
+    
     whitelists = await get_node_whitelists()
+    msg_text = get_whitelist_view_all_table(whitelists, get_node_label)
     
-    lines = ["📋 <b>Все правила белых списков Aegis IPS:</b>\n"]
-    
-    has_rules = False
-    for node, wl in whitelists.items():
-        ip_ports = wl.get("ip_ports", [])
-        processes = wl.get("processes", [])
-        
-        if not ip_ports and not processes:
-            continue
-            
-        has_rules = True
-        node_label = get_node_label(node)
-        lines.append(f"<b>{node_label}</b>:")
-        
-        if ip_ports:
-            # Если есть и процессы, то ветка IP идет как продолжение
-            branch_ip = " ├─ 🌐 IP / Порты:" if processes else " └─ 🌐 IP / Порты:"
-            lines.append(branch_ip)
-            for entry in ip_ports:
-                lines.append(f" │  └─ <code>{entry}</code>" if processes else f"    └─ <code>{entry}</code>")
-                
-        if processes:
-            lines.append(" └─ ⚙️ Процессы:")
-            for p in processes:
-                lines.append(f"    └─ <code>{p}</code>")
-        lines.append("")
-        
-    if not has_rules:
-        msg_text = "⚙️ <b>Белые списки Aegis IPS</b>\n\n❌ Нет настроенных правил ни для одного узла."
-    else:
-        msg_text = "\n".join(lines).strip()
-        
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🔙 К выбору узла", callback_data="whitelist_main")],
         [InlineKeyboardButton(text="🔙 В главное меню", callback_data="main_menu")]
     ])
     
-    await callback.message.edit_text(msg_text, parse_mode="HTML", reply_markup=kb)
+    await edit_rich_message(
+        chat_id=callback.message.chat.id,
+        message_id=callback.message.message_id,
+        text=msg_text,
+        parse_mode="HTML",
+        reply_markup=kb
+    )
     await callback.answer()
 
 @router.callback_query(F.data.startswith("wl_view:"))
@@ -168,22 +146,11 @@ async def cb_whitelist_view(callback: CallbackQuery, state: FSMContext):
     ip_ports = wl.get("ip_ports", [])
     processes = wl.get("processes", [])
     
-    text = f"📁 <b>Белый список для узла: {get_node_label(node)}</b>\n"
-    text += "━━━━━━━━━━━━━━━━━━━━━━━━\n"
+    from core.messages import get_whitelist_view_table
+    from modules.proxmox.monitor.utils import edit_rich_message
     
-    if not ip_ports and not processes:
-        text += "<i>Правил в белом списке для этого узла нет. Все соединения проверяются стандартными правилами IPS.</i>"
-    else:
-        if ip_ports:
-            text += "<b>Разрешенные IP / IP:Порты:</b>\n"
-            for item in ip_ports:
-                text += f"  • <code>{item}</code>\n"
-            text += "\n"
-        if processes:
-            text += "<b>Разрешенные процессы:</b>\n"
-            for item in processes:
-                text += f"  • <code>{item}</code>\n"
-                
+    text = get_whitelist_view_table(get_node_label(node), ip_ports, processes)
+    
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [
             InlineKeyboardButton(text="➕ Добавить IP/Порт", callback_data=f"wl_add_ip_port:{node}"),
@@ -194,7 +161,13 @@ async def cb_whitelist_view(callback: CallbackQuery, state: FSMContext):
     ])
     
     try:
-        await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
+        await edit_rich_message(
+            chat_id=callback.message.chat.id,
+            message_id=callback.message.message_id,
+            text=text,
+            parse_mode="HTML",
+            reply_markup=kb
+        )
     except Exception:
         pass
     await callback.answer()

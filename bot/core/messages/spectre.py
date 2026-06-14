@@ -153,3 +153,61 @@ def get_panel_status_message(panel_name, cpu, mem_curr, mem_tot, mem_pct, uptime
         f"| **🔴 Blocked** | `{blocked_clients}` |\n"
     )
 
+def get_top_traffic_table(results, period):
+    import html
+    period_label = "Сегодня" if period == "today" else "За месяц"
+    
+    rows = []
+    rows.append('<table border="1" style="border-collapse: collapse; width: 100%;">')
+    rows.append('  <tr style="background-color: #1e1e2e; color: #ffffff;">')
+    rows.append(f'    <th colspan="3" style="padding: 8px; text-align: center;"><b>🏆 Топ потребителей трафика ({period_label})</b></th>')
+    rows.append('  </tr>')
+    
+    has_any_data = False
+    
+    for r in results:
+        if isinstance(r, Exception):
+            continue
+            
+        panel, success, res = r
+        if not success or not res.get("success"):
+            error_info = res.get("msg") or res.get("error") or "Неизвестная ошибка"
+            rows.append('  <tr style="background-color: #2b2b36; color: #ffffff;">')
+            rows.append(f'    <td colspan="3" style="padding: 6px; color: #f38ba8;"><b>❌ {html.escape(panel.name)}:</b> <code>{html.escape(error_info)}</code></td>')
+            rows.append('  </tr>')
+            continue
+            
+        users = res.get("users", [])
+        rows.append('  <tr style="background-color: #2b2b36; color: #ffffff;">')
+        rows.append(f'    <td colspan="3" style="padding: 6px;"><b>📌 Панель: {html.escape(panel.name)}</b></td>')
+        rows.append('  </tr>')
+        
+        if users:
+            has_any_data = True
+            rows.append('  <tr style="background-color: #3b3b4f; color: #ffffff;">')
+            rows.append('    <td style="padding: 6px; width: 15%; text-align: center;"><b>#</b></td>')
+            rows.append('    <td style="padding: 6px; width: 55%;"><b>Пользователь</b></td>')
+            rows.append('    <td style="padding: 6px; width: 30%;"><b>Трафик</b></td>')
+            rows.append('  </tr>')
+            
+            for idx, user in enumerate(users[:10], 1):
+                gb = user["total"] / (1024**3)
+                rows.append('  <tr>')
+                rows.append(f'    <td style="padding: 8px; text-align: center;">{idx}</td>')
+                rows.append(f'    <td style="padding: 8px;"><code>{html.escape(user["email"])}</code></td>')
+                rows.append(f'    <td style="padding: 8px;"><b>{gb:.3f} GB</b></td>')
+                rows.append('  </tr>')
+        else:
+            rows.append('  <tr>')
+            rows.append('    <td colspan="3" style="padding: 8px; color: #a6adc8; text-align: center;"><i>Нет активности пользователей</i></td>')
+            rows.append('  </tr>')
+            
+    if not has_any_data:
+        rows.append('  <tr>')
+        rows.append('    <td colspan="3" style="padding: 8px; color: #a6adc8; text-align: center;"><i>Нет данных об активности пользователей на панелях.</i></td>')
+        rows.append('  </tr>')
+        
+    rows.append('</table>')
+    rows.append('\n<i>Для переключения используйте: <code>/top today</code> или <code>/top month</code></i>')
+    return "\n".join(rows)
+
