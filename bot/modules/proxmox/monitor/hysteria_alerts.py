@@ -27,6 +27,8 @@ def is_card_active(card, now_time):
 
 
 def check_new_ip_and_get_history(username, current_ip, current_timestamp, logs):
+    if current_ip in ("127.0.0.1", "::1", "localhost"):
+        return False, []
     user_logs = []
     for log in logs:
         details_dict = {}
