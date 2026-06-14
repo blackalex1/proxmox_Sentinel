@@ -4,7 +4,7 @@ import logging
 # Память для локальных временных блокировок на хосте Proxmox: dst_ip -> asyncio.Task
 active_local_blocks = {}
 
-async def block_local_ip(dst_ip, delay=3600):
+async def block_local_ip(dst_ip, delay=3600, reason="Вручную"):
     """
     Временно блокирует целевой IP на хосте Proxmox (как для самого хоста, так и для всех LXC контейнеров) через iptables.
     """
@@ -33,8 +33,8 @@ async def block_local_ip(dst_ip, delay=3600):
         from core.db import execute_write
         expire_time = (datetime.datetime.now() + datetime.timedelta(seconds=delay)).isoformat()
         await execute_write(
-            "INSERT OR REPLACE INTO temp_bans (server_ip, dst_ip, expire_time) VALUES (?, ?, ?)",
-            ("local", dst_ip, expire_time)
+            "INSERT OR REPLACE INTO temp_bans (server_ip, dst_ip, expire_time, reason) VALUES (?, ?, ?, ?)",
+            ("local", dst_ip, expire_time, reason or "Вручную")
         )
         
         async def unblock_task():

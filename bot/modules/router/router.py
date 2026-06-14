@@ -53,7 +53,7 @@ async def run_router_ssh_cmd(command):
         logging.error(f"[Router SSH] Ошибка выполнения команды: {err_msg}")
         return False, "", err_msg
 
-async def ban_router_ip(ip, delay=3600):
+async def ban_router_ip(ip, delay=3600, reason="Вручную"):
     """Блокирует весь входящий и исходящий трафик для указанного локального IP-адреса на роутере."""
     if not settings.router_monitor_enable:
         return False, "Мониторинг роутера отключен"
@@ -111,8 +111,8 @@ async def ban_router_ip(ip, delay=3600):
             from core.db import execute_write
             expire_time = (datetime.datetime.now() + datetime.timedelta(seconds=delay)).isoformat()
             await execute_write(
-                "INSERT OR REPLACE INTO temp_bans (server_ip, dst_ip, expire_time) VALUES (?, ?, ?)",
-                ("router", ip, expire_time)
+                "INSERT OR REPLACE INTO temp_bans (server_ip, dst_ip, expire_time, reason) VALUES (?, ?, ?, ?)",
+                ("router", ip, expire_time, reason or "Вручную")
             )
             logging.info(f"[Router Ban] Временная блокировка {ip} на роутере успешно сохранена в БД на {delay} сек.")
         except Exception as db_err:

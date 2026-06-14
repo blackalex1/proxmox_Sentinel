@@ -51,11 +51,19 @@ async def render_ban_center(message_or_query) -> tuple[str, InlineKeyboardMarkup
             else:
                 remaining = f"{minutes}м {secs}с"
                 
+            reason = "Вручную"
+            try:
+                if 'reason' in row.keys():
+                    reason = row['reason'] or "Вручную"
+            except Exception:
+                pass
+                
             active_bans.append({
                 'server_ip': row['server_ip'],
                 'dst_ip': row['dst_ip'],
                 'remaining': remaining,
-                'label': get_target_label(row['server_ip'])
+                'label': get_target_label(row['server_ip']),
+                'reason': reason
             })
         except Exception as e:
             logging.error(f"[Ban Center] Ошибка обработки записи бана: {e}")
@@ -63,7 +71,8 @@ async def render_ban_center(message_or_query) -> tuple[str, InlineKeyboardMarkup
                 'server_ip': row['server_ip'],
                 'dst_ip': row['dst_ip'],
                 'remaining': "Неизвестно",
-                'label': get_target_label(row['server_ip'])
+                'label': get_target_label(row['server_ip']),
+                'reason': "Вручную"
             })
 
     # Получаем заблокированные ключи из БД

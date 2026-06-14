@@ -46,7 +46,7 @@ async def handle_router_iptables_log_line(line):
             if len(recent_router_violations[src_ip]) >= settings.router_max_violations:
                 recent_router_violations[src_ip] = []
                 
-                success, desc = await ban_router_ip(src_ip)
+                success, desc = await ban_router_ip(src_ip, reason=f"Порт {dst_port} ({proto})")
                 if success:
                     timestamp = datetime.datetime.now().strftime("%H:%M:%S")
                     msg = get_router_autoblock_alert(src_ip, dst_host, dst_port, proto, timestamp)
@@ -120,7 +120,7 @@ async def handle_router_conntrack_log_line(line):
             if len(recent_router_violations[src_ip]) >= settings.router_max_violations:
                 recent_router_violations[src_ip] = []
                 
-                success, desc = await ban_router_ip(src_ip)
+                success, desc = await ban_router_ip(src_ip, reason=f"Порт {dst_port} ({proto})")
                 if success:
                     timestamp = datetime.datetime.now().strftime("%H:%M:%S")
                     msg = get_router_autoblock_alert(src_ip, dst_host, dst_port, proto, timestamp)

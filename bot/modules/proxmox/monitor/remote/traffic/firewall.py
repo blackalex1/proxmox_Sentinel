@@ -28,7 +28,7 @@ async def cleanup_remote_blocks_on_startup(server):
         logging.error(f"[Remote IPS {server['ip']}] Ошибка при попытке очистить блокировки на старте: {e}")
 
 
-async def block_remote_ip(server, dst_ip, delay=3600):
+async def block_remote_ip(server, dst_ip, delay=3600, reason="Вручную"):
     """
     Временно блокирует целевой IP на удаленном сервере с помощью iptables (цепочка OUTPUT).
     """
@@ -50,8 +50,8 @@ async def block_remote_ip(server, dst_ip, delay=3600):
         from core.db import execute_write
         expire_time = (datetime.datetime.now() + datetime.timedelta(seconds=delay)).isoformat()
         await execute_write(
-            "INSERT OR REPLACE INTO temp_bans (server_ip, dst_ip, expire_time) VALUES (?, ?, ?)",
-            (server['ip'], dst_ip, expire_time)
+            "INSERT OR REPLACE INTO temp_bans (server_ip, dst_ip, expire_time, reason) VALUES (?, ?, ?, ?)",
+            (server['ip'], dst_ip, expire_time, reason or "Вручную")
         )
         
         async def unblock_task():

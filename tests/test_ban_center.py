@@ -234,6 +234,26 @@ async def test_process_ban_center_unbankey_success():
         mock_message.edit_text.assert_called_once()
 
 
+@pytest.mark.asyncio
+async def test_render_ban_center_with_reasons():
+    from core.handlers.ban_center import render_ban_center
+    from core.db import execute_write
+    import datetime
+
+    await execute_write("DELETE FROM temp_bans")
+    future_time = (datetime.datetime.now() + datetime.timedelta(minutes=30)).isoformat()
+    
+    await execute_write(
+        "INSERT INTO temp_bans (server_ip, dst_ip, expire_time, reason) VALUES (?, ?, ?, ?)",
+        ("router", "192.168.1.100", future_time, "Порт 22 (TCP)")
+    )
+    
+    text, reply_markup = await render_ban_center(None)
+    assert "192.168.1.100" in text
+    assert "Роутер" in text
+    assert "Порт 22 (TCP)" in text
+
+
 def teardown_module(module):
     try:
         os.close(temp_db_fd)
