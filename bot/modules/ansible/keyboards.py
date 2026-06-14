@@ -14,6 +14,8 @@ def get_ansible_main_keyboard() -> InlineKeyboardMarkup:
         files = glob.glob(os.path.join(ANSIBLE_PLAYBOOKS_DIR, "*.yml")) + glob.glob(os.path.join(ANSIBLE_PLAYBOOKS_DIR, "*.yaml"))
         for f in files:
             filename = os.path.basename(f)
+            if filename == "reboot_server.yml" or filename.startswith("_"):
+                continue
             clean_name = filename[:50]
             buttons.append([InlineKeyboardButton(text=f"▶️ {filename}", callback_data=f"ansible_run_{clean_name}")])
     

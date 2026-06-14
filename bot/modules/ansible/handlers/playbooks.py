@@ -75,7 +75,7 @@ async def ask_for_host(callback: CallbackQuery, state: FSMContext):
     clean_name = callback.data.split("ansible_run_")[1]
     
     files = glob.glob(os.path.join(ANSIBLE_PLAYBOOKS_DIR, "*.yml")) + glob.glob(os.path.join(ANSIBLE_PLAYBOOKS_DIR, "*.yaml"))
-    playbook_path = next((f for f in files if os.path.basename(f)[:50] == clean_name), None)
+    playbook_path = next((f for f in files if os.path.basename(f)[:50] == clean_name and os.path.basename(f) != "reboot_server.yml"), None)
             
     if not playbook_path or not os.path.exists(playbook_path):
         await callback.answer("Файл плейбука не найден!", show_alert=True)
@@ -125,3 +125,9 @@ async def process_ansible_specific_host(callback: CallbackQuery, state: FSMConte
 async def process_ansible_host_input(message: types.Message, state: FSMContext):
     limit_host = message.text.strip()
     await execute_ansible_playbook(message, state, limit_host=limit_host)
+
+@router.callback_query(F.data.startswith("ansible_reboot_host:"))
+async def process_ansible_reboot_host(callback: CallbackQuery):
+    host_name = callback.data.split("ansible_reboot_host:")[1]
+    from modules.ansible.executor import reboot_host_via_ansible
+    await reboot_host_via_ansible(callback, host_name)
