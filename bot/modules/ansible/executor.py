@@ -45,6 +45,10 @@ async def execute_ansible_playbook(message_or_callback, state: FSMContext, limit
         await message_or_callback.message.edit_text(f"⏳ Запускаю <b>{real_filename}</b> {target_text}...\nОжидайте результата.", parse_mode="HTML")
         await message_or_callback.answer(f"Запускаю...")
 
+    # Регенерируем/обновляем hosts.ini для актуализации путей и хостов
+    from modules.ansible.inventory import generate_ansible_hosts_ini
+    generate_ansible_hosts_ini(ANSIBLE_PLAYBOOKS_DIR)
+
     # Определяем целевые IP-адреса для динамического обхода алертов во время выполнения
     from modules.ansible.parser import get_ansible_inventory_ips
     try:
@@ -189,6 +193,10 @@ async def reboot_host_via_ansible(message_or_callback, host_name: str):
     else:
         status_msg = await message_or_callback.answer(f"⏳ Перезагружаю хост <b>{html.escape(host_name)}</b> через Ansible...", parse_mode="HTML")
 
+    # Регенерируем/обновляем hosts.ini для актуализации путей и хостов
+    from modules.ansible.inventory import generate_ansible_hosts_ini
+    generate_ansible_hosts_ini(ANSIBLE_PLAYBOOKS_DIR)
+
     # Определяем целевой IP для временного обхода алертов
     running_targets = set()
     if host_name:
@@ -209,37 +217,32 @@ async def reboot_host_via_ansible(message_or_callback, host_name: str):
     active_ansible_targets.update(running_targets)
 
     try:
-        try:
-            process = await asyncio.create_subprocess_exec(
-                *cmd,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-                cwd=ANSIBLE_PLAYBOOKS_DIR
+        process = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            cwd=ANSIBLE_PLAYBOOKS_DIR
+        )
+        
+        stdout, stderr = await process.communicate()
+        
+        output = stdout.decode('utf-8', errors='ignore')
+        err_output = stderr.decode('utf-8', errors='ignore')
+        
+        if process.returncode == 0:
+            await status_msg.edit_text(
+                f"✅ Хост <b>{html.escape(host_name)}</b> успешно перезагружен!",
+                parse_mode="HTML",
+                reply_markup=get_ansible_main_keyboard()
             )
-            
-            stdout, stderr = await process.communicate()
-            
-            output = stdout.decode('utf-8', errors='ignore')
-            err_output = stderr.decode('utf-8', errors='ignore')
-            
-            if process.returncode == 0:
-                await status_msg.edit_text(
-                    f"✅ Хост <b>{html.escape(host_name)}</b> успешно перезагружен!",
-                    parse_mode="HTML",
-                    reply_markup=get_ansible_main_keyboard()
-                )
-            else:
-                full_log = output + "\n\n=== ERRRORS ===\n" + err_output
-                logging.error(f"Failed to reboot {host_name}: {full_log}")
-                await status_msg.edit_text(
-                    f"❌ Ошибка перезагрузки хоста <b>{html.escape(host_name)}</b>:\n<pre><code class='language-bash'>{html.escape(err_output or output)[:1000]}</code></pre>",
-                    parse_mode="HTML",
-                    reply_markup=get_ansible_main_keyboard()
-                )
-        finally:
-            from modules.proxmox.monitor.state import active_ansible_targets
-            for ip in running_targets:
-                active_ansible_targets.discard(ip)
+        else:
+            full_log = output + "\n\n=== ERRRORS ===\n" + err_output
+            logging.error(f"Failed to reboot {host_name}: {full_log}")
+            await status_msg.edit_text(
+                f"❌ Ошибка перезагрузки хоста <b>{html.escape(host_name)}</b>:\n<pre><code class='language-bash'>{html.escape(err_output or output)[:1000]}</code></pre>",
+                parse_mode="HTML",
+                reply_markup=get_ansible_main_keyboard()
+            )
     except Exception as e:
         logging.error(f"Error rebooting host {host_name}: {e}")
         await status_msg.edit_text(
@@ -247,3 +250,7 @@ async def reboot_host_via_ansible(message_or_callback, host_name: str):
             parse_mode="HTML",
             reply_markup=get_ansible_main_keyboard()
         )
+    finally:
+        from modules.proxmox.monitor.state import active_ansible_targets
+        for ip in running_targets:
+            active_ansible_targets.discard(ip)
