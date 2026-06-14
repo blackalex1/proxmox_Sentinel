@@ -27,12 +27,18 @@ async def handle_router_block_ip(callback: CallbackQuery):
             ])
             
             text = callback.message.text
-            if "🛑 УСТРОЙСТВО ЗАБЛОКИРОВАНО" not in text:
-                new_text = text + f"\n\n🛑 <b>УСТРОЙСТВО {ip} ЗАБЛОКИРОВАНО НА РОУТЕРЕ!</b>"
+            if text:
+                if "🛑 УСТРОЙСТВО ЗАБЛОКИРОВАНО" not in text:
+                    new_text = text + f"\n\n🛑 <b>УСТРОЙСТВО {ip} ЗАБЛОКИРОВАНО НА РОУТЕРЕ!</b>"
+                    try:
+                        await callback.message.edit_text(new_text, reply_markup=kb, parse_mode="HTML")
+                    except Exception as e:
+                        logging.error(f"Не удалось отредактировать сообщение при бане: {e}")
+            else:
                 try:
-                    await callback.message.edit_text(new_text, reply_markup=kb, parse_mode="HTML")
+                    await callback.message.edit_reply_markup(reply_markup=kb)
                 except Exception as e:
-                    logging.error(f"Не удалось отредактировать сообщение при бане: {e}")
+                    logging.error(f"Не удалось изменить клавиатуру при бане: {e}")
         else:
             await callback.answer(f"❌ Ошибка блокировки: {desc}", show_alert=True)
             
@@ -63,11 +69,17 @@ async def handle_router_unblock_ip(callback: CallbackQuery):
             
             # Убираем строчку блокировки из текста
             text = callback.message.text
-            new_text = text.replace(f"\n\n🛑 <b>УСТРОЙСТВО {ip} ЗАБЛОКИРОВАНО НА РОУТЕРЕ!</b>", "")
-            try:
-                await callback.message.edit_text(new_text, reply_markup=kb, parse_mode="HTML")
-            except Exception as e:
-                logging.error(f"Не удалось отредактировать сообщение при разбане: {e}")
+            if text:
+                new_text = text.replace(f"\n\n🛑 <b>УСТРОЙСТВО {ip} ЗАБЛОКИРОВАНО НА РОУТЕРЕ!</b>", "")
+                try:
+                    await callback.message.edit_text(new_text, reply_markup=kb, parse_mode="HTML")
+                except Exception as e:
+                    logging.error(f"Не удалось отредактировать сообщение при разбане: {e}")
+            else:
+                try:
+                    await callback.message.edit_reply_markup(reply_markup=kb)
+                except Exception as e:
+                    logging.error(f"Не удалось изменить клавиатуру при разбане: {e}")
         else:
             await callback.answer(f"❌ Ошибка снятия блокировки: {desc}", show_alert=True)
             
