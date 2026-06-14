@@ -76,7 +76,7 @@ async def cb_spectre_menu(callback: CallbackQuery):
         domain = settings_data["ssl_domain"]
         port_str = f":{parsed.port}" if parsed.port and parsed.port not in (80, 443) else ""
         webapp_url = f"https://{domain}{port_str}/{panel.secret_path}/"
-    kb = InlineKeyboardMarkup(inline_keyboard=[
+    menu_buttons = [
         [InlineKeyboardButton(text=f"📱 Открыть WebApp", web_app=WebAppInfo(url=webapp_url))],
         [
             InlineKeyboardButton(text="⚙️ Статус", callback_data=f"spectre_status:{panel_key}"),
@@ -85,12 +85,20 @@ async def cb_spectre_menu(callback: CallbackQuery):
         [
             InlineKeyboardButton(text="👥 Список клиентов", callback_data=f"spectre_clients:{panel_key}:0"),
             InlineKeyboardButton(text="📥 Бэкап", callback_data=f"spectre_backup:{panel_key}")
-        ],
-        [
-            InlineKeyboardButton(text="➕ Добавить слейв", callback_data=f"spectre_add_slave:{panel_key}"),
-            InlineKeyboardButton(text="🔙 Назад к списку", callback_data="spectre_list")
         ]
+    ]
+    
+    if panel.source_type == 'vps':
+        menu_buttons.append([
+            InlineKeyboardButton(text="🔒 Логи входа VPS", callback_data=f"vps_auth_{panel.identifier}")
+        ])
+        
+    menu_buttons.append([
+        InlineKeyboardButton(text="➕ Добавить слейв", callback_data=f"spectre_add_slave:{panel_key}"),
+        InlineKeyboardButton(text="🔙 Назад к списку", callback_data="spectre_list")
     ])
+    
+    kb = InlineKeyboardMarkup(inline_keyboard=menu_buttons)
     await callback.message.edit_text(
         f"🚀 <b>Управление панелью {panel.name}</b>\n\nВыберите действие:",
         reply_markup=kb,
