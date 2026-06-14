@@ -49,6 +49,7 @@ def generate_ansible_hosts_ini(directory: str) -> bool:
     from modules.proxmox.api import proxmox
     from core.config import settings
     
+    directory = os.path.abspath(directory)
     # Создаем папку, если она не существует
     if not os.path.exists(directory):
         try:
