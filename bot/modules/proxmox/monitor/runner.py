@@ -189,10 +189,15 @@ async def monitor_panel_audit_logs():
                                 time_str = datetime.datetime.now().strftime("%H:%M:%S")
                                 
                             msg = get_ips_autoblock_alert_audit(panel.name, email, details, time_str)
+                            
+                            from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+                            keyboard = InlineKeyboardMarkup(inline_keyboard=[
+                                [InlineKeyboardButton(text="🔓 Разблокировать", callback_data=f"unban_tunnel:{email}")]
+                            ])
                                    
                             # Отправляем алерт всем администраторам контроллера
                             try:
-                                await send_alert_to_admins(msg, parse_mode="markdown")
+                                await send_alert_to_admins(msg, parse_mode="markdown", reply_markup=keyboard)
                             except Exception as e:
                                 logging.error(f"[Audit Monitor] Не удалось отправить алерт: {e}")
                                     
