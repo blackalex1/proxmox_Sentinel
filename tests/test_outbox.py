@@ -56,6 +56,39 @@ def test_outbox_save_load_disk(clean_outbox):
     assert new_outbox.queue[0]["text"] == "Тестовое сообщение 1"
     assert new_outbox.queue[0]["kwargs"] == {"parse_mode": "HTML"}
 
+def test_outbox_save_load_disk_with_keyboard(clean_outbox):
+    """
+    Проверяет, что сообщения с клавиатурой InlineKeyboardMarkup корректно
+    сохраняются на диск (сериализуются в JSON) и восстанавливаются обратно.
+    """
+    outbox = clean_outbox
+    
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="Кнопка 1", callback_data="btn1")]
+    ])
+    
+    outbox.queue.append({
+        "chat_id": 54321,
+        "text": "Сообщение с кнопкой",
+        "kwargs": {"reply_markup": keyboard},
+        "timestamp": 123456789.0
+    })
+    outbox.save_to_disk()
+    
+    # Файл должен успешно сохраниться, несмотря на наличие клавиатуры
+    assert os.path.exists(OUTBOX_FILE)
+    
+    # Загружаем обратно и проверяем
+    new_outbox = ResilientOutbox()
+    assert len(new_outbox.queue) == 1
+    loaded_markup = new_outbox.queue[0]["kwargs"]["reply_markup"]
+    
+    assert isinstance(loaded_markup, InlineKeyboardMarkup)
+    assert len(loaded_markup.inline_keyboard) == 1
+    assert loaded_markup.inline_keyboard[0][0].text == "Кнопка 1"
+    assert loaded_markup.inline_keyboard[0][0].callback_data == "btn1"
+
 @pytest.mark.asyncio
 async def test_bot_patching_and_fallback(clean_outbox):
     """
