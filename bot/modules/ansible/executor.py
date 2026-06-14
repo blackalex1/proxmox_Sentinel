@@ -59,17 +59,19 @@ async def execute_ansible_playbook(message_or_callback, state: FSMContext, limit
     running_targets = set()
     if limit_host:
         import re
-        if re.match(r'^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$', limit_host):
-            running_targets.add(limit_host)
-        else:
-            from modules.ansible.inventory import get_existing_ip_mappings
-            try:
-                ip_to_name, _ = get_existing_ip_mappings(ANSIBLE_PLAYBOOKS_DIR)
-                for ip, name in ip_to_name.items():
-                    if name == limit_host:
-                        running_targets.add(ip)
-            except Exception:
-                pass
+        hosts_list = [h.strip() for h in limit_host.split(",") if h.strip()]
+        for single_host in hosts_list:
+            if re.match(r'^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$', single_host):
+                running_targets.add(single_host)
+            else:
+                from modules.ansible.inventory import get_existing_ip_mappings
+                try:
+                    ip_to_name, _ = get_existing_ip_mappings(ANSIBLE_PLAYBOOKS_DIR)
+                    for ip, name in ip_to_name.items():
+                        if name == single_host:
+                            running_targets.add(ip)
+                except Exception:
+                    pass
     else:
         running_targets = inventory_ips
 
@@ -112,10 +114,12 @@ async def execute_ansible_playbook(message_or_callback, state: FSMContext, limit
         from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
         keyboard = get_ansible_main_keyboard()
         if reboot_hosts:
-            reboot_buttons = []
-            for h in reboot_hosts:
-                reboot_buttons.append([InlineKeyboardButton(text=f"🔄 Перезагрузить {h}", callback_data=f"ansible_reboot_host:{h}")])
-            keyboard = InlineKeyboardMarkup(inline_keyboard=reboot_buttons + keyboard.inline_keyboard)
+            from modules.ansible.handlers.playbooks import AnsibleState
+            await state.set_state(AnsibleState.waiting_for_reboot)
+            await state.update_data(reboot_hosts=reboot_hosts, selected_reboot_hosts=[])
+            
+            from modules.ansible.keyboards import get_ansible_reboot_keyboard
+            keyboard = get_ansible_reboot_keyboard(reboot_hosts, [])
 
         if len(full_log_escaped) > 3500:
             temp_log_path = f"ansible_log_{real_filename}.txt"
@@ -172,12 +176,29 @@ def remove_reboot_button(reply_markup, host_name: str):
     if not reply_markup or not reply_markup.inline_keyboard:
         return reply_markup
     
+    hosts_to_remove = {h.strip() for h in host_name.split(",")}
     new_rows = []
-    target_callback = f"ansible_reboot_host:{host_name}"
+    
     for row in reply_markup.inline_keyboard:
-        filtered_row = [btn for btn in row if btn.callback_data != target_callback]
-        if filtered_row:
-            new_rows.append(filtered_row)
+        new_row = []
+        for btn in row:
+            is_reboot_btn = btn.callback_data.startswith("ansible_reboot_host:")
+            is_toggle_btn = btn.callback_data.startswith("ansible_toggle_reboot:")
+            
+            if is_reboot_btn:
+                btn_host = btn.callback_data.split("ansible_reboot_host:")[1]
+                if btn_host in hosts_to_remove:
+                    continue
+            elif is_toggle_btn:
+                btn_host = btn.callback_data.split("ansible_toggle_reboot:")[1]
+                if btn_host in hosts_to_remove:
+                    continue
+            elif btn.callback_data == "ansible_reboot_selected":
+                continue
+                
+            new_row.append(btn)
+        if new_row:
+            new_rows.append(new_row)
             
     from aiogram.types import InlineKeyboardMarkup
     return InlineKeyboardMarkup(inline_keyboard=new_rows)
@@ -198,7 +219,7 @@ async def reboot_host_via_ansible(message_or_callback, host_name: str):
         cmd.extend(["-i", inventory_path])
         
     if isinstance(message_or_callback, types.CallbackQuery):
-        # Убираем только кнопку этого хоста из клавиатуры оригинального сообщения
+        # Убираем кнопки перезагруженных хостов из клавиатуры оригинального сообщения
         try:
             old_markup = message_or_callback.message.reply_markup
             if old_markup:
@@ -207,13 +228,13 @@ async def reboot_host_via_ansible(message_or_callback, host_name: str):
         except Exception:
             pass
             
-        status_msg = await message_or_callback.message.answer(f"⏳ Перезагружаю хост <b>{html.escape(host_name)}</b> через Ansible...", parse_mode="HTML")
+        status_msg = await message_or_callback.message.answer(f"⏳ Перезагружаю хосты <b>{html.escape(host_name)}</b> через Ansible...", parse_mode="HTML")
         try:
             await message_or_callback.answer()
         except Exception:
             pass
     else:
-        status_msg = await message_or_callback.answer(f"⏳ Перезагружаю хост <b>{html.escape(host_name)}</b> через Ansible...", parse_mode="HTML")
+        status_msg = await message_or_callback.answer(f"⏳ Перезагружаю хосты <b>{html.escape(host_name)}</b> через Ansible...", parse_mode="HTML")
 
     # Регенерируем/обновляем hosts.ini для актуализации путей и хостов
     from modules.ansible.inventory import generate_ansible_hosts_ini
@@ -223,17 +244,19 @@ async def reboot_host_via_ansible(message_or_callback, host_name: str):
     running_targets = set()
     if host_name:
         import re
-        if re.match(r'^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$', host_name):
-            running_targets.add(host_name)
-        else:
-            from modules.ansible.inventory import get_existing_ip_mappings
-            try:
-                ip_to_name, _ = get_existing_ip_mappings(ANSIBLE_PLAYBOOKS_DIR)
-                for ip, name in ip_to_name.items():
-                    if name == host_name:
-                        running_targets.add(ip)
-            except Exception:
-                pass
+        hosts_list = [h.strip() for h in host_name.split(",") if h.strip()]
+        for single_host in hosts_list:
+            if re.match(r'^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$', single_host):
+                running_targets.add(single_host)
+            else:
+                from modules.ansible.inventory import get_existing_ip_mappings
+                try:
+                    ip_to_name, _ = get_existing_ip_mappings(ANSIBLE_PLAYBOOKS_DIR)
+                    for ip, name in ip_to_name.items():
+                        if name == single_host:
+                            running_targets.add(ip)
+                except Exception:
+                    pass
 
     from modules.proxmox.monitor.state import active_ansible_targets
     active_ansible_targets.update(running_targets)
@@ -253,7 +276,7 @@ async def reboot_host_via_ansible(message_or_callback, host_name: str):
         
         if process.returncode == 0:
             await status_msg.edit_text(
-                f"✅ Хост <b>{html.escape(host_name)}</b> успешно перезагружен!",
+                f"✅ Хосты <b>{html.escape(host_name)}</b> успешно перезагружены!",
                 parse_mode="HTML",
                 reply_markup=get_ansible_main_keyboard()
             )
@@ -261,14 +284,14 @@ async def reboot_host_via_ansible(message_or_callback, host_name: str):
             full_log = output + "\n\n=== ERRRORS ===\n" + err_output
             logging.error(f"Failed to reboot {host_name}: {full_log}")
             await status_msg.edit_text(
-                f"❌ Ошибка перезагрузки хоста <b>{html.escape(host_name)}</b>:\n<pre><code class='language-bash'>{html.escape(err_output or output)[:1000]}</code></pre>",
+                f"❌ Ошибка перезагрузки хостов <b>{html.escape(host_name)}</b>:\n<pre><code class='language-bash'>{html.escape(err_output or output)[:1000]}</code></pre>",
                 parse_mode="HTML",
                 reply_markup=get_ansible_main_keyboard()
             )
     except Exception as e:
-        logging.error(f"Error rebooting host {host_name}: {e}")
+        logging.error(f"Error rebooting hosts {host_name}: {e}")
         await status_msg.edit_text(
-            f"❌ Системная ошибка при перезагрузке хоста {host_name}:\n<code>{e}</code>",
+            f"❌ Системная ошибка при перезагрузке хостов {host_name}:\n<code>{e}</code>",
             parse_mode="HTML",
             reply_markup=get_ansible_main_keyboard()
         )
