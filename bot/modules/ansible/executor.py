@@ -184,8 +184,13 @@ async def reboot_host_via_ansible(message_or_callback, host_name: str):
         cmd.extend(["-i", inventory_path])
         
     if isinstance(message_or_callback, types.CallbackQuery):
-        status_msg = message_or_callback.message
-        await message_or_callback.message.edit_text(f"⏳ Перезагружаю хост <b>{html.escape(host_name)}</b> через Ansible...", parse_mode="HTML")
+        # Убираем клавиатуру с оригинального сообщения, чтобы исключить повторные клики
+        try:
+            await message_or_callback.message.edit_reply_markup(reply_markup=None)
+        except Exception:
+            pass
+            
+        status_msg = await message_or_callback.message.answer(f"⏳ Перезагружаю хост <b>{html.escape(host_name)}</b> через Ansible...", parse_mode="HTML")
         try:
             await message_or_callback.answer()
         except Exception:
