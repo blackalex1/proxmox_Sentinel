@@ -122,3 +122,61 @@ async def process_lxc_port_traffic(callback: CallbackQuery):
         except Exception:
             pass
 
+
+@router.callback_query(F.data.startswith("vps_auth_"))
+async def process_vps_auth_logs(callback: CallbackQuery):
+    try:
+        server_ip = callback.data[len("vps_auth_"):]
+        
+        from modules.proxmox.monitor import lxc_auth_history
+        history = lxc_auth_history.get(server_ip, [])
+        
+        text = f"🔒 <b>Логи авторизации VPS ({server_ip}):</b>\n\n"
+        
+        if not history:
+            text += "<i>История пуста или бот был недавно перезапущен. Логи появятся при новых попытках входа.</i>"
+        else:
+            for item in list(history)[-10:]:
+                t_emoji = "🟢" if item.get('type') == 'SUCCESS' else "🔴" if item.get('type') == 'FAILED' else "🛠"
+                user_esc = html.escape(str(item.get('user', 'unknown'))[:30])
+                msg_esc = html.escape(str(item.get('msg', ''))[:80])
+                ip_esc = html.escape(str(item.get('ip', 'N/A'))[:45])
+                text += f"{t_emoji} <code>{item.get('time', '')}</code> | <b>{user_esc}</b>\n"
+                text += f"   └─ {msg_esc} (IP: <code>{ip_esc}</code>)\n\n"
+                
+        if len(text) > 4000:
+            text = text[:3900] + "\n\n<i>... [Часть логов обрезана из-за лимитов Telegram] ...</i>"
+
+        from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+        from core.spectre_client.manager import spectre_manager
+        
+        panel_key = None
+        for p_key, p in spectre_manager.panels.items():
+            if p.source_type == 'vps' and p.identifier == server_ip:
+                panel_key = p_key
+                break
+                
+        kb_buttons = [
+            [InlineKeyboardButton(text="🔄 Обновить лог", callback_data=f"vps_auth_{server_ip}")]
+        ]
+        if panel_key:
+            kb_buttons.append([InlineKeyboardButton(text="🔙 Назад к панели", callback_data=f"spectre_menu:{panel_key}")])
+        else:
+            kb_buttons.append([InlineKeyboardButton(text="🔙 В главное меню", callback_data="main_menu")])
+            
+        kb = InlineKeyboardMarkup(inline_keyboard=kb_buttons)
+        
+        try:
+            await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
+        except TelegramBadRequest as e:
+            if "message is not modified" in str(e):
+                await callback.answer("Лог актуален")
+            else:
+                raise
+    except Exception as e:
+        err_msg = str(e)[:120]
+        try:
+            await callback.answer(f"Ошибка получения логов VPS: {err_msg}", show_alert=True)
+        except Exception:
+            pass
+
