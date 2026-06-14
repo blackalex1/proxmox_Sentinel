@@ -75,25 +75,30 @@ def generate_ansible_hosts_ini(directory: str) -> bool:
     old_key_path = global_vars.get("ansible_ssh_private_key_file")
     target_key_path = os.path.join(directory, 'id_ed25519_ansible').replace('\\', '/')
     
-    if old_key_path and old_key_path != target_key_path:
-        # Проверяем, существует ли старый файл ключа
-        if os.path.exists(old_key_path) and os.path.isfile(old_key_path):
-            try:
-                import shutil
-                shutil.copy2(old_key_path, target_key_path)
-                # Устанавливаем права 600 (только для Linux/Unix)
-                if os.name != 'nt':
-                    try:
-                        os.chmod(target_key_path, 0o600)
-                    except Exception:
-                        pass
-                logging.info(f"Приватный ключ успешно скопирован из {old_key_path} в {target_key_path}")
-                # Обновляем путь в переменных
+    if old_key_path:
+        old_key_path_abs = os.path.abspath(old_key_path)
+        if old_key_path_abs != target_key_path:
+            # Проверяем, существует ли старый файл ключа
+            if os.path.exists(old_key_path_abs) and os.path.isfile(old_key_path_abs):
+                try:
+                    import shutil
+                    shutil.copy2(old_key_path_abs, target_key_path)
+                    # Устанавливаем права 600 (только для Linux/Unix)
+                    if os.name != 'nt':
+                        try:
+                            os.chmod(target_key_path, 0o600)
+                        except Exception:
+                            pass
+                    logging.info(f"Приватный ключ успешно скопирован из {old_key_path_abs} в {target_key_path}")
+                    # Обновляем путь в переменных
+                    global_vars["ansible_ssh_private_key_file"] = target_key_path
+                except Exception as e:
+                    logging.error(f"Не удалось скопировать ключ в папку ansible: {e}")
+            else:
+                # Если старый путь не существует, но мы хотим, чтобы ключ лежал в папке ansible
                 global_vars["ansible_ssh_private_key_file"] = target_key_path
-            except Exception as e:
-                logging.error(f"Не удалось скопировать ключ в папку ansible: {e}")
         else:
-            # Если старый путь не существует, но мы хотим, чтобы ключ лежал в папке ansible
+            # Пути указывают на один и тот же файл, просто приводим к абсолютному виду
             global_vars["ansible_ssh_private_key_file"] = target_key_path
         
     hosts_list = []
