@@ -73,15 +73,14 @@ async def execute_ansible_playbook(message_or_callback, state: FSMContext, limit
     active_ansible_targets.update(running_targets)
     
     try:
-        try:
-            process = await asyncio.create_subprocess_exec(
-                *cmd,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-                cwd=ANSIBLE_PLAYBOOKS_DIR
-            )
-            
-            stdout, stderr = await process.communicate()
+        process = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            cwd=ANSIBLE_PLAYBOOKS_DIR
+        )
+        
+        stdout, stderr = await process.communicate()
         
         output = stdout.decode('utf-8', errors='ignore')
         err_output = stderr.decode('utf-8', errors='ignore')
@@ -153,11 +152,6 @@ async def execute_ansible_playbook(message_or_callback, state: FSMContext, limit
                 reply_markup=keyboard
             )
 
-        finally:
-            from modules.proxmox.monitor.state import active_ansible_targets
-            for ip in running_targets:
-                active_ansible_targets.discard(ip)
-
     except Exception as e:
         logging.error(f"Ansible run error: {e}")
         await status_msg.edit_text(
@@ -165,6 +159,10 @@ async def execute_ansible_playbook(message_or_callback, state: FSMContext, limit
             parse_mode="HTML", 
             reply_markup=get_ansible_main_keyboard()
         )
+    finally:
+        from modules.proxmox.monitor.state import active_ansible_targets
+        for ip in running_targets:
+            active_ansible_targets.discard(ip)
 
 async def reboot_host_via_ansible(message_or_callback, host_name: str):
     playbook_path = os.path.abspath(os.path.join(ANSIBLE_PLAYBOOKS_DIR, 'reboot_server.yml'))
