@@ -168,6 +168,20 @@ async def execute_ansible_playbook(message_or_callback, state: FSMContext, limit
         for ip in running_targets:
             active_ansible_targets.discard(ip)
 
+def remove_reboot_button(reply_markup, host_name: str):
+    if not reply_markup or not reply_markup.inline_keyboard:
+        return reply_markup
+    
+    new_rows = []
+    target_callback = f"ansible_reboot_host:{host_name}"
+    for row in reply_markup.inline_keyboard:
+        filtered_row = [btn for btn in row if btn.callback_data != target_callback]
+        if filtered_row:
+            new_rows.append(filtered_row)
+            
+    from aiogram.types import InlineKeyboardMarkup
+    return InlineKeyboardMarkup(inline_keyboard=new_rows)
+
 async def reboot_host_via_ansible(message_or_callback, host_name: str):
     playbook_path = os.path.abspath(os.path.join(ANSIBLE_PLAYBOOKS_DIR, 'reboot_server.yml'))
     
@@ -184,9 +198,12 @@ async def reboot_host_via_ansible(message_or_callback, host_name: str):
         cmd.extend(["-i", inventory_path])
         
     if isinstance(message_or_callback, types.CallbackQuery):
-        # Убираем клавиатуру с оригинального сообщения, чтобы исключить повторные клики
+        # Убираем только кнопку этого хоста из клавиатуры оригинального сообщения
         try:
-            await message_or_callback.message.edit_reply_markup(reply_markup=None)
+            old_markup = message_or_callback.message.reply_markup
+            if old_markup:
+                new_markup = remove_reboot_button(old_markup, host_name)
+                await message_or_callback.message.edit_reply_markup(reply_markup=new_markup)
         except Exception:
             pass
             
