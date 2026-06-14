@@ -45,3 +45,25 @@ def parse_ansible_inventory(directory: str) -> dict:
                 logging.error(f"Error reading inventory {path}: {e}")
     res["hosts"] = sorted(list(res["hosts"]))
     return res
+
+def get_ansible_inventory_ips(directory: str) -> set:
+    inventory_files = ['hosts.ini', 'inventory', 'hosts']
+    ips = set()
+    for filename in inventory_files:
+        path = os.path.join(directory, filename)
+        if os.path.exists(path):
+            try:
+                with open(path, 'r', encoding='utf-8') as f:
+                    for line in f:
+                        line = line.strip()
+                        if not line or line.startswith('#') or line.startswith(';'):
+                            continue
+                        parts = line.split()
+                        for p in parts:
+                            if p.startswith('ansible_host='):
+                                ip = p.split('=')[1].strip()
+                                ips.add(ip)
+            except Exception as e:
+                logging.error(f"Error reading inventory {path} for IPs: {e}")
+            break
+    return ips
