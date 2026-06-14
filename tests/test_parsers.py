@@ -104,12 +104,9 @@ ansible_ssh_private_key_file=/path/to/key
             success = generate_ansible_hosts_ini(playbooks_dir)
             assert success is True
             
-            # Читаем новый файл и проверяем содержимое
+            # Читаем файл и проверяем, что он не изменился
             new_content = existing_file.read_text(encoding="utf-8")
-            assert "my_vps ansible_host=198.51.100.42" in new_content
-            assert "ansible_user=my_test_user" in new_content
-            assert "[vpn]" in new_content
-            assert "my_vps" in new_content
+            assert new_content == hosts_ini_content
         finally:
             proxmox.proxmox = original_pve
     finally:
