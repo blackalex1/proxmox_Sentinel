@@ -10,7 +10,12 @@ router = Router(name="proxmox_vms_router")
 @router.callback_query(F.data.startswith("vm_"))
 async def process_vm_select(callback: CallbackQuery):
     try:
-        _, node_name, vmid, vm_type = callback.data.split("_")
+        # callback.data starts with "vm_"
+        data = callback.data[len("vm_"):]
+        parts = data.rsplit("_", 2)
+        node_name = parts[0]
+        vmid = parts[1]
+        vm_type = parts[2]
         
         if vm_type == 'host' or str(vmid) == '0':
             status_data = proxmox.get_node_status(node_name)
@@ -93,7 +98,17 @@ async def process_vm_select(callback: CallbackQuery):
 @router.callback_query(F.data.startswith("cmd_"))
 async def process_vm_control(callback: CallbackQuery):
     try:
-        action, node_name, vmid, vm_type = callback.data.split("_")[1:5]
+        # callback.data looks like "cmd_{action}_{node_name}_{vmid}_{vm_type}"
+        data = callback.data[len("cmd_"):]
+        parts = data.split("_", 1)
+        action = parts[0]
+        remaining = parts[1]
+        
+        rem_parts = remaining.rsplit("_", 2)
+        node_name = rem_parts[0]
+        vmid = rem_parts[1]
+        vm_type = rem_parts[2]
+        
         is_lxc = (vm_type == 'lxc')
         
         await callback.answer(f"⏳ Выполняю команду {action}...", show_alert=False)

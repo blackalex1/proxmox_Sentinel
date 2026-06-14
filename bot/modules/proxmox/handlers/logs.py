@@ -9,9 +9,10 @@ router = Router(name="proxmox_logs_router")
 @router.callback_query(F.data.startswith("lxc_auth_"))
 async def process_lxc_auth_logs(callback: CallbackQuery):
     try:
-        parts = callback.data.split("_")
-        node_name = parts[2]
-        vmid = int(parts[3])
+        # callback.data looks like "lxc_auth_{node_name}_{vmid}"
+        data = callback.data[len("lxc_auth_"):]
+        node_name, vmid_str = data.rsplit("_", 1)
+        vmid = int(vmid_str)
         
         from modules.proxmox.monitor import lxc_auth_history, lxc_name_cache
         name = lxc_name_cache.get(vmid, "Хост Proxmox VE" if vmid == 0 else "Unknown")
@@ -26,11 +27,11 @@ async def process_lxc_auth_logs(callback: CallbackQuery):
             text += "<i>История пуста или бот был недавно перезапущен. Логи появятся при новых попытках входа.</i>"
         else:
             for item in list(history)[-10:]:
-                t_emoji = "🟢" if item['type'] == 'SUCCESS' else "🔴" if item['type'] == 'FAILED' else "🛠"
-                user_esc = html.escape(str(item['user'])[:30])
-                msg_esc = html.escape(str(item['msg'])[:80])
-                ip_esc = html.escape(str(item['ip'])[:45])
-                text += f"{t_emoji} <code>{item['time']}</code> | <b>{user_esc}</b>\n"
+                t_emoji = "🟢" if item.get('type') == 'SUCCESS' else "🔴" if item.get('type') == 'FAILED' else "🛠"
+                user_esc = html.escape(str(item.get('user', 'unknown'))[:30])
+                msg_esc = html.escape(str(item.get('msg', ''))[:80])
+                ip_esc = html.escape(str(item.get('ip', 'N/A'))[:45])
+                text += f"{t_emoji} <code>{item.get('time', '')}</code> | <b>{user_esc}</b>\n"
                 text += f"   └─ {msg_esc} (IP: <code>{ip_esc}</code>)\n\n"
                 
         if len(text) > 4000:
@@ -60,9 +61,10 @@ async def process_lxc_auth_logs(callback: CallbackQuery):
 @router.callback_query(F.data.startswith("lxc_ports_"))
 async def process_lxc_port_traffic(callback: CallbackQuery):
     try:
-        parts = callback.data.split("_")
-        node_name = parts[2]
-        vmid = int(parts[3])
+        # callback.data looks like "lxc_ports_{node_name}_{vmid}"
+        data = callback.data[len("lxc_ports_"):]
+        node_name, vmid_str = data.rsplit("_", 1)
+        vmid = int(vmid_str)
         
         from modules.proxmox.monitor import lxc_traffic_history, lxc_name_cache
         name = lxc_name_cache.get(vmid, "Хост Proxmox VE" if vmid == 0 else "Unknown")
