@@ -74,6 +74,10 @@ def test_generate_ansible_hosts_ini(tmp_path):
 master ansible_host=192.168.1.77
 my_vps ansible_host=198.51.100.42
 
+[my_custom_group]
+master
+my_vps
+
 [all:vars]
 ansible_user=my_test_user
 ansible_ssh_private_key_file=/path/to/key
@@ -104,9 +108,23 @@ ansible_ssh_private_key_file=/path/to/key
             success = generate_ansible_hosts_ini(playbooks_dir)
             assert success is True
             
-            # Читаем файл и проверяем, что он не изменился
+            # Читаем новый файл и проверяем содержимое
             new_content = existing_file.read_text(encoding="utf-8")
-            assert new_content == hosts_ini_content
+            # Должен быть Proxmox Host (127.0.0.1 или proxmox_host) и Remote VPS (198.51.100.42)
+            assert "proxmox ansible_host=" in new_content
+            assert "my_vps ansible_host=198.51.100.42" in new_content
+            
+            # Кастомная группа должна сохраниться, но отфильтроваться (master не активен, my_vps активен)
+            assert "[my_custom_group]" in new_content
+            assert "my_vps" in new_content
+            assert "master" not in new_content
+            
+            # Автоматических групп (vpn, control, ai и т.д.) быть НЕ должно
+            assert "[vpn]" not in new_content
+            assert "[control]" not in new_content
+            
+            # Глобальные переменные должны сохраниться
+            assert "ansible_user=my_test_user" in new_content
         finally:
             proxmox.proxmox = original_pve
     finally:
