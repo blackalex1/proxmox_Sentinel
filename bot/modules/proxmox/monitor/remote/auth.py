@@ -176,6 +176,19 @@ async def handle_remote_ssh_auth_line(line, server=None):
                         kb.append([InlineKeyboardButton(text="🚫 Заблокировать SSH-ключ", callback_data=f"bankey:{server['ip']}:{sshd_pid}")])
                     
                     reply_markup = InlineKeyboardMarkup(inline_keyboard=kb)
+                
+                # Сохраняем событие в историю
+                event = {
+                    'time': datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                    'type': 'SUCCESS',
+                    'user': username,
+                    'ip': client_ip,
+                    'pid': sshd_pid,
+                    'msg': f"Вход через {auth_method} (ключ: {key_name or 'N/A'})" if auth_method == "publickey" else f"Вход через {auth_method}"
+                }
+                from modules.proxmox.monitor.state import lxc_auth_history
+                lxc_auth_history[server['ip']].append(event)
+                
                 await send_alert_to_admins(msg, parse_mode="markdown", reply_markup=reply_markup)
                 logging.info(f"[Remote SSH Auth {server['ip']}] Successful login for {username} from {client_ip} via {auth_method} {key_details}")
 
@@ -185,6 +198,18 @@ async def handle_remote_ssh_auth_line(line, server=None):
                 client_ip = ip_match.group(1)
                 user_match = re.search(r"for\s+(invalid user\s+)?(\S+)\s+from", line)
                 username = user_match.group(2) if user_match else "unknown"
+                
+                # Сохраняем событие в историю
+                event = {
+                    'time': datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                    'type': 'FAILED',
+                    'user': username,
+                    'ip': client_ip,
+                    'msg': "Неверный пароль или SSH-ключ"
+                }
+                from modules.proxmox.monitor.state import lxc_auth_history
+                lxc_auth_history[server['ip']].append(event)
+                
                 logging.warning(f"[Remote SSH Auth {server['ip']}] Failed login attempt for {username} from {client_ip}")
 
     except Exception as e:
