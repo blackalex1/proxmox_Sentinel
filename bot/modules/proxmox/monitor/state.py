@@ -25,3 +25,6 @@ recent_bot_ports = deque(maxlen=200)
 # Реестр активных проверок прокси: (host, port) -> count
 active_proxy_checks = defaultdict(int)
 
+# Временный набор IP-адресов, на которых сейчас активно выполняется ansible-playbook
+active_ansible_targets = set()
+
