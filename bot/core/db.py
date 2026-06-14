@@ -66,9 +66,15 @@ def init_db():
                     server_ip TEXT,
                     dst_ip TEXT,
                     expire_time TEXT,
+                    reason TEXT DEFAULT 'Вручную',
                     PRIMARY KEY (server_ip, dst_ip)
                 );
             """)
+            try:
+                conn.execute("ALTER TABLE temp_bans ADD COLUMN reason TEXT DEFAULT 'Вручную';")
+            except sqlite3.OperationalError:
+                pass # уже существует
+            
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS ips_incidents (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
