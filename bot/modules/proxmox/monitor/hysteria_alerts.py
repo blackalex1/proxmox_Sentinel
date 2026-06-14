@@ -26,78 +26,42 @@ def is_card_active(card, now_time):
     return now_time - last_act < 900.0
 
 
-def check_new_ip_and_get_history(username, current_ip, current_timestamp, logs):
-    if current_ip in ("127.0.0.1", "::1", "localhost"):
-        return False, []
-    user_logs = []
-    for log in logs:
-        details_dict = {}
-        try:
-            if isinstance(log.get("details"), str):
-                details_dict = json.loads(log["details"])
-            elif isinstance(log.get("details"), dict):
-                details_dict = log["details"]
-        except Exception:
-            pass
-            
-        log_user = details_dict.get("username") or log.get("username")
-        if log_user == username:
-            user_logs.append(log)
-            
-    user_logs.sort(key=lambda x: x["timestamp"], reverse=True)
+async def check_new_ip_and_get_history(username, current_ip, session_id):
+    from core.db import execute_read_one, execute_read_all
     
-    conns = []
-    for log in user_logs:
-        if log["timestamp"] >= current_timestamp:
-            continue
-            
-        action = log["action"]
-        if action in ("xray_connect", "hysteria_connect"):
-            ip = log["target"]
-            conn_time = log["timestamp"]
-            
-            disconnect_time = None
-            duration_str = None
-            
-            for d_log in user_logs:
-                d_action = d_log["action"]
-                if d_action in ("xray_disconnect", "hysteria_disconnect") and d_log["target"] == ip:
-                    if d_log["timestamp"] >= conn_time:
-                        if disconnect_time is None or d_log["timestamp"] < disconnect_time:
-                            disconnect_time = d_log["timestamp"]
-                            try:
-                                d_details = json.loads(d_log["details"]) if isinstance(d_log["details"], str) else d_log["details"]
-                                duration_str = d_details.get("duration")
-                            except Exception:
-                                pass
-                                
-            if disconnect_time and not duration_str:
-                diff = int(disconnect_time - conn_time)
-                if diff < 0:
-                    diff = 0
-                if diff < 60:
-                    duration_str = f"{diff} сек"
-                elif diff < 3600:
-                    duration_str = f"{diff // 60} мин {diff % 60} сек"
-                else:
-                    duration_str = f"{diff // 3600} ч {(diff % 3600) // 60} мин"
-            elif not duration_str:
-                duration_str = "неизвестно"
-                
-            conns.append({
-                "ip": ip,
-                "timestamp": conn_time,
-                "duration": duration_str
-            })
-            if len(conns) >= 5:
-                break
-                
-    if not conns:
-        return False, []
+    # 1. Читаем статус новизны IP из созданной сессии
+    row = await execute_read_one(
+        "SELECT is_new_ip FROM vpn_sessions WHERE username = ? AND session_id = ?",
+        (username, session_id)
+    )
+    is_new_ip = bool(row["is_new_ip"]) if row else False
+    
+    # 2. Получаем историю предыдущих подключений с других IP
+    # Исключаем текущую сессию по session_id
+    rows = await execute_read_all(
+        "SELECT ip, connect_time, duration FROM vpn_sessions WHERE username = ? AND ip != ? AND session_id != ? ORDER BY connect_time DESC LIMIT 5",
+        (username, current_ip, session_id)
+    )
+    
+    history = []
+    import datetime
+    for r in rows:
+        ip = r["ip"]
+        conn_time_str = r["connect_time"]
+        duration = r["duration"] or "неизвестно"
         
-    prev_ips = {c["ip"] for c in conns}
-    is_new_ip = current_ip not in prev_ips
-    return is_new_ip, conns
+        try:
+            ts = datetime.datetime.strptime(conn_time_str, "%Y-%m-%d %H:%M:%S").timestamp()
+        except Exception:
+            ts = 0
+            
+        history.append({
+            "ip": ip,
+            "timestamp": ts,
+            "duration": duration
+        })
+        
+    return is_new_ip, history
 
 
 async def process_hysteria_audit_event(panel, action, client_ip, log_timestamp, details_str):
@@ -140,6 +104,7 @@ async def process_hysteria_audit_event(panel, action, client_ip, log_timestamp, 
     card = active_activity_cards.get(key)
     
     if action in ("xray_connect", "hysteria_connect"):
+        session_id = None
         # Записываем событие подключения в SQLite БД
         try:
             from core.db import save_vpn_connect
@@ -147,16 +112,14 @@ async def process_hysteria_audit_event(panel, action, client_ip, log_timestamp, 
                 conn_time_str = datetime.datetime.fromtimestamp(log_timestamp).strftime("%Y-%m-%d %H:%M:%S")
             except Exception:
                 conn_time_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            await save_vpn_connect(username, client_ip, conn_time_str, tx, rx)
+            session_id = await save_vpn_connect(username, client_ip, conn_time_str, tx, rx)
         except Exception as db_err:
             logging.error(f"[Controller Database] Ошибка сохранения подключения: {db_err}")
 
-        # Check for new IP connection on controller
-        try:
-            success, res = await panel.get_audit_logs(limit=100)
-            if success and res.get("success"):
-                logs_list = res.get("logs", [])
-                is_new_ip, history = check_new_ip_and_get_history(username, client_ip, log_timestamp, logs_list)
+        # Check for new IP connection on controller using bot database
+        if session_id:
+            try:
+                is_new_ip, history = await check_new_ip_and_get_history(username, client_ip, session_id)
                 if is_new_ip:
                     from .utils import get_geoip_info
                     geoip_info = await get_geoip_info(client_ip)
@@ -167,8 +130,8 @@ async def process_hysteria_audit_event(panel, action, client_ip, log_timestamp, 
                             await send_rich_message(admin_id, alert_text, parse_mode="markdown")
                         except Exception as e:
                             logging.error(f"[Controller Alerts] Error sending new IP alert to admin {admin_id}: {e}")
-        except Exception as e:
-            logging.error(f"[Controller Alerts] Error checking new IP: {e}")
+            except Exception as e:
+                logging.error(f"[Controller Alerts] Error checking new IP: {e}")
 
         event_line = f"🟢 <code>[{timestamp_str}]</code> Подключение с <code>{client_ip}</code>"
         if card and is_card_active(card, now_time):
