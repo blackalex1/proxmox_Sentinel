@@ -19,6 +19,7 @@ router = Router(name="ansible_router")
 
 class AnsibleState(StatesGroup):
     waiting_for_host = State()
+    waiting_for_reboot = State()
 
 @router.callback_query(F.data == "ansible_main")
 async def process_ansible_main(callback: CallbackQuery, state: FSMContext):
@@ -83,8 +84,8 @@ async def ask_for_host(callback: CallbackQuery, state: FSMContext):
 
     real_filename = os.path.basename(playbook_path)
     
-    # Сохраняем путь в FSM
-    await state.update_data(playbook_path=playbook_path, real_filename=real_filename)
+    # Сохраняем путь в FSM и сбрасываем выбранные хосты
+    await state.update_data(playbook_path=playbook_path, real_filename=real_filename, selected_hosts=[])
     await state.set_state(AnsibleState.waiting_for_host)
     
     try:
@@ -94,7 +95,7 @@ async def ask_for_host(callback: CallbackQuery, state: FSMContext):
             f"<i>✏️ Выберите цель из списка (прочитано из вашего hosts.ini)</i>\n"
             f"<i>или напишите свой вариант вручную прямо в чат:</i>",
             parse_mode="HTML",
-            reply_markup=get_ansible_dynamic_host_keyboard()
+            reply_markup=get_ansible_dynamic_host_keyboard([])
         )
     except TelegramBadRequest as e:
         if "there is no text in the message to edit" in str(e):
@@ -105,7 +106,7 @@ async def ask_for_host(callback: CallbackQuery, state: FSMContext):
                 f"<i>✏️ Выберите цель из списка (прочитано из вашего hosts.ini)</i>\n"
                 f"<i>или напишите свой вариант вручную прямо в чат:</i>",
                 parse_mode="HTML",
-                reply_markup=get_ansible_dynamic_host_keyboard()
+                reply_markup=get_ansible_dynamic_host_keyboard([])
             )
         else:
             raise e
@@ -116,9 +117,40 @@ async def ask_for_host(callback: CallbackQuery, state: FSMContext):
 async def process_ansible_all(callback: CallbackQuery, state: FSMContext):
     await execute_ansible_playbook(callback, state, limit_host=None)
 
-@router.callback_query(AnsibleState.waiting_for_host, F.data.startswith("ansible_do_t_"))
-async def process_ansible_specific_host(callback: CallbackQuery, state: FSMContext):
-    limit_host = callback.data.split("ansible_do_t_")[1]
+@router.callback_query(AnsibleState.waiting_for_host, F.data.startswith("ansible_toggle_h:"))
+async def process_ansible_toggle_host(callback: CallbackQuery, state: FSMContext):
+    target = callback.data.split("ansible_toggle_h:")[1]
+    data = await state.get_data()
+    selected_hosts = data.get("selected_hosts", [])
+    
+    if target in selected_hosts:
+        selected_hosts.remove(target)
+    else:
+        selected_hosts.append(target)
+        
+    await state.update_data(selected_hosts=selected_hosts)
+    
+    # Обновляем клавиатуру
+    from modules.ansible.keyboards import get_ansible_dynamic_host_keyboard
+    try:
+        await callback.message.edit_reply_markup(reply_markup=get_ansible_dynamic_host_keyboard(selected_hosts))
+    except Exception as e:
+        logging.error(f"Error updating host selection keyboard: {e}")
+    finally:
+        try:
+            await callback.answer()
+        except Exception:
+            pass
+
+@router.callback_query(AnsibleState.waiting_for_host, F.data == "ansible_run_selected")
+async def process_ansible_run_selected(callback: CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    selected_hosts = data.get("selected_hosts", [])
+    if not selected_hosts:
+        await callback.answer("Ни один хост не выбран!", show_alert=True)
+        return
+        
+    limit_host = ",".join(selected_hosts)
     await execute_ansible_playbook(callback, state, limit_host=limit_host)
 
 @router.message(AnsibleState.waiting_for_host)
@@ -126,8 +158,42 @@ async def process_ansible_host_input(message: types.Message, state: FSMContext):
     limit_host = message.text.strip()
     await execute_ansible_playbook(message, state, limit_host=limit_host)
 
-@router.callback_query(F.data.startswith("ansible_reboot_host:"))
-async def process_ansible_reboot_host(callback: CallbackQuery):
-    host_name = callback.data.split("ansible_reboot_host:")[1]
+@router.callback_query(AnsibleState.waiting_for_reboot, F.data.startswith("ansible_toggle_reboot:"))
+async def process_ansible_toggle_reboot(callback: CallbackQuery, state: FSMContext):
+    target = callback.data.split("ansible_toggle_reboot:")[1]
+    data = await state.get_data()
+    reboot_hosts = data.get("reboot_hosts", [])
+    selected_reboot_hosts = data.get("selected_reboot_hosts", [])
+    
+    if target in selected_reboot_hosts:
+        selected_reboot_hosts.remove(target)
+    else:
+        selected_reboot_hosts.append(target)
+        
+    await state.update_data(selected_reboot_hosts=selected_reboot_hosts)
+    
+    # Обновляем клавиатуру
+    from modules.ansible.keyboards import get_ansible_reboot_keyboard
+    try:
+        await callback.message.edit_reply_markup(reply_markup=get_ansible_reboot_keyboard(reboot_hosts, selected_reboot_hosts))
+    except Exception as e:
+        logging.error(f"Error updating reboot selection keyboard: {e}")
+    finally:
+        try:
+            await callback.answer()
+        except Exception:
+            pass
+
+@router.callback_query(AnsibleState.waiting_for_reboot, F.data == "ansible_reboot_selected")
+async def process_ansible_reboot_selected(callback: CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    selected_reboot_hosts = data.get("selected_reboot_hosts", [])
+    if not selected_reboot_hosts:
+        await callback.answer("Ни один хост для перезагрузки не выбран!", show_alert=True)
+        return
+        
+    host_name = ",".join(selected_reboot_hosts)
+    await state.clear()
+    
     from modules.ansible.executor import reboot_host_via_ansible
     await reboot_host_via_ansible(callback, host_name)
