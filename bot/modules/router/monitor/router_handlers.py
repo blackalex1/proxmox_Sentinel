@@ -49,6 +49,7 @@ async def handle_router_iptables_log_line(line):
                 success, desc = await ban_router_ip(src_ip)
                 if success:
                     timestamp = datetime.datetime.now().strftime("%H:%M:%S")
+                    msg = get_router_autoblock_alert(src_ip, dst_host, dst_port, proto, timestamp)
                     
                     from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
                     kb = InlineKeyboardMarkup(inline_keyboard=[
@@ -122,6 +123,7 @@ async def handle_router_conntrack_log_line(line):
                 success, desc = await ban_router_ip(src_ip)
                 if success:
                     timestamp = datetime.datetime.now().strftime("%H:%M:%S")
+                    msg = get_router_autoblock_alert(src_ip, dst_host, dst_port, proto, timestamp)
                     
                     from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
                     kb = InlineKeyboardMarkup(inline_keyboard=[
