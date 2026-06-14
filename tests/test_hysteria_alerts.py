@@ -18,3 +18,17 @@ def test_check_new_ip_and_get_history_normal():
     is_new, history = check_new_ip_and_get_history("test_user", "192.168.1.2", 110, mock_logs)
     assert is_new is False
     assert len(history) == 2
+
+
+def test_check_new_ip_and_get_history_loopback():
+    mock_logs = [
+        {"timestamp": 100, "username": "system", "action": "xray_connect", "target": "192.168.1.1", "details": '{"username": "test_user", "tx": 100, "rx": 100}'},
+    ]
+    # Local loopbacks must not report as new IP
+    is_new, history = check_new_ip_and_get_history("test_user", "127.0.0.1", 110, mock_logs)
+    assert is_new is False
+    assert len(history) == 0
+    
+    is_new, history = check_new_ip_and_get_history("test_user", "::1", 110, mock_logs)
+    assert is_new is False
+    assert len(history) == 0
