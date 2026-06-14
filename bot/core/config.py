@@ -169,6 +169,13 @@ class Settings(BaseSettings):
     # Пост-валидация для генерации структур remote_servers и spectre_panels
     @model_validator(mode='after')
     def build_configs(self) -> 'Settings':
+        # 0. Нормализация пути к плейбукам Ansible
+        if self.ansible_playbooks_dir:
+            if not os.path.isabs(self.ansible_playbooks_dir):
+                self.ansible_playbooks_dir = os.path.abspath(os.path.join(base_dir, self.ansible_playbooks_dir))
+            else:
+                self.ansible_playbooks_dir = os.path.abspath(self.ansible_playbooks_dir)
+
         # 1. Построение remote_servers
         ips = [ip.strip() for ip in self.remote_server_ip.split(',') if ip.strip()]
         users = [u.strip() for u in self.remote_server_user.split(',') if u.strip()]

@@ -1,0 +1,10 @@
+---
+- name: Reboot server
+  hosts: all
+  become: yes
+
+  tasks:
+    - name: Reboot server
+      reboot:
+        msg: "Reboot after updates initiated by Telegram Bot"
+        reboot_timeout: 600

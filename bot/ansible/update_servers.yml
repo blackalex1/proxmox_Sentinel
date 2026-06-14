@@ -36,11 +36,3 @@
       debug:
         msg: "Reboot required on {{ inventory_hostname }}"
       when: reboot_required.stat.exists
-
-    - name: Reboot server if required
-      reboot:
-        msg: "Reboot after updates"
-        reboot_timeout: 600
-      when:
-        - reboot_required.stat.exists
-        - inventory_hostname not in ['master', 'proxmox']
