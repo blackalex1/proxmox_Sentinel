@@ -49,27 +49,32 @@ async def test_get_system_status_text():
         assert "pve-node2" in status_text
         
         # Verify background service status checks (resource and traffic running, others stopped)
-        assert "LXC Resource Monitor —" in status_text
-        assert "LXC Auth Watcher (auth.log) —" in status_text
-        assert "Active IPS Engine (iptables) —" in status_text
+        assert "LXC Resource Monitor" in status_text
+        assert "LXC Auth Watcher" in status_text
+        assert "Active IPS Engine" in status_text
 
 
 @pytest.mark.asyncio
 async def test_cmd_status():
     mock_message = AsyncMock()
     mock_status_msg = AsyncMock()
+    mock_status_msg.message_id = 12345
     mock_message.answer.return_value = mock_status_msg
+    mock_message.chat.id = 67890
 
-    with patch("core.handlers.status.get_system_status_text", AsyncMock(return_value="Dummy Status Text")):
+    with patch("core.handlers.status.get_system_status_text", AsyncMock(return_value="Dummy Status Text")), \
+         patch("modules.proxmox.monitor.utils.edit_rich_message", AsyncMock()) as mock_edit_rich:
         await cmd_status(mock_message)
         
         # Verify initial answer was sent
         mock_message.answer.assert_called_once_with("⏳ <i>Сбор информации о состоянии систем...</i>", parse_mode="HTML")
         
-        # Verify it edited message with markup containing the inline keyboard
-        mock_status_msg.edit_text.assert_called_once()
-        args, kwargs = mock_status_msg.edit_text.call_args
-        assert args[0] == "Dummy Status Text"
+        # Verify edit_rich_message was called
+        mock_edit_rich.assert_called_once()
+        args, kwargs = mock_edit_rich.call_args
+        assert kwargs.get("chat_id") == 67890
+        assert kwargs.get("message_id") == 12345
+        assert kwargs.get("text") == "Dummy Status Text"
         assert kwargs.get("parse_mode") == "HTML"
         assert kwargs.get("reply_markup") is not None
 
@@ -78,17 +83,28 @@ async def test_cmd_status():
 async def test_callback_status_check():
     mock_callback = AsyncMock()
     mock_callback.message = AsyncMock()
+    mock_callback.message.chat.id = 67890
+    mock_callback.message.message_id = 12345
     
-    with patch("core.handlers.status.get_system_status_text", AsyncMock(return_value="Dummy Status Text Callback")):
+    with patch("core.handlers.status.get_system_status_text", AsyncMock(return_value="Dummy Status Text Callback")), \
+         patch("modules.proxmox.monitor.utils.edit_rich_message", AsyncMock()) as mock_edit_rich:
         await callback_status_check(mock_callback)
         
-        # Verify it edited message twice (first spinner, then results)
-        assert mock_callback.message.edit_text.call_count == 2
+        # Verify edit_rich_message was called twice (first loading, then final status)
+        assert mock_edit_rich.call_count == 2
         
-        # Verify the second edit has the expected text and markup
-        last_call_args, last_call_kwargs = mock_callback.message.edit_text.call_args_list[1]
-        assert last_call_args[0] == "Dummy Status Text Callback"
-        assert last_call_kwargs.get("reply_markup") is not None
+        # Check first call (loading status)
+        first_args, first_kwargs = mock_edit_rich.call_args_list[0]
+        assert first_kwargs.get("chat_id") == 67890
+        assert first_kwargs.get("message_id") == 12345
+        assert "Сбор информации" in first_kwargs.get("text")
+        
+        # Check second call (final status)
+        second_args, second_kwargs = mock_edit_rich.call_args_list[1]
+        assert second_kwargs.get("chat_id") == 67890
+        assert second_kwargs.get("message_id") == 12345
+        assert second_kwargs.get("text") == "Dummy Status Text Callback"
+        assert second_kwargs.get("reply_markup") is not None
         
         # Verify callback.answer() was called at the end
         mock_callback.answer.assert_called_once()
