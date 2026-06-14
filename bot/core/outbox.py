@@ -147,7 +147,30 @@ class ResilientOutbox:
         if os.path.exists(OUTBOX_FILE):
             try:
                 with open(OUTBOX_FILE, 'r', encoding='utf-8') as f:
-                    self.queue = json.load(f)
+                    serialized_queue = json.load(f)
+                
+                from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+                
+                self.queue = []
+                for msg in serialized_queue:
+                    if "kwargs" in msg:
+                        kwargs = msg["kwargs"]
+                        if "reply_markup" in kwargs and isinstance(kwargs["reply_markup"], dict):
+                            try:
+                                markup_dict = kwargs["reply_markup"]
+                                if "inline_keyboard" in markup_dict:
+                                    keyboard = []
+                                    for row in markup_dict["inline_keyboard"]:
+                                        new_row = []
+                                        for btn in row:
+                                            new_row.append(InlineKeyboardButton(**btn))
+                                        keyboard.append(new_row)
+                                    kwargs["reply_markup"] = InlineKeyboardMarkup(inline_keyboard=keyboard)
+                            except Exception as e:
+                                logger.error(f"[Outbox] Ошибка десериализации reply_markup: {e}")
+                                kwargs["reply_markup"] = None
+                    self.queue.append(msg)
+                    
                 logger.info(f"[Outbox] Загружена очередь отложенных сообщений: {len(self.queue)} шт.")
             except Exception as e:
                 logger.error(f"[Outbox] Ошибка при чтении {OUTBOX_FILE}: {e}")
@@ -159,8 +182,29 @@ class ResilientOutbox:
         """Сохраняет текущую очередь сообщений на диск."""
         try:
             os.makedirs(os.path.dirname(OUTBOX_FILE), exist_ok=True)
+            
+            # Сериализуем копию очереди, чтобы не портить объекты в памяти
+            serialized_queue = []
+            for msg in self.queue:
+                msg_copy = msg.copy()
+                if "kwargs" in msg_copy:
+                    kwargs_copy = msg_copy["kwargs"].copy()
+                    if "reply_markup" in kwargs_copy and kwargs_copy["reply_markup"] is not None:
+                        markup = kwargs_copy["reply_markup"]
+                        if hasattr(markup, "model_dump"):
+                            kwargs_copy["reply_markup"] = markup.model_dump(exclude_none=True)
+                        elif hasattr(markup, "dict"):
+                            kwargs_copy["reply_markup"] = markup.dict(exclude_none=True)
+                        else:
+                            try:
+                                kwargs_copy["reply_markup"] = dict(markup)
+                            except Exception:
+                                pass
+                    msg_copy["kwargs"] = kwargs_copy
+                serialized_queue.append(msg_copy)
+                
             with open(OUTBOX_FILE, 'w', encoding='utf-8') as f:
-                json.dump(self.queue, f, ensure_ascii=False, indent=2)
+                json.dump(serialized_queue, f, ensure_ascii=False, indent=2)
         except Exception as e:
             logger.error(f"[Outbox] Ошибка при сохранении очереди на диск: {e}")
 
