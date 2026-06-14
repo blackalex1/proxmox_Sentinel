@@ -138,6 +138,26 @@ async def handle_traffic_log_line(line):
                 whitelisted = await is_whitelisted(node, ip=src, port=dpt)
             else:
                 whitelisted = await is_whitelisted(node, ip=dst, port=dpt)
+
+            # Обход предупреждений для легитимного Ansible/SSH трафика между хостом Proxmox и инвентарными хостами
+            if not whitelisted and dpt == 22:
+                proxmox_ip = "127.0.0.1"
+                if settings.proxmox_host:
+                    p_ip = settings.proxmox_host.split(':')[0]
+                    if p_ip:
+                        proxmox_ip = p_ip
+                
+                if src == proxmox_ip or dst == proxmox_ip:
+                    target_ip = dst if src == proxmox_ip else src
+                    from modules.ansible.keyboards import ANSIBLE_PLAYBOOKS_DIR
+                    from modules.ansible.parser import get_ansible_inventory_ips
+                    try:
+                        inventory_ips = get_ansible_inventory_ips(ANSIBLE_PLAYBOOKS_DIR)
+                        if target_ip in inventory_ips:
+                            logging.info(f"[Traffic Monitor] Игнорируем легитимное SSH-соединение Ansible/PVE между Proxmox ({proxmox_ip}) и хостом {target_ip}")
+                            return
+                    except Exception as e:
+                        logging.error(f"[Traffic Monitor] Ошибка при автоматическом белом списке инвентаря Ansible: {e}")
                 
             if whitelisted:
                 logging.info(f"[Traffic Monitor] Соединение ({src} -> {dst}:{dpt}) находится в белом списке ноды {node} или global. Игнорируем.")
