@@ -71,7 +71,7 @@ async def process_ansible_main(callback: CallbackQuery, state: FSMContext):
                 raise e
     await callback.answer()
 
-@router.callback_query(F.data.startswith("ansible_run_"))
+@router.callback_query(F.data.startswith("ansible_run_"), F.data != "ansible_run_selected")
 async def ask_for_host(callback: CallbackQuery, state: FSMContext):
     clean_name = callback.data.split("ansible_run_")[1]
     
