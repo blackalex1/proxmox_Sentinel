@@ -146,7 +146,7 @@ class SpectreClientManager:
                                     identifier=str(vmid),
                                     env_path=path
                                 )
-                                logging.info("spectre_discovery_naydena_lokalnaya_panel", new_panels[key].name, url)
+                                logging.info("spectre_discovery_local_panel_found", new_panels[key].name, url)
             except Exception as e:
                 logging.error("spectre_discovery_error_searching_in_lxc", vmid, e)
 
@@ -189,7 +189,7 @@ class SpectreClientManager:
                                 identifier=vps_ip,
                                 env_path=path
                             )
-                            logging.info("spectre_discovery_naydena_udalennaya_panel", new_panels[key].name, url)
+                            logging.info("spectre_discovery_remote_panel_found", new_panels[key].name, url)
             except Exception as e:
                 logging.error("spectre_discovery_error_searching_on_remote_vps", vps_ip, e)
 
@@ -259,11 +259,11 @@ class SpectreClientManager:
                             source_type="manual",
                             identifier=str(idx)
                         )
-                        logging.info("spectre_discovery_dobavlena_ruchnaya_panel", name, url)
+                        logging.info("spectre_discovery_manual_panel_added", name, url)
 
         async with self._lock:
             self.panels = new_panels
-        logging.info("spectre_discovery_avtoobnaruzhenie_zaversheno_naydeno_paneley", len(self.panels))
+        logging.info("spectre_discovery_autodiscovery_completed_found_panels", len(self.panels))
         
     async def start_discovery_loop(self):
         """Фоновый периодический запуск поиска новых панелей раз в 5 минут."""
@@ -371,7 +371,7 @@ class SpectreClientManager:
             except Exception as e:
                 logging.error("spectre_error_sending_report_via", p.name, e)
         
-        logging.debug("spectre_ni_odna_panel_ne_yavlyaetsya_sleyvom")
+        logging.debug("spectre_no_panels_slaves_report_not")
         return False
 
 

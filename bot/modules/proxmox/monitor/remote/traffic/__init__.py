@@ -74,15 +74,15 @@ async def get_and_kill_remote_process(server, spt):
                     node_name = f"vps_{server['ip']}"
                     from core.db import is_whitelisted
                     if proc_name.lower().strip() in settings.ips_process_whitelist or await is_whitelisted(node_name, process=proc_name):
-                        logging.info("remote_ips_protsess_pid_v_belom_spiske", server['ip'], proc_name, pid)
+                        logging.info("remote_ips_process_pid_whitelisted_termination_cancelled", server['ip'], proc_name, pid)
                         return proc_name, "WHITELISTED"
                     
                     kill_success, _, kill_err = await run_remote_ssh_cmd(server, [f"kill -9 {pid}"])
                     if kill_success:
-                        logging.info("remote_ips_uspeshno_zavershen_protsess_pid_po", server['ip'], proc_name, pid, spt)
+                        logging.info("remote_ips_process_pid_port_vps_successfully_terminated", server['ip'], proc_name, pid, spt)
                         return proc_name, pid
                     else:
-                        logging.error("remote_ips_ne_udalos_zavershit_protsess_pid", server['ip'], proc_name, pid, kill_err)
+                        logging.error("remote_ips_failed_terminate_process_pid_vps", server['ip'], proc_name, pid, kill_err)
                         return proc_name, None
     except Exception as e:
         logging.error("remote_ips_error_searching_and_killing_process", server['ip'], e)
@@ -341,4 +341,4 @@ async def handle_remote_traffic_line(line, server=None):
                 )
             await send_alert_to_admins(msg, parse_mode="markdown")
     except Exception as e:
-        logging.error("error_in_traffic_logs_handler_for_remote", server['ip'], e)
+        logging.error("error_traffic_logs_handler_remote_server", server['ip'], e)

@@ -62,9 +62,9 @@ async def monitor_router_conntrack():
             break
         except Exception as e:
             err_msg = str(e) or type(e).__name__
-            logging.warning("router_ips_oshibka_podklyucheniya_po_ssh_k", err_msg)
+            logging.warning("router_ips_error_connecting_via_ssh_router_conntrack", err_msg)
             
-        logging.info("router_ips_perepodklyuchenie_k_ssh_conntrack_cherez")
+        logging.info("router_ips_reconnecting_ssh_conntrack_15_seconds")
         await asyncio.sleep(15)
 
 async def monitor_router_syslog():
@@ -80,7 +80,7 @@ async def monitor_router_syslog():
     if settings.router_type != 'openwrt':
         cmd = f"{path_prefix}tail -f /var/log/messages"
         
-    logging.info("router_ips_starting_router_log_reading_via", cmd)
+    logging.info("router_ips_starting_router_log_reading_via_ssh", cmd)
     
     key_path = settings.router_ssh_key
     if key_path and not os.path.isabs(key_path):
@@ -145,7 +145,7 @@ async def monitor_router_syslog_v2():
     if settings.router_type != 'openwrt':
         cmd = "tail -f /var/log/messages"
         
-    logging.info("router_ips_starting_router_log_reading_via", cmd)
+    logging.info("router_ips_starting_router_log_reading_via_ssh", cmd)
     
     key_path = settings.router_ssh_key
     if key_path and not os.path.isabs(key_path):

@@ -36,7 +36,7 @@ async def refresh_remote_key_cache(server):
                     
         global remote_key_caches
         remote_key_caches[server['ip']] = new_cache
-        logging.info("remote_key_cache_kesh_uspeshno_obnovlen_zagruzheno", server['ip'], len(new_cache))
+        logging.info("remote_key_cache_cache_successfully_updated", server['ip'], len(new_cache))
     except Exception as e:
         logging.error("remote_key_cache_error_updating_key_cache", server['ip'], e)
 
@@ -197,7 +197,7 @@ async def get_bot_public_ip():
                 async with session.get('https://ifconfig.me/ip', timeout=5) as resp:
                     if resp.status == 200:
                         bot_public_ip = (await resp.text()).strip()
-                        logging.info("remote_ssh_auth_avtoopredelen_publichnyy_ip_bota", bot_public_ip)
+                        logging.info("remote_ssh_auth_bot_public_ip_auto_detected_backup", bot_public_ip)
                         return bot_public_ip
         except Exception as ex:
             logging.error("remote_ssh_auth_failed_to_determine_bot_1", ex)

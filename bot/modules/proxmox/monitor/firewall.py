@@ -11,7 +11,7 @@ def setup_vpn_container_rules():
     if platform.system() != 'Linux' or os.geteuid() != 0:
         return False
     if not VPN_VMID:
-        logging.info("monitoring_vnutrennego_trafika_vpn-konteynera_otklyuchen_vpn_vmid_0")
+        logging.info("internal_traffic_monitoring_vpn_container_disabled")
         return False
     try:
         # Проверяем, запущен ли контейнер
@@ -103,9 +103,9 @@ def setup_iptables():
                     check=True,
                     timeout=3
                 )
-                logging.info("kernel_parameter_sysctl_net_bridge_bridge-nf-call-iptables_1")
+                logging.info("kernel_parameter_sysctl_net_bridge_bridge")
             else:
-                logging.info("yadernyy_parametr_net_bridge_bridge-nf-call-iptables_uzhe_vklyuchen")
+                logging.info("kernel_parameter_net_bridge_bridge_nf")
         except Exception as sysctl_err:
             logging.warning("failed_to_configure_bridge-nf-call-iptables_automatically_make_sure", sysctl_err)
 
@@ -119,7 +119,7 @@ def setup_iptables():
                 ["iptables", "-I", "FORWARD", "-m", "physdev", "--physdev-out", "veth+", "-m", "conntrack", "--ctstate", "NEW", "-j", "LOG", "--log-prefix", "LXC_CONN: "],
                 check=True
             )
-            logging.info("ustanovleno_iptables_pravilo_dlya_vkhodyaschego_trafika_lxc")
+            logging.info("installed_iptables_rule_inbound_lxc_traffic")
 
         # Outbound правило (исходящие от LXC через physdev)
         out_check = subprocess.run(
@@ -131,7 +131,7 @@ def setup_iptables():
                 ["iptables", "-I", "FORWARD", "-m", "physdev", "--physdev-in", "veth+", "-m", "conntrack", "--ctstate", "NEW", "-j", "LOG", "--log-prefix", "LXC_CONN_OUT: "],
                 check=True
             )
-            logging.info("ustanovleno_iptables_pravilo_dlya_iskhodyaschego_trafika_lxc")
+            logging.info("installed_iptables_rule_outbound_lxc_traffic")
 
         # Host Inbound правило (входящие к хосту на порты управления 22, 8006)
         host_check = subprocess.run(
@@ -143,7 +143,7 @@ def setup_iptables():
                 ["iptables", "-I", "INPUT", "-p", "tcp", "-m", "multiport", "--dports", "22,8006", "-m", "conntrack", "--ctstate", "NEW", "-j", "LOG", "--log-prefix", "HOST_CONN: "],
                 check=True
             )
-            logging.info("ustanovleno_iptables_pravilo_dlya_vkhodyaschego_trafika_khosta")
+            logging.info("installed_iptables_rule_inbound_host_traffic")
             
         # Host Outbound правило (исходящие от хоста на sensitive порты)
         host_out_check = subprocess.run(
@@ -155,7 +155,7 @@ def setup_iptables():
                 ["iptables", "-I", "OUTPUT", "-p", "tcp", "-m", "multiport", "--dports", "22,3389,3306,5432,27017,8006", "-m", "conntrack", "--ctstate", "NEW", "-j", "LOG", "--log-prefix", "HOST_CONN_OUT: "],
                 check=True
             )
-            logging.info("ustanovleno_iptables_pravilo_dlya_iskhodyaschego_trafika_khosta")
+            logging.info("installed_iptables_rule_outbound_host_traffic")
             
         # Настройка логирования внутренних процессов VPN контейнера
         setup_vpn_container_rules()

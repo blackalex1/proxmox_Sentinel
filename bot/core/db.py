@@ -284,7 +284,7 @@ async def save_vpn_connect(username: str, ip: str, connect_time_str: str, tx: in
         "INSERT INTO vpn_sessions (session_id, username, ip, connect_time, disconnect_time, duration, is_new_ip, download_bytes, upload_bytes) VALUES (?, ?, ?, ?, NULL, NULL, ?, ?, ?)",
         (session_id, username, ip, connect_time_str, is_new_ip, tx, rx)
     )
-    logging.info("database_zaregistrirovano_podklyuchenie_session_id", username, ip, session_id)
+    logging.info("database_connection_registered_session_id", username, ip, session_id)
     return session_id
 
 
@@ -328,7 +328,7 @@ async def save_vpn_disconnect(username: str, ip: str, disconnect_time_str: str, 
             "UPDATE vpn_sessions SET disconnect_time = ?, duration = ?, download_bytes = ?, upload_bytes = ? WHERE username = ? AND session_id = ?",
             (disconnect_time_str, duration_str, diff_tx, diff_rx, username, session_id)
         )
-        logging.info("database_zaregistrirovano_otklyuchenie_ispolzovano_tx_rx_session_id", username, ip, diff_tx, diff_rx, session_id)
+        logging.info("database_disconnection_registered_used_tx_rx", username, ip, diff_tx, diff_rx, session_id)
     else:
         # Резервный вариант: если сессия не найдена (пропустили подключение), создаем завершенную с нулевым трафиком
         import uuid
@@ -345,7 +345,7 @@ async def save_vpn_disconnect(username: str, ip: str, disconnect_time_str: str, 
             "INSERT INTO vpn_sessions (session_id, username, ip, connect_time, disconnect_time, duration, is_new_ip, download_bytes, upload_bytes) VALUES (?, ?, ?, ?, ?, ?, ?, 0, 0)",
             (session_id, username, ip, disconnect_time_str, disconnect_time_str, duration_str, is_new_ip)
         )
-        logging.info("database_zaregistrirovano_otklyuchenie_bez_podklyucheniya_session_id", username, ip, session_id)
+        logging.info("database_disconnection_registered_without_connection_session_id", username, ip, session_id)
 
 
 

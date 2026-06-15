@@ -13,7 +13,7 @@ async def get_and_kill_local_or_lxc_process(vmid, spt):
     try:
         if vmid == 0:
             cmd = ["ss", "-atnup"]
-            logging.info("local_ips_zapusk_komandy", ' '.join(cmd))
+            logging.info("local_ips_running_command", ' '.join(cmd))
             proc = await asyncio.create_subprocess_exec(
                 *cmd,
                 stdout=asyncio.subprocess.PIPE,
@@ -29,7 +29,7 @@ async def get_and_kill_local_or_lxc_process(vmid, spt):
                 parts = line.strip().split()
                 if len(parts) >= 5 and parts[4].endswith(f":{spt}"):
                     matched = True
-                    logging.info("local_ips_naydena_stroka_sovpadeniya_dlya_porta", spt, line.strip())
+                    logging.info("local_ips_found_match_line_port", spt, line.strip())
                     match = re.search(r'users:\(\("([^"]+)",(?:pid=)?(\d+)', line)
                     if match:
                         proc_name, pid = match.groups()
@@ -84,13 +84,13 @@ async def get_and_kill_local_or_lxc_process(vmid, spt):
                             stderr=asyncio.subprocess.DEVNULL
                         )
                         await kill_proc.wait()
-                        logging.info("local_ips_uspeshno_zavershen_protsess_pid_na", proc_name, pid, spt)
+                        logging.info("local_ips_process_pid_host_port_successfully_terminated", proc_name, pid, spt)
                         return proc_name, pid
             if not matched:
                 logging.warning("local_ips_no_connection_to_port_found", spt)
         else:
             cmd = ["pct", "exec", str(vmid), "--", "ss", "-atnup"]
-            logging.info("lxc_ips_zapusk_komandy", ' '.join(cmd))
+            logging.info("lxc_ips_running_command", ' '.join(cmd))
             proc = await asyncio.create_subprocess_exec(
                 *cmd,
                 stdout=asyncio.subprocess.PIPE,
@@ -106,7 +106,7 @@ async def get_and_kill_local_or_lxc_process(vmid, spt):
                 parts = line.strip().split()
                 if len(parts) >= 5 and parts[4].endswith(f":{spt}"):
                     matched = True
-                    logging.info("lxc_ips_naydena_stroka_sovpadeniya_dlya_lxc", vmid, spt, line.strip())
+                    logging.info("lxc_ips_found_match_line_lxc_port", vmid, spt, line.strip())
                     match = re.search(r'users:\(\("([^"]+)",(?:pid=)?(\d+)', line)
                     if match:
                         proc_name, pid = match.groups()
@@ -123,7 +123,7 @@ async def get_and_kill_local_or_lxc_process(vmid, spt):
                             stderr=asyncio.subprocess.DEVNULL
                         )
                         await kill_proc.wait()
-                        logging.info("lxc_ips_uspeshno_zavershen_protsess_pid_vnutri", proc_name, pid, vmid, spt)
+                        logging.info("lxc_ips_process_pid_inside_lxc_port_successfully", proc_name, pid, vmid, spt)
                         return proc_name, pid
             if not matched:
                 logging.warning("lxc_ips_no_connection_to_port_inside", spt, vmid)

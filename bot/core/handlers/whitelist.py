@@ -31,7 +31,7 @@ async def sync_whitelists_to_panels():
             if success and res.get("success"):
                 logging.info("whitelist_sync_panel_successfully_synchronized", panel.name)
             else:
-                logging.warning("whitelist_sync_oshibka_sinkhronizatsii_s", panel.name, res.get('msg') or res.get('error'))
+                logging.warning("whitelist_sync_synchronization_error", panel.name, res.get('msg') or res.get('error'))
     except Exception as e:
         logging.error("whitelist_sync_error_during_synchronization", e)
 

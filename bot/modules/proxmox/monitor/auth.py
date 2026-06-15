@@ -68,7 +68,7 @@ async def handle_auth_log_line(line, vmid):
                 
                 user_str = user or 'unknown'
                 target_key = "local" if vmid == 0 else f"lxc_{vmid}"
-                logging.info("ssh_close_ssh-sessiya_dlya_na_pid_uspeshno", user_str, target_key, pid)
+                logging.info("ssh_close_session_pid_successfully_terminated", user_str, target_key, pid)
                 
             lxc_auth_history[vmid].append(event)
             
@@ -112,14 +112,14 @@ async def monitor_lxc_auth():
             host_tailer = LogTailer(host_log, handle_auth_log_line, 0)
             auth_tailers[0] = host_tailer
             await host_tailer.start()
-            logging.info("zapuscheno_faylovoe_otslezhivanie_logov_avtorizatsii_khosta", host_log)
+            logging.info("started_file_tracking_host_auth_logs", host_log)
         else:
             # Резервный вариант для отключения буферизации в journalctl (в режиме follow логи сбрасываются сразу)
             cmd = ["stdbuf", "-oL", "journalctl", "-f", "-n", "0"]
             host_tailer = LogTailer(cmd, handle_auth_log_line, 0)
             auth_tailers[0] = host_tailer
             await host_tailer.start()
-            logging.info("host_authorization_log_tracking_via_journalctl_started")
+            logging.info("host_authorization_log_tracking_via_journalctl")
 
     while True:
         try:
@@ -141,13 +141,13 @@ async def monitor_lxc_auth():
                     host_tailer = LogTailer(host_log, handle_auth_log_line, 0)
                     auth_tailers[0] = host_tailer
                     await host_tailer.start()
-                    logging.info("zapuscheno_faylovoe_otslezhivanie_logov_avtorizatsii_khosta", host_log)
+                    logging.info("started_file_tracking_host_auth_logs", host_log)
                 else:
                     cmd = ["stdbuf", "-oL", "journalctl", "-f", "-n", "0"]
                     host_tailer = LogTailer(cmd, handle_auth_log_line, 0)
                     auth_tailers[0] = host_tailer
                     await host_tailer.start()
-                    logging.info("host_authorization_log_tracking_via_journalctl_started")
+                    logging.info("host_authorization_log_tracking_via_journalctl")
 
             # Получаем список директорий из /var/lib/lxc
             if not os.path.exists("/var/lib/lxc"):
@@ -176,7 +176,7 @@ async def monitor_lxc_auth():
                         tailer = LogTailer(cmd, handle_auth_log_line, vmid)
                         auth_tailers[vmid] = tailer
                         await tailer.start()
-                        logging.info("log_file_not_found_started_log_tracking", vmid)
+                        logging.info("log_file_not_found_started_log", vmid)
                         
                 # Если контейнер выключен, но tailer активен
                 elif state != "running" and vmid in auth_tailers:

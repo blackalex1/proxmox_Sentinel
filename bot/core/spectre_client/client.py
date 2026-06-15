@@ -32,7 +32,7 @@ async def probe_panel_url(ip: str, port: str) -> str:
             url = f"{proto}://{ip}:{port}"
             try:
                 async with session.get(url, timeout=2) as response:
-                    logging.info("spectre_discovery_panel_otvetila_po_protokolu_na", proto, url, response.status)
+                    logging.info("spectre_discovery_panel_responded_via_protocol_status", proto, url, response.status)
                     return url
             except (aiohttp.ClientConnectorError, aiohttp.ServerDisconnectedError, asyncio.TimeoutError):
                 continue

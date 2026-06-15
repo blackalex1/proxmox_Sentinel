@@ -63,7 +63,7 @@ async def monitor_remote_task(server, service_name, command_args, callback):
                         from modules.proxmox.monitor.utils import send_alert_to_admins
                         await send_alert_to_admins(get_vps_online_alert(server['ip']), parse_mode="markdown")
                 
-                logging.info("remote_monitor_ssh_port_otkrylsya_vozobnovlyaem_podklyuchenie", server['ip'], port, service_name)
+                logging.info("remote_monitor_ssh_port_opened_resuming_connection", server['ip'], port, service_name)
 
             ssh_base = get_ssh_base_cmd(server)
             
@@ -100,7 +100,7 @@ async def monitor_remote_server():
         logging.warning("remote_monitor_remote_servers_remote_servers_list_is")
         return
         
-    logging.info("remote_monitor_initsializatsiya_monitoringa_dlya_udalennykh_serverov", len(settings.remote_servers))
+    logging.info("remote_monitor_initializing_monitoring_remote_servers", len(settings.remote_servers))
     
     tasks = []
     for server in settings.remote_servers:
