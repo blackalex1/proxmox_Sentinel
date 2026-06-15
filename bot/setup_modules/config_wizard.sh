@@ -2,7 +2,7 @@
 
 # Run interactive environment configuration wizard
 run_config_wizard() {
-    echo -e "\n${YELLOW}[4/5] Настройка файла .env...${NC}"
+    print_lang "\n${YELLOW}[4/5] Настройка файла .env...${NC}" "\n${YELLOW}[4/5] Configuring .env file...${NC}"
     mkdir -p "${SCRIPT_DIR}/config"
     ENV_FILE="${SCRIPT_DIR}/config/.env"
     ENV_CREATED=0
@@ -12,15 +12,15 @@ run_config_wizard() {
     if [ ! -f "${ENV_FILE}" ]; then
         if [ -f "${SCRIPT_DIR}/config/.env.example" ]; then
             cp "${SCRIPT_DIR}/config/.env.example" "${ENV_FILE}"
-            echo -e "${YELLOW}⚠️ Создан файл .env из шаблона config/.env.example.${NC}"
+            print_lang "${YELLOW}⚠️ Создан файл .env из шаблона config/.env.example.${NC}" "${YELLOW}⚠️ Created .env file from template config/.env.example.${NC}"
             ENV_CREATED=1
         else
-            echo -e "${RED}❌ Ошибка: Шаблон config/.env.example не найден. Создаем новый файл .env...${NC}"
+            print_lang "${RED}❌ Ошибка: Шаблон config/.env.example не найден. Создаем новый файл .env...${NC}" "${RED}❌ Error: Template config/.env.example not found. Creating new .env file...${NC}"
             touch "${ENV_FILE}"
         fi
     else
-        echo -e "${GREEN}✓ Файл конфигурации .env уже существует.${NC}"
-        echo -e "Хотите перезапустить интерактивный мастер настройки и обновить .env? (y/n) [n]"
+        print_lang "${GREEN}✓ Файл конфигурации .env уже существует.${NC}" "${GREEN}✓ Configuration file .env already exists.${NC}"
+        print_lang "Хотите перезапустить интерактивный мастер настройки и обновить .env? (y/n) [n]" "Do you want to rerun the interactive setup wizard and update .env? (y/n) [n]"
         read -rp ">> " rerun_wizard
         if [ "${rerun_wizard}" = "y" ] || [ "${rerun_wizard}" = "Y" ]; then
             ENV_EXISTS=0
@@ -30,12 +30,20 @@ run_config_wizard() {
         fi
     fi
 
+    # Automatically write/update BOT_LANGUAGE in .env based on INSTALL_LANG
+    if [ -f "${ENV_FILE}" ]; then
+        if grep -q "^BOT_LANGUAGE=" "${ENV_FILE}"; then
+            sed -i "s/^BOT_LANGUAGE=.*/BOT_LANGUAGE=${INSTALL_LANG}/" "${ENV_FILE}"
+        else
+            echo "BOT_LANGUAGE=${INSTALL_LANG}" >> "${ENV_FILE}"
+        fi
+    fi
+
     if [ ${ENV_EXISTS} -eq 0 ]; then
         echo -e "\n${MAGENTA}==================================================${NC}"
-        echo -e "${MAGENTA}   ИНТЕРАКТИВНЫЙ МАСТЕР НАСТРОЙКИ КОНФИГУРАЦИИ .env${NC}"
+        print_lang "${MAGENTA}   ИНТЕРАКТИВНЫЙ МАСТЕР НАСТРОЙКИ КОНФИГУРАЦИИ .env${NC}" "${MAGENTA}   INTERACTIVE .env CONFIGURATION WIZARD${NC}"
         echo -e "${MAGENTA}==================================================${NC}"
-        echo -e "Вы можете настроить бота прямо сейчас. Если вы нажмете Enter,"
-        echo -e "будет сохранено текущее или дефолтное значение."
+        print_lang "Вы можете настроить бота прямо сейчас. Если вы нажмете Enter,\nбудет сохранено текущее или дефолтное значение." "You can configure the bot right now. If you press Enter,\nthe current or default value will be saved."
 
         # 1. Автоопределение IP хоста Proxmox VE
         DETECTED_IP=""
@@ -60,8 +68,8 @@ run_config_wizard() {
         
         TRUSTED_IPS_DEFAULT="your_admin_ip"
         if [ -n "${DETECTED_SSH_IP}" ]; then
-            echo -e "\n${CYAN}Обнаружен ваш IP-адрес подключения по SSH: ${YELLOW}${DETECTED_SSH_IP}${NC}"
-            echo -e "Добавить его в белый список доверенных IP (TRUSTED_ADMIN_IPS)? (y/n) [y]"
+            print_lang "\n${CYAN}Обнаружен ваш IP-адрес подключения по SSH: ${YELLOW}${DETECTED_SSH_IP}${NC}" "\n${CYAN}Detected your SSH connection IP address: ${YELLOW}${DETECTED_SSH_IP}${NC}"
+            print_lang "Добавить его в белый список доверенных IP (TRUSTED_ADMIN_IPS)? (y/n) [y]" "Add it to the trusted IP whitelist (TRUSTED_ADMIN_IPS)? (y/n) [y]"
             read -rp ">> " add_ssh_ip
             if [ -z "${add_ssh_ip}" ] || [ "${add_ssh_ip}" = "y" ] || [ "${add_ssh_ip}" = "Y" ]; then
                 TRUSTED_IPS_DEFAULT="${DETECTED_SSH_IP}"
@@ -100,8 +108,8 @@ run_config_wizard() {
            [ -n "${EXISTING_USER}" ] && \
            [ -n "${EXISTING_TOKEN_ID}" ] && [ "${EXISTING_TOKEN_ID}" != "root@pam!MyToken" ] && \
            [ -n "${EXISTING_TOKEN_SECRET}" ] && [ "${EXISTING_TOKEN_SECRET}" != "ваш_секретный_код_токена" ]; then
-            echo -e "\n${CYAN}Обнаружена существующая конфигурация Proxmox в .env.${NC}"
-            echo -e "Проверка подключения к Proxmox VE API..."
+            print_lang "\n${CYAN}Обнаружена существующая конфигурация Proxmox в .env.${NC}" "\n${CYAN}Found existing Proxmox configuration in .env.${NC}"
+            print_lang "Проверка подключения к Proxmox VE API..." "Checking connection to Proxmox VE API..."
             
             TEST_OUT=$(${PYTHON_EXEC} -c "
 import sys
@@ -123,8 +131,8 @@ except Exception as e:
             
             TEST_OUT=$(echo "${TEST_OUT}" | tr -d '\r\n')
             if [ "${TEST_OUT}" = "SUCCESS" ]; then
-                echo -e "${GREEN}✓ Подключение к Proxmox VE API успешно проверено! Валидный токен.${NC}"
-                echo -e "Хотите использовать существующие настройки Proxmox и пропустить их изменение? (y/n) [y]"
+                print_lang "${GREEN}✓ Подключение к Proxmox VE API успешно проверено! Валидный токен.${NC}" "${GREEN}✓ Connection to Proxmox VE API verified successfully! Valid token.${NC}"
+                print_lang "Хотите использовать существующие настройки Proxmox и пропустить их изменение? (y/n) [y]" "Do you want to use existing Proxmox settings and skip changing them? (y/n) [y]"
                 read -rp ">> " skip_pve_ask
                 if [ -z "${skip_pve_ask}" ] || [ "${skip_pve_ask}" = "y" ] || [ "${skip_pve_ask}" = "Y" ]; then
                     AUTO_TOKEN_ID="${EXISTING_TOKEN_ID}"
@@ -132,13 +140,13 @@ except Exception as e:
                     SKIP_PROXMOX_SETUP=1
                 fi
             else
-                echo -e "${RED}⚠️ Существующие учетные данные Proxmox не прошли проверку: ${TEST_OUT}${NC}"
+                print_lang "${RED}⚠️ Существующие учетные данные Proxmox не прошли проверку: ${TEST_OUT}${NC}" "${RED}⚠️ Existing Proxmox credentials failed validation: ${TEST_OUT}${NC}"
             fi
         fi
 
         if [ ${SKIP_PROXMOX_SETUP} -eq 0 ]; then
             if command -v pveum >/dev/null 2>&1; then
-                echo -e "\n${GREEN}✓ Обнаружен Proxmox VE (утилита pveum доступна).${NC}"
+                print_lang "\n${GREEN}✓ Обнаружен Proxmox VE (утилита pveum доступна).${NC}" "\n${GREEN}✓ Proxmox VE detected (pveum utility is available).${NC}"
                 
                 # Получаем список существующих токенов для root@pam
                 TOKENS_JSON=$(pveum user token list root@pam --output-format json 2>/dev/null || echo "[]")
@@ -148,15 +156,15 @@ except Exception as e:
                 
                 token_choice="new"
                 if [ -n "${EXISTING_TOKENS}" ]; then
-                    echo -e "${CYAN}Обнаружены существующие API-токены Proxmox для пользователя root@pam:${NC}"
+                    print_lang "${CYAN}Обнаружены существующие API-токены Proxmox для пользователя root@pam:${NC}" "${CYAN}Found existing Proxmox API tokens for user root@pam:${NC}"
                     IFS=',' read -r -a token_array <<< "${EXISTING_TOKENS}"
                     for i in "${!token_array[@]}"; do
                         token_array[i]=$(echo "${token_array[i]}" | tr -d '\r\n ')
                         echo -e "  $((i+1))) root@pam!${token_array[i]}"
                     done
-                    echo -e "  $(( ${#token_array[@]} + 1 ))) [Создать новый API-токен]"
+                    print_lang "  $(( ${#token_array[@]} + 1 ))) [Создать новый API-токен]" "  $(( ${#token_array[@]} + 1 ))) [Create new API token]"
                     
-                    echo -e "\n${YELLOW}Выберите номер токена для использования (или создайте новый):${NC}"
+                    print_lang "\n${YELLOW}Выберите номер токена для использования (или создайте новый):${NC}" "\n${YELLOW}Select token number to use (or create a new one):${NC}"
                     read -rp ">> " user_token_selection
                     
                     # Проверяем корректность выбора
@@ -164,11 +172,11 @@ except Exception as e:
                         selected_token_name="${token_array[$((user_token_selection-1))]}"
                         selected_token_name=$(echo "${selected_token_name}" | tr -d '\r\n ')
                         AUTO_TOKEN_ID="root@pam!${selected_token_name}"
-                        echo -e "${GREEN}✓ Выбран существующий токен: ${AUTO_TOKEN_ID}${NC}"
+                        print_lang "${GREEN}✓ Выбран существующий токен: ${AUTO_TOKEN_ID}${NC}" "${GREEN}✓ Selected existing token: ${AUTO_TOKEN_ID}${NC}"
                         
                         if [ "${AUTO_TOKEN_ID}" = "${EXISTING_TOKEN_ID}" ] && [ -n "${EXISTING_TOKEN_SECRET}" ]; then
                             # Проверяем валидность этого сохраненного секрета
-                            echo -e "Проверка подключения к Proxmox VE с сохраненным секретом..."
+                            print_lang "Проверка подключения к Proxmox VE с сохраненным секретом..." "Checking connection to Proxmox VE with saved secret..."
                             TEST_HOST="${EXISTING_HOST}"
                             if [ -z "${TEST_HOST}" ]; then
                                 TEST_HOST="${PVE_HOST_DEFAULT}"
@@ -198,15 +206,15 @@ except Exception as e:
                             TEST_OUT=$(echo "${TEST_OUT}" | tr -d '\r\n')
                             if [ "${TEST_OUT}" = "SUCCESS" ]; then
                                 AUTO_TOKEN_SECRET="${EXISTING_TOKEN_SECRET}"
-                                echo -e "${GREEN}✓ Обнаружен сохраненный секрет для этого токена в .env, и подключение успешно проверено. Используем его автоматически.${NC}"
+                                print_lang "${GREEN}✓ Обнаружен сохраненный секрет для этого токена в .env, и подключение успешно проверено. Используем его автоматически.${NC}" "${GREEN}✓ Found saved secret for this token in .env, and connection verified successfully. Using it automatically.${NC}"
                             else
-                                echo -e "${RED}⚠️ Сохраненный секрет из .env не прошел проверку подключения: ${TEST_OUT}${NC}"
-                                echo -e "${BLUE}👉 Введите секретный код (Secret Value) для этого токена:${NC}"
+                                print_lang "${RED}⚠️ Сохраненный секрет из .env не прошел проверку подключения: ${TEST_OUT}${NC}" "${RED}⚠️ Saved secret from .env failed connection check: ${TEST_OUT}${NC}"
+                                print_lang "${BLUE}👉 Введите секретный код (Secret Value) для этого токена:${NC}" "${BLUE}👉 Enter the secret key (Secret Value) for this token:${NC}"
                                 read -rp ">> " AUTO_TOKEN_SECRET
                                 AUTO_TOKEN_SECRET=$(echo "${AUTO_TOKEN_SECRET}" | tr -d '\r\n ')
                             fi
                         else
-                            echo -e "${BLUE}👉 Введите секретный код (Secret Value) для этого токена:${NC}"
+                            print_lang "${BLUE}👉 Введите секретный код (Secret Value) для этого токена:${NC}" "${BLUE}👉 Enter the secret key (Secret Value) for this token:${NC}"
                             read -rp ">> " AUTO_TOKEN_SECRET
                             AUTO_TOKEN_SECRET=$(echo "${AUTO_TOKEN_SECRET}" | tr -d '\r\n ')
                         fi
@@ -217,16 +225,16 @@ except Exception as e:
                 fi
                 
                 if [ "${token_choice}" = "new" ]; then
-                    echo -e "\nХотите ли вы автоматически сгенерировать новый выделенный API-токен для работы бота? (y/n) [y]"
+                    print_lang "\nХотите ли вы автоматически сгенерировать новый выделенный API-токен для работы бота? (y/n) [y]" "\nDo you want to automatically generate a new dedicated API token for the bot? (y/n) [y]"
                     read -rp ">> " generate_token_pve
                     if [ -z "${generate_token_pve}" ] || [ "${generate_token_pve}" = "y" ] || [ "${generate_token_pve}" = "Y" ]; then
-                        echo -e "Введите имя нового токена [по умолчанию: aegis-ips]:"
+                        print_lang "Введите имя нового токена [по умолчанию: aegis-ips]:" "Enter new token name [default: aegis-ips]:"
                         read -rp ">> " new_token_name
                         if [ -z "${new_token_name}" ]; then
                             new_token_name="aegis-ips"
                         fi
                         
-                        echo -e "Генерация API-токена 'root@pam!${new_token_name}'..."
+                        print_lang "Генерация API-токена 'root@pam!${new_token_name}'..." "Generating API token 'root@pam!${new_token_name}'..."
                         # Удаляем старый токен с таким же именем, если он был
                         pveum user token delete root@pam "${new_token_name}" 2>/dev/null || true
                         # Создаем новый токен
@@ -234,14 +242,14 @@ except Exception as e:
                         if [ -n "${TOKEN_OUT}" ]; then
                             TOKEN_SECRET=$(python3 -c "import sys, json; print(json.loads(sys.stdin.read()).get('value', ''))" <<< "${TOKEN_OUT}" 2>/dev/null || true)
                             if [ -n "${TOKEN_SECRET}" ]; then
-                                echo -e "${GREEN}✓ API-токен успешно сгенерирован!${NC}"
+                                print_lang "${GREEN}✓ API-токен успешно сгенерирован!${NC}" "${GREEN}✓ API token generated successfully!${NC}"
                                 AUTO_TOKEN_ID="root@pam!${new_token_name}"
                                 AUTO_TOKEN_SECRET="${TOKEN_SECRET}"
                             else
-                                echo -e "${RED}⚠️ Не удалось извлечь секрет токена из вывода pveum.${NC}"
+                                print_lang "${RED}⚠️ Не удалось извлечь секрет токена из вывода pveum.${NC}" "${RED}⚠️ Failed to extract token secret from pveum output.${NC}"
                             fi
                         else
-                            echo -e "${RED}⚠️ Ошибка при создании токена через pveum.${NC}"
+                            print_lang "${RED}⚠️ Ошибка при создании токена через pveum.${NC}" "${RED}⚠️ Error creating token via pveum.${NC}"
                         fi
                     fi
                 fi
@@ -255,7 +263,7 @@ except Exception as e:
         SP_JSON="[]"
         
         local setup_vpn_lxc="y"
-        echo -e "Хотите ли вы настроить мониторинг локального VPN-контейнера на этом Proxmox VE? (y/n) [y]"
+        print_lang "Хотите ли вы настроить мониторинг локального VPN-контейнера на этом Proxmox VE? (y/n) [y]" "Do you want to configure monitoring for a local VPN container on this Proxmox VE? (y/n) [y]"
         read -rp ">> " setup_vpn_lxc_input
         if [ "${setup_vpn_lxc_input}" = "n" ] || [ "${setup_vpn_lxc_input}" = "N" ]; then
             setup_vpn_lxc="n"
@@ -264,7 +272,7 @@ except Exception as e:
         
         if [ "${setup_vpn_lxc}" = "y" ]; then
             # Мы можем попробовать найти Spectre Panel прямо сейчас, до вывода списка всех LXC
-            echo -e "\n${CYAN}Поиск установленных панелей Spectre Panel на LXC контейнерах...${NC}"
+            print_lang "\n${CYAN}Поиск установленных панелей Spectre Panel на LXC контейнерах...${NC}" "\n${CYAN}Searching for installed Spectre Panels on LXC containers...${NC}"
             if [ -f "${SCRIPT_DIR}/venv/bin/python" ]; then
                 DETECTED_PANELS_JSON=$(BOT_TOKEN="123:abc" "${SCRIPT_DIR}/venv/bin/python" "${SCRIPT_DIR}/setup_modules/detect_panels.py" 2>/dev/null || true)
             else
@@ -282,20 +290,20 @@ except Exception as e:
             fi
             
             if [ -n "${PANEL_VMID_SUGGESTION}" ]; then
-                echo -e "${GREEN}✓ Обнаружена установленная Spectre Panel: ${YELLOW}${PANEL_NAME_SUGGESTION}${GREEN} (${PANEL_URL_SUGGESTION})${NC}"
-                echo -e "Использовать этот контейнер (${YELLOW}${PANEL_VMID_SUGGESTION}${NC}) для мониторинга VPN_VMID и автоматически подключить панель? (y/n) [y]"
+                print_lang "${GREEN}✓ Обнаружена установленная Spectre Panel: ${YELLOW}${PANEL_NAME_SUGGESTION}${GREEN} (${PANEL_URL_SUGGESTION})${NC}" "${GREEN}✓ Detected installed Spectre Panel: ${YELLOW}${PANEL_NAME_SUGGESTION}${GREEN} (${PANEL_URL_SUGGESTION})${NC}"
+                print_lang "Использовать этот контейнер (${YELLOW}${PANEL_VMID_SUGGESTION}${NC}) для мониторинга VPN_VMID и автоматически подключить панель? (y/n) [y]" "Use this container (${YELLOW}${PANEL_VMID_SUGGESTION}${NC}) for VPN_VMID monitoring and automatically connect the panel? (y/n) [y]"
                 read -rp ">> " use_auto_panel_input
                 if [ -z "${use_auto_panel_input}" ] || [ "${use_auto_panel_input}" = "y" ] || [ "${use_auto_panel_input}" = "Y" ]; then
                     USE_AUTO_PANEL="y"
                     AUTO_VPN_VMID="${PANEL_VMID_SUGGESTION}"
                     SP_JSON="${DETECTED_PANELS_JSON}"
-                    echo -e "${GREEN}✓ Выбран контейнер с панелью: ${AUTO_VPN_VMID}${NC}"
+                    print_lang "${GREEN}✓ Выбран контейнер с панелью: ${AUTO_VPN_VMID}${NC}" "${GREEN}✓ Selected container with panel: ${AUTO_VPN_VMID}${NC}"
                 fi
             fi
             
             if [ "${USE_AUTO_PANEL}" = "n" ]; then
                 if command -v pct >/dev/null 2>&1; then
-                    echo -e "\n${CYAN}Поиск контейнеров LXC на хосте Proxmox VE...${NC}"
+                    print_lang "\n${CYAN}Поиск контейнеров LXC на хосте Proxmox VE...${NC}" "\n${CYAN}Searching for LXC containers on Proxmox VE host...${NC}"
                     LXC_LIST=$(pct list 2>/dev/null | tail -n +2 | awk '{print $1, $2, $NF}' || true)
                     
                     if [ -n "$LXC_LIST" ]; then
@@ -322,22 +330,26 @@ except Exception as e:
                         done <<< "$LXC_LIST"
                         
                         if [ ${#vmid_array[@]} -gt 0 ]; then
-                            echo -e "Найденные контейнеры LXC:"
+                            print_lang "Найденные контейнеры LXC:" "Found LXC containers:"
                             for i in "${!vmid_array[@]}"; do
                                 if [ $i -eq $auto_idx ]; then
-                                    echo -e "  $((i+1))) ${GREEN}${vmid_array[i]} - ${name_array[i]} (Статус: ${status_array[i]}) [Автоопределение: VPN]${NC}"
+                                    print_lang "  $((i+1))) ${GREEN}${vmid_array[i]} - ${name_array[i]} (Статус: ${status_array[i]}) [Автоопределение: VPN]${NC}" "  $((i+1))) ${GREEN}${vmid_array[i]} - ${name_array[i]} (Status: ${status_array[i]}) [Auto-detected: VPN]${NC}"
                                 else
-                                    echo -e "  $((i+1))) ${vmid_array[i]} - ${name_array[i]} (Статус: ${status_array[i]})"
+                                    print_lang "  $((i+1))) ${vmid_array[i]} - ${name_array[i]} (Статус: ${status_array[i]})" "  $((i+1))) ${vmid_array[i]} - ${name_array[i]} (Status: ${status_array[i]})"
                                 fi
                             done
-                            echo -e "  $(( ${#vmid_array[@]} + 1 ))) [Ввести ID вручную]"
+                            print_lang "  $(( ${#vmid_array[@]} + 1 ))) [Ввести ID вручную]" "  $(( ${#vmid_array[@]} + 1 ))) [Enter ID manually]"
                             
                             default_option=""
                             if [ $auto_idx -ne -1 ]; then
                                 default_option=$((auto_idx+1))
                             fi
                             
-                            echo -e "\n${YELLOW}Выберите порядковый номер из списка (1, 2...) или введите ID контейнера (например, 101) для VPN_VMID [по умолчанию: ${default_option:-ID вручную}]:${NC}"
+                            if [ "${INSTALL_LANG}" = "ru" ]; then
+                                echo -e "\n${YELLOW}Выберите порядковый номер из списка (1, 2...) или введите ID контейнера (например, 101) для VPN_VMID [по умолчанию: ${default_option:-ID вручную}]:${NC}"
+                            else
+                                echo -e "\n${YELLOW}Select sequence number from the list (1, 2...) or enter container ID (e.g., 101) for VPN_VMID [default: ${default_option:-manual ID}]:${NC}"
+                            fi
                             read -rp ">> " user_lxc_selection
                             
                             if [ -z "$user_lxc_selection" ] && [ -n "$default_option" ]; then
@@ -348,13 +360,13 @@ except Exception as e:
                                 # Сначала проверяем, не введен ли порядковый номер из списка
                                 if [ "$user_lxc_selection" -ge 1 ] && [ "$user_lxc_selection" -le "${#vmid_array[@]}" ]; then
                                     AUTO_VPN_VMID="${vmid_array[$((user_lxc_selection-1))]}"
-                                    echo -e "${GREEN}✓ Выбран контейнер: ${AUTO_VPN_VMID} (${name_array[$((user_lxc_selection-1))]})${NC}"
+                                    print_lang "${GREEN}✓ Выбран контейнер: ${AUTO_VPN_VMID} (${name_array[$((user_lxc_selection-1))]})${NC}" "${GREEN}✓ Selected container: ${AUTO_VPN_VMID} (${name_array[$((user_lxc_selection-1))]})${NC}"
                                 else
                                     # Иначе проверяем, не введен ли реальный VMID напрямую
                                     for i in "${!vmid_array[@]}"; do
                                         if [ "${vmid_array[i]}" -eq "$user_lxc_selection" ]; then
                                             AUTO_VPN_VMID="$user_lxc_selection"
-                                            echo -e "${GREEN}✓ Выбран контейнер по прямому ID: ${AUTO_VPN_VMID} (${name_array[i]})${NC}"
+                                            print_lang "${GREEN}✓ Выбран контейнер по прямому ID: ${AUTO_VPN_VMID} (${name_array[i]})${NC}" "${GREEN}✓ Selected container by direct ID: ${AUTO_VPN_VMID} (${name_array[i]})${NC}"
                                             break
                                         fi
                                     done
@@ -368,19 +380,19 @@ except Exception as e:
         
         local run_wizard="y"
         if [ ${ENV_WAS_PRESENT} -eq 0 ]; then
-            echo -e "\n${YELLOW}Хотите ли вы настроить параметры .env интерактивно? (y/n) [y]${NC}"
+            print_lang "\n${YELLOW}Хотите ли вы настроить параметры .env интерактивно? (y/n) [y]${NC}" "\n${YELLOW}Do you want to configure .env parameters interactively? (y/n) [y]${NC}"
             read -rp ">> " run_wizard
         fi
         if [ -z "${run_wizard}" ] || [ "${run_wizard}" = "y" ] || [ "${run_wizard}" = "Y" ]; then
             # Запускаем интерактивный мастер
-            prompt_var "BOT_TOKEN" "Токен вашего Telegram-бота (BOT_TOKEN)" ""
-            prompt_var "ADMIN_IDS" "Telegram ID администраторов через запятую (ADMIN_IDS)" ""
-            prompt_var "TRUSTED_ADMIN_IPS" "Белый список IP-адресов администратора (вход с этих IP не будет вызывать тревогу, например: 192.168.1.50, через запятую)" "${TRUSTED_IPS_DEFAULT}"
+            prompt_var "BOT_TOKEN" "$(echo_lang "Токен вашего Telegram-бота (BOT_TOKEN)" "Your Telegram Bot Token (BOT_TOKEN)")" ""
+            prompt_var "ADMIN_IDS" "$(echo_lang "Telegram ID администраторов через запятую (ADMIN_IDS)" "Telegram IDs of administrators, comma-separated (ADMIN_IDS)")" ""
+            prompt_var "TRUSTED_ADMIN_IPS" "$(echo_lang "Белый список IP-адресов администратора (вход с этих IP не будет вызывать тревогу, например: 192.168.1.50, через запятую)" "Admin IP whitelist (connections from these IPs won't trigger alarms, e.g.: 192.168.1.50, comma-separated)")" "${TRUSTED_IPS_DEFAULT}"
             if [ ${SKIP_PROXMOX_SETUP} -eq 1 ]; then
-                echo -e "   ${GREEN}✓ Настройка параметров подключения к Proxmox VE пропущена (параметры верны).${NC}"
+                print_lang "   ${GREEN}✓ Настройка параметров подключения к Proxmox VE пропущена (параметры верны).${NC}" "   ${GREEN}✓ Proxmox VE connection parameters configuration skipped (parameters are correct).${NC}"
             else
-                prompt_var "PROXMOX_HOST" "IP и порт вашего хоста Proxmox VE (PROXMOX_HOST)" "${PVE_HOST_DEFAULT}"
-                prompt_var "PROXMOX_USER" "Имя пользователя Proxmox (PROXMOX_USER)" "root@pam"
+                prompt_var "PROXMOX_HOST" "$(echo_lang "IP и порт вашего хоста Proxmox VE (PROXMOX_HOST)" "IP and port of your Proxmox VE host (PROXMOX_HOST)")" "${PVE_HOST_DEFAULT}"
+                prompt_var "PROXMOX_USER" "$(echo_lang "Имя пользователя Proxmox (PROXMOX_USER)" "Proxmox username (PROXMOX_USER)")" "root@pam"
                 
                 if [ -n "${AUTO_TOKEN_ID}" ] && [ -n "${AUTO_TOKEN_SECRET}" ]; then
                     # Записываем сгенерированный или выбранный токен напрямую в .env без лишних вопросов
@@ -394,10 +406,10 @@ except Exception as e:
                     else
                         echo "PROXMOX_TOKEN_SECRET=${AUTO_TOKEN_SECRET}" >> "${ENV_FILE}"
                     fi
-                    echo -e "   ${GREEN}✓ Успешно использован API-токен: PROXMOX_TOKEN_ID=${AUTO_TOKEN_ID}${NC}"
+                    print_lang "   ${GREEN}✓ Успешно использован API-токен: PROXMOX_TOKEN_ID=${AUTO_TOKEN_ID}${NC}" "   ${GREEN}✓ Successfully used API token: PROXMOX_TOKEN_ID=${AUTO_TOKEN_ID}${NC}"
                 else
-                    prompt_var "PROXMOX_TOKEN_ID" "Proxmox API Token ID (PROXMOX_TOKEN_ID)" ""
-                    prompt_var "PROXMOX_TOKEN_SECRET" "Proxmox API Token Secret (PROXMOX_TOKEN_SECRET)" ""
+                    prompt_var "PROXMOX_TOKEN_ID" "$(echo_lang "Proxmox API Token ID (PROXMOX_TOKEN_ID)" "Proxmox API Token ID (PROXMOX_TOKEN_ID)")" ""
+                    prompt_var "PROXMOX_TOKEN_SECRET" "$(echo_lang "Proxmox API Token Secret (PROXMOX_TOKEN_SECRET)" "Proxmox API Token Secret (PROXMOX_TOKEN_SECRET)")" ""
                 fi
             fi
             
@@ -408,42 +420,42 @@ except Exception as e:
                 else
                     echo "VPN_VMID=0" >> "${ENV_FILE}"
                 fi
-                echo -e "   ${GREEN}✓ Мониторинг локального VPN-контейнера отключен (VPN_VMID=0).${NC}"
+                print_lang "   ${GREEN}✓ Мониторинг локального VPN-контейнера отключен (VPN_VMID=0).${NC}" "   ${GREEN}✓ Local VPN container monitoring is disabled (VPN_VMID=0).${NC}"
             elif [ -n "${AUTO_VPN_VMID}" ]; then
                 if grep -q "^VPN_VMID=" "${ENV_FILE}"; then
                     sed -i "s/^VPN_VMID=.*/VPN_VMID=${AUTO_VPN_VMID}/" "${ENV_FILE}"
                 else
                     echo "VPN_VMID=${AUTO_VPN_VMID}" >> "${ENV_FILE}"
                 fi
-                echo -e "   ${GREEN}✓ Успешно сохранен идентификатор контейнера: VPN_VMID=${AUTO_VPN_VMID}${NC}"
+                print_lang "   ${GREEN}✓ Успешно сохранен идентификатор контейнера: VPN_VMID=${AUTO_VPN_VMID}${NC}" "   ${GREEN}✓ Container ID saved successfully: VPN_VMID=${AUTO_VPN_VMID}${NC}"
             else
-                prompt_var "VPN_VMID" "Идентификатор контейнера с VPN (VPN_VMID)" "101"
+                prompt_var "VPN_VMID" "$(echo_lang "Идентификатор контейнера с VPN (VPN_VMID)" "VPN container ID (VPN_VMID)")" "101"
             fi
             
             # Мониторинг VPS
-            prompt_bool "REMOTE_MONITOR_ENABLE" "Включить мониторинг удаленного сервера VPS?" "False"
+            prompt_bool "REMOTE_MONITOR_ENABLE" "$(echo_lang "Включить мониторинг удаленного сервера VPS?" "Enable target VPS monitoring?")" "False"
             vps_enabled=$(grep -E "^REMOTE_MONITOR_ENABLE=" "${ENV_FILE}" | cut -d'=' -f2- | tr '[:upper:]' '[:lower:]')
             if [ "${vps_enabled}" = "true" ] || [ "${vps_enabled}" = "1" ] || [ "${vps_enabled}" = "y" ] || [ "${vps_enabled}" = "yes" ]; then
-                prompt_var "REMOTE_SERVER_IP" "IP-адрес удаленного сервера VPS (REMOTE_SERVER_IP)" ""
-                prompt_var "REMOTE_SERVER_USER" "Имя пользователя SSH на VPS (REMOTE_SERVER_USER)" "root"
-                prompt_var "REMOTE_SERVER_SSH_KEY" "Имя ключа или путь к приватному SSH ключу (REMOTE_SERVER_SSH_KEY)" "id_rsa_remote"
-                prompt_var "REMOTE_MONITOR_IGNORE_KEYS" "Игнорировать успешные входы по SSH с данных ключей (через запятую)" "bot@bot"
-                prompt_var "REMOTE_MONITOR_IGNORE_IPS" "Игнорировать успешные входы по SSH с данных IP-адресов (через запятую)" ""
+                prompt_var "REMOTE_SERVER_IP" "$(echo_lang "IP-адрес удаленного сервера VPS (REMOTE_SERVER_IP)" "IP address of target VPS (REMOTE_SERVER_IP)")" ""
+                prompt_var "REMOTE_SERVER_USER" "$(echo_lang "Имя пользователя SSH на VPS (REMOTE_SERVER_USER)" "SSH username on VPS (REMOTE_SERVER_USER)")" "root"
+                prompt_var "REMOTE_SERVER_SSH_KEY" "$(echo_lang "Имя ключа или путь к приватному SSH ключу (REMOTE_SERVER_SSH_KEY)" "Key name or path to private SSH key (REMOTE_SERVER_SSH_KEY)")" "id_rsa_remote"
+                prompt_var "REMOTE_MONITOR_IGNORE_KEYS" "$(echo_lang "Игнорировать успешные входы по SSH с данных ключей (через запятую)" "Ignore successful SSH logins from these keys (comma-separated)")" "bot@bot"
+                prompt_var "REMOTE_MONITOR_IGNORE_IPS" "$(echo_lang "Игнорировать успешные входы по SSH с данных IP-адресов (через запятую)" "Ignore successful SSH logins from these IP addresses (comma-separated)")" ""
             fi
         
             # Интерактивная настройка Spectre Panel (автоопределение с ручным вводом при необходимости)
-            echo -e "\n${BLUE}👉 Настройка Spectre Panel (управление VPN-клиентами):${NC}"
+            print_lang "\n${BLUE}👉 Настройка Spectre Panel (управление VPN-клиентами):${NC}" "\n${BLUE}👉 Spectre Panel Setup (VPN client management):${NC}"
             
             local configure_spectre_manual="n"
             if [ "${USE_AUTO_PANEL}" = "y" ]; then
-                echo -e "   ${GREEN}✓ Автоматически подключена обнаруженная панель (контейнер ${AUTO_VPN_VMID}).${NC}"
-                echo -e "Хотите ли вы дополнительно настроить еще одну панель вручную? (y/n) [n]"
+                print_lang "   ${GREEN}✓ Автоматически подключена обнаруженная панель (контейнер ${AUTO_VPN_VMID}).${NC}" "   ${GREEN}✓ Detected panel automatically connected (container ${AUTO_VPN_VMID}).${NC}"
+                print_lang "Хотите ли вы дополнительно настроить еще одну панель вручную? (y/n) [n]" "Do you want to additionally configure another panel manually? (y/n) [n]"
                 read -rp ">> " configure_spectre_manual
             else
-                echo -e "Хотите ли вы настроить интеграцию с Spectre Panel? (y/n) [y]"
+                print_lang "Хотите ли вы настроить интеграцию с Spectre Panel? (y/n) [y]" "Do you want to configure integration with Spectre Panel? (y/n) [y]"
                 read -rp ">> " setup_spectre_input
                 if [ -z "${setup_spectre_input}" ] || [ "${setup_spectre_input}" = "y" ] || [ "${setup_spectre_input}" = "Y" ]; then
-                    echo -e "${YELLOW}Запуск автоматического поиска установленных панелей...${NC}"
+                    print_lang "${YELLOW}Запуск автоматического поиска установленных панелей...${NC}" "${YELLOW}Launching automatic search for installed panels...${NC}"
                     
                     DETECTED_JSON=""
                     if [ -f "${SCRIPT_DIR}/venv/bin/python" ]; then
@@ -459,18 +471,18 @@ except Exception as e:
                     
                     USE_DETECTED="n"
                     if [ ${PANELS_FOUND} -eq 1 ]; then
-                        echo -e "\n${GREEN}✓ Обнаружены следующие панели Spectre Panel:${NC}"
-                        python3 -c "import sys, json; panels = json.loads(sys.argv[1]); [print(f'  - {p[\"name\"]} ({p[\"url\"]})') for p in panels]" "${DETECTED_JSON}" 2>/dev/null || echo -e "  (Не удалось отформатировать вывод)"
+                        print_lang "\n${GREEN}✓ Обнаружены следующие панели Spectre Panel:${NC}" "\n${GREEN}✓ Found the following Spectre Panels:${NC}"
+                        python3 -c "import sys, json; panels = json.loads(sys.argv[1]); [print(f'  - {p[\"name\"]} ({p[\"url\"]})') for p in panels]" "${DETECTED_JSON}" 2>/dev/null || print_lang "  (Не удалось отформатировать вывод)" "  (Failed to format output)"
                         
-                        echo -e "\nИспользовать обнаруженные панели? (y/n) [y]"
+                        print_lang "\nИспользовать обнаруженные панели? (y/n) [y]" "\nUse detected panels? (y/n) [y]"
                         read -rp ">> " use_detected_input
                         if [ -z "${use_detected_input}" ] || [ "${use_detected_input}" = "y" ] || [ "${use_detected_input}" = "Y" ]; then
                             USE_DETECTED="y"
                         fi
                     else
-                        echo -e "\n${YELLOW}⚠️ Не удалось автоматически обнаружить установленные панели Spectre Panel.${NC}"
+                        print_lang "\n${YELLOW}⚠️ Не удалось автоматически обнаружить установленные панели Spectre Panel.${NC}" "\n${YELLOW}⚠️ Failed to automatically detect installed Spectre Panels.${NC}"
                         if [ -f "${SCRIPT_DIR}/detect_panels.log" ] && [ -s "${SCRIPT_DIR}/detect_panels.log" ]; then
-                            echo -e "${CYAN}Детали ошибки поиска:${NC}"
+                            print_lang "${CYAN}Детали ошибки поиска:${NC}" "${CYAN}Search error details:${NC}"
                             cat "${SCRIPT_DIR}/detect_panels.log"
                         fi
                     fi
@@ -478,10 +490,10 @@ except Exception as e:
                     
                     if [ "${USE_DETECTED}" = "y" ]; then
                         SP_JSON="${DETECTED_JSON}"
-                        echo -e "Хотите ли вы дополнительно настроить еще одну панель вручную? (y/n) [n]"
+                        print_lang "Хотите ли вы дополнительно настроить еще одну панель вручную? (y/n) [n]" "Do you want to additionally configure another panel manually? (y/n) [n]"
                         read -rp ">> " configure_spectre_manual
                     else
-                        echo -e "Хотите ли вы настроить адрес и API-токен Spectre Panel вручную? (y/n) [y]"
+                        print_lang "Хотите ли вы настроить адрес и API-токен Spectre Panel вручную? (y/n) [y]" "Do you want to configure Spectre Panel address and API token manually? (y/n) [y]"
                         read -rp ">> " configure_spectre_manual
                         if [ -z "${configure_spectre_manual}" ] || [ "${configure_spectre_manual}" = "y" ] || [ "${configure_spectre_manual}" = "Y" ]; then
                             configure_spectre_manual="y"
@@ -491,11 +503,18 @@ except Exception as e:
             fi
             
             if [ "${configure_spectre_manual}" = "y" ] || [ "${configure_spectre_manual}" = "Y" ]; then
-                echo -e "\n${YELLOW}Введите параметры Spectre Panel:${NC}"
-                read -rp "Имя панели (например, Мой Сервер): " SP_NAME
-                read -rp "URL панели (например, http://10.10.10.101:2053): " SP_URL
-                read -rp "API Token панели: " SP_TOKEN
-                read -rp "Секретный путь панели (secret path, по умолчанию: ui): " SP_SECRET
+                print_lang "\n${YELLOW}Введите параметры Spectre Panel:${NC}" "\n${YELLOW}Enter Spectre Panel parameters:${NC}"
+                if [ "${INSTALL_LANG}" = "ru" ]; then
+                    read -rp "Имя панели (например, Мой Сервер): " SP_NAME
+                    read -rp "URL панели (например, http://10.10.10.101:2053): " SP_URL
+                    read -rp "API Token панели: " SP_TOKEN
+                    read -rp "Секретный путь панели (secret path, по умолчанию: ui): " SP_SECRET
+                else
+                    read -rp "Panel Name (e.g., My Server): " SP_NAME
+                    read -rp "Panel URL (e.g., http://10.10.10.101:2053): " SP_URL
+                    read -rp "Panel API Token: " SP_TOKEN
+                    read -rp "Panel Secret Path (secret path, default: ui): " SP_SECRET
+                fi
                 if [ -z "${SP_SECRET}" ]; then
                     SP_SECRET="ui"
                 fi
@@ -503,9 +522,9 @@ except Exception as e:
                 if [ -n "${SP_URL}" ] && [ -n "${SP_TOKEN}" ]; then
                     # Объединяем с помощью python
                     SP_JSON=$(python3 -c "import sys, json; det = json.loads(sys.argv[1]); det.append({'name': sys.argv[2] or 'Manual Panel', 'url': sys.argv[3], 'token': sys.argv[4], 'secret_path': sys.argv[5]}); print(json.dumps(det))" "${SP_JSON}" "${SP_NAME}" "${SP_URL}" "${SP_TOKEN}" "${SP_SECRET}")
-                    echo -e "${GREEN}✓ Параметры сохранены!${NC}"
+                    print_lang "${GREEN}✓ Параметры сохранены!${NC}" "${GREEN}✓ Parameters saved!${NC}"
                 else
-                    echo -e "${RED}⚠️ Не заполнены URL или Токен. Пропускаем ручную настройку панели.${NC}"
+                    print_lang "${RED}⚠️ Не заполнены URL или Токен. Пропускаем ручную настройку панели.${NC}" "${RED}⚠️ URL or Token is missing. Skipping manual panel configuration.${NC}"
                 fi
             fi
             
@@ -516,22 +535,22 @@ except Exception as e:
                 else
                     echo "SPECTRE_PANELS='${SP_JSON}'" >> "${ENV_FILE}"
                 fi
-                echo -e "${GREEN}✓ Настройки Spectre Panel успешно сохранены в .env файл.${NC}"
+                print_lang "${GREEN}✓ Настройки Spectre Panel успешно сохранены в .env файл.${NC}" "${GREEN}✓ Spectre Panel settings successfully saved to .env file.${NC}"
             fi
 
             # Настройки прокси для Telegram
-            prompt_var "PROXY_URL" "Прокси для Telegram (PROXY_URL, оставьте пустым если не требуется)" "${INSTALL_PROXY}"
-            prompt_bool "ENABLE_FREE_PROXY_ROTATION" "Включить автоматическую ротацию бесплатных прокси при сбое?" "False"
+            prompt_var "PROXY_URL" "$(echo_lang "Прокси для Telegram (PROXY_URL, оставьте пустым если не требуется)" "Proxy for Telegram (PROXY_URL, leave empty if not required)")" "${INSTALL_PROXY}"
+            prompt_bool "ENABLE_FREE_PROXY_ROTATION" "$(echo_lang "Включить автоматическую ротацию бесплатных прокси при сбое?" "Enable automatic free proxy rotation on failure?")" "False"
         
             # Мониторинг роутера через SSH conntrack/iptables
-            prompt_bool "ROUTER_MONITOR_ENABLE" "Включить мониторинг трафика роутера через SSH?" "False"
+            prompt_bool "ROUTER_MONITOR_ENABLE" "$(echo_lang "Включить мониторинг трафика роутера через SSH?" "Enable router traffic monitoring via SSH?")" "False"
             router_enabled=$(grep -E "^ROUTER_MONITOR_ENABLE=" "${ENV_FILE}" | cut -d'=' -f2- | tr '[:upper:]' '[:lower:]')
             if [ "${router_enabled}" = "true" ] || [ "${router_enabled}" = "1" ] || [ "${router_enabled}" = "y" ] || [ "${router_enabled}" = "yes" ]; then
                 while true; do
                     # 1. Сначала опрашиваем параметры подключения для проведения теста
-                    prompt_var "ROUTER_SSH_HOST" "IP-адрес SSH роутера (ROUTER_SSH_HOST)" "192.168.1.1"
-                    prompt_var "ROUTER_SSH_PORT" "Порт SSH роутера (ROUTER_SSH_PORT)" "22"
-                    prompt_var "ROUTER_SSH_USER" "Имя пользователя SSH роутера (ROUTER_SSH_USER)" "root"
+                    prompt_var "ROUTER_SSH_HOST" "$(echo_lang "IP-адрес SSH роутера (ROUTER_SSH_HOST)" "Router SSH IP address (ROUTER_SSH_HOST)")" "192.168.1.1"
+                    prompt_var "ROUTER_SSH_PORT" "$(echo_lang "Порт SSH роутера (ROUTER_SSH_PORT)" "Router SSH port (ROUTER_SSH_PORT)")" "22"
+                    prompt_var "ROUTER_SSH_USER" "$(echo_lang "Имя пользователя SSH роутера (ROUTER_SSH_USER)" "Router SSH username (ROUTER_SSH_USER)")" "root"
                     
                     local current_pass=""
                     local current_key=""
@@ -545,10 +564,14 @@ except Exception as e:
                         default_method="2"
                     fi
 
-                    echo -e "\n${BLUE}👉 Выберите метод авторизации на роутере:${NC}"
-                    echo -e "   1) По паролю (ROUTER_SSH_PASSWORD)"
-                    echo -e "   2) По SSH-ключу (ROUTER_SSH_KEY)"
-                    read -rp "   Выберите вариант (1 или 2) [по умолчанию: ${default_method}]: " auth_method
+                    print_lang "\n${BLUE}👉 Выберите метод авторизации на роутере:${NC}" "\n${BLUE}👉 Select router authorization method:${NC}"
+                    print_lang "   1) По паролю (ROUTER_SSH_PASSWORD)" "   1) By password (ROUTER_SSH_PASSWORD)"
+                    print_lang "   2) По SSH-ключу (ROUTER_SSH_KEY)" "   2) By SSH key (ROUTER_SSH_KEY)"
+                    if [ "${INSTALL_LANG}" = "ru" ]; then
+                        read -rp "   Выберите вариант (1 или 2) [по умолчанию: ${default_method}]: " auth_method
+                    else
+                        read -rp "   Select option (1 or 2) [default: ${default_method}]: " auth_method
+                    fi
                     if [ -z "${auth_method}" ]; then
                         auth_method="${default_method}"
                     fi
@@ -565,7 +588,7 @@ except Exception as e:
                         done < "${ENV_FILE}"
                         mv "$tmp_file" "${ENV_FILE}"
 
-                        prompt_var "ROUTER_SSH_KEY" "Путь к приватному SSH ключу роутера (ROUTER_SSH_KEY)" "config/id_rsa_router"
+                        prompt_var "ROUTER_SSH_KEY" "$(echo_lang "Путь к приватному SSH ключу роутера (ROUTER_SSH_KEY)" "Path to router private SSH key (ROUTER_SSH_KEY)")" "config/id_rsa_router"
                     else
                         # Сбрасываем ключ в .env
                         local tmp_file="${ENV_FILE}.tmp"
@@ -578,41 +601,41 @@ except Exception as e:
                         done < "${ENV_FILE}"
                         mv "$tmp_file" "${ENV_FILE}"
 
-                        prompt_var "ROUTER_SSH_PASSWORD" "Пароль SSH роутера (ROUTER_SSH_PASSWORD)" ""
+                        prompt_var "ROUTER_SSH_PASSWORD" "$(echo_lang "Пароль SSH роутера (ROUTER_SSH_PASSWORD)" "Router SSH password (ROUTER_SSH_PASSWORD)")" ""
                     fi
 
-                    prompt_var "ROUTER_TYPE" "Тип операционной системы роутера (openwrt/keenetic/generic)" "openwrt"
+                    prompt_var "ROUTER_TYPE" "$(echo_lang "Тип операционной системы роутера (openwrt/keenetic/generic)" "Router operating system type (openwrt/keenetic/generic)")" "openwrt"
                     
                     # Временно записываем ROUTER_MONITOR_ENABLE=True для корректного считывания тестовым скриптом
                     sed -i "s/^ROUTER_MONITOR_ENABLE=.*/ROUTER_MONITOR_ENABLE=True/" "${ENV_FILE}"
         
                     # 2. Выполняем предварительное автотестирование, выбор режима и автоустановку
-                    echo -e "\n${YELLOW}Запуск диагностики доступности роутера и выбора режима мониторинга...${NC}"
+                    print_lang "\n${YELLOW}Запуск диагностики доступности роутера и выбора режима мониторинга...${NC}" "\n${YELLOW}Launching router availability diagnostics and monitoring mode selection...${NC}"
                     if "${SCRIPT_DIR}/venv/bin/python" "${SCRIPT_DIR}/setup_modules/test_router_only.py"; then
-                        echo -e "${GREEN}✓ Диагностика, выбор режима и настройка роутера завершены успешно!${NC}"
+                        print_lang "${GREEN}✓ Диагностика, выбор режима и настройка роутера завершены успешно!${NC}" "${GREEN}✓ Diagnostics, mode selection, and router setup completed successfully!${NC}"
                         break
                     else
-                        echo -e "${RED}❌ Не удалось подключиться к роутеру по SSH.${NC}"
-                        echo -e "Хотите скорректировать параметры подключения по SSH и попробовать снова? (y/n) [y]"
+                        print_lang "${RED}❌ Не удалось подключиться к роутеру по SSH.${NC}" "${RED}❌ Failed to connect to the router via SSH.${NC}"
+                        print_lang "Хотите скорректировать параметры подключения по SSH и попробовать снова? (y/n) [y]" "Do you want to adjust SSH connection parameters and try again? (y/n) [y]"
                         read -rp ">> " retry_ssh
                         if [ -z "${retry_ssh}" ] || [ "${retry_ssh}" = "y" ] || [ "${retry_ssh}" = "Y" ]; then
-                            echo -e "${YELLOW}Повторный ввод параметров SSH...${NC}"
+                            print_lang "${YELLOW}Повторный ввод параметров SSH...${NC}" "${YELLOW}Re-entering SSH parameters...${NC}"
                             continue
                         else
-                            echo -e "${YELLOW}⚠️ Вы решили пропустить перенастройку. Вы можете отредактировать параметры мониторинга в .env вручную.${NC}"
+                            print_lang "${YELLOW}⚠️ Вы решили пропустить перенастройку. Вы можете отредактировать параметры мониторинга в .env вручную.${NC}" "${YELLOW}⚠️ You chose to skip reconfiguration. You can edit the monitoring parameters in .env manually.${NC}"
                             break
                         fi
                     fi
                 done
                 
-                prompt_bool "ROUTER_AUTO_BAN" "Включить автоматический бан нарушителей на роутере?" "False"
-                prompt_var "ROUTER_MAX_VIOLATIONS" "Лимит попыток доступа до автоблокировки (ROUTER_MAX_VIOLATIONS)" "3"
+                prompt_bool "ROUTER_AUTO_BAN" "$(echo_lang "Включить автоматический бан нарушителей на роутере?" "Enable automatic ban of offenders on the router?")" "False"
+                prompt_var "ROUTER_MAX_VIOLATIONS" "$(echo_lang "Лимит попыток доступа до автоблокировки (ROUTER_MAX_VIOLATIONS)" "Access attempts limit before auto-blocking (ROUTER_MAX_VIOLATIONS)")" "3"
             fi
         
             ENV_CREATED=0 # Сбрасываем предупреждение, так как переменные заполнены!
-            echo -e "\n${GREEN}🎉 Конфигурация .env успешно завершена!${NC}"
+            print_lang "\n${GREEN}🎉 Конфигурация .env успешно завершена!${NC}" "\n${GREEN}🎉 .env configuration successfully completed!${NC}"
         else
-            echo -e "\n${YELLOW}⚠️ Интерактивная настройка пропущена. Отредактируйте .env вручную.${NC}"
+            print_lang "\n${YELLOW}⚠️ Интерактивная настройка пропущена. Отредактируйте .env вручную.${NC}" "\n${YELLOW}⚠️ Interactive configuration skipped. Edit .env manually.${NC}"
         fi
     fi
 }
