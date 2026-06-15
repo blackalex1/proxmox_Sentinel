@@ -18,7 +18,7 @@ async def monitor_router_connections():
         await monitor_router_syslog()
         return
 
-    logging.error(f"[Router Monitor] Неизвестный режим мониторинга трафика: {mode}")
+    logging.error("router_monitor_unknown_traffic_monitoring_mode", mode)
 
 
 

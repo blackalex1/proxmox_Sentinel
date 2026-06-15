@@ -16,7 +16,7 @@ async def refresh_remote_key_cache(server):
         from .ssh import run_remote_ssh_cmd
         ok, stdout, stderr = await run_remote_ssh_cmd(server, ["ssh-keygen", "-l", "-f", "~/.ssh/authorized_keys"])
         if not ok:
-            logging.error(f"[Remote Key Cache {server['ip']}] Ошибка при обновлении кэша ключей: {stderr}")
+            logging.error("remote_key_cache_error_updating_key_cache", server['ip'], stderr)
             return
             
         new_cache = {}
@@ -36,9 +36,9 @@ async def refresh_remote_key_cache(server):
                     
         global remote_key_caches
         remote_key_caches[server['ip']] = new_cache
-        logging.info(f"[Remote Key Cache {server['ip']}] Кэш успешно обновлен, загружено ключей: {len(new_cache)}")
+        logging.info("remote_key_cache_kesh_uspeshno_obnovlen_zagruzheno", server['ip'], len(new_cache))
     except Exception as e:
-        logging.error(f"[Remote Key Cache {server['ip']}] Ошибка при обновлении кэша ключей: {e}")
+        logging.error("remote_key_cache_error_updating_key_cache", server['ip'], e)
 
 def get_child_pids(parent_pid):
     """Рекурсивно находит все PID дочерних процессов для заданного parent_pid."""
@@ -187,18 +187,18 @@ async def get_bot_public_ip():
             async with session.get('https://api.ipify.org', timeout=5) as resp:
                 if resp.status == 200:
                     bot_public_ip = (await resp.text()).strip()
-                    logging.info(f"[Remote SSH Auth] Автоопределен публичный IP бота: {bot_public_ip}")
+                    logging.info("remote_ssh_auth_auto-detected_bot_public_ip", bot_public_ip)
                     return bot_public_ip
     except Exception as e:
-        logging.error(f"[Remote SSH Auth] Не удалось определить публичный IP бота через ipify: {e}")
+        logging.error("remote_ssh_auth_failed_to_determine_bot", e)
         # Резервный вариант через ifconfig.me
         try:
             async with aiohttp.ClientSession() as session:
                 async with session.get('https://ifconfig.me/ip', timeout=5) as resp:
                     if resp.status == 200:
                         bot_public_ip = (await resp.text()).strip()
-                        logging.info(f"[Remote SSH Auth] Автоопределен публичный IP бота (резерв): {bot_public_ip}")
+                        logging.info("remote_ssh_auth_avtoopredelen_publichnyy_ip_bota", bot_public_ip)
                         return bot_public_ip
         except Exception as ex:
-            logging.error(f"[Remote SSH Auth] Не удалось определить публичный IP бота через резервные сервисы: {ex}")
+            logging.error("remote_ssh_auth_failed_to_determine_bot_1", ex)
     return None

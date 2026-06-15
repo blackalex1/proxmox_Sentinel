@@ -68,7 +68,7 @@ async def handle_auth_log_line(line, vmid):
                 
                 user_str = user or 'unknown'
                 target_key = "local" if vmid == 0 else f"lxc_{vmid}"
-                logging.info(f"[SSH Close] SSH-сессия для {user_str} на {target_key} (pid={pid}) успешно завершена.")
+                logging.info("ssh_close_ssh-sessiya_dlya_na_pid_uspeshno", user_str, target_key, pid)
                 
             lxc_auth_history[vmid].append(event)
             
@@ -93,12 +93,12 @@ async def handle_auth_log_line(line, vmid):
             await send_alert_to_admins(msg, parse_mode="markdown", reply_markup=reply_markup)
 
     except Exception as e:
-        logging.error(f"Ошибка парсинга лога авторизации: {e}")
+        logging.error("error_parsing_authorization_log", e)
 
 
 async def monitor_lxc_auth():
     """Динамический запуск и остановка tailer-ов для авторизаций контейнеров (с поддержкой journalctl)."""
-    logging.info("Запущен сервис отслеживания авторизаций LXC и Хоста...")
+    logging.info("lxc_and_host_authorization_tracking_service_started")
     
     # 0. Инициализация tailer-а для самого хоста Proxmox VE (vmid=0)
     if 0 not in auth_tailers:
@@ -112,14 +112,14 @@ async def monitor_lxc_auth():
             host_tailer = LogTailer(host_log, handle_auth_log_line, 0)
             auth_tailers[0] = host_tailer
             await host_tailer.start()
-            logging.info(f"Запущено файловое отслеживание логов авторизации хоста ({host_log}).")
+            logging.info("zapuscheno_faylovoe_otslezhivanie_logov_avtorizatsii_khosta", host_log)
         else:
             # Резервный вариант для отключения буферизации в journalctl (в режиме follow логи сбрасываются сразу)
             cmd = ["stdbuf", "-oL", "journalctl", "-f", "-n", "0"]
             host_tailer = LogTailer(cmd, handle_auth_log_line, 0)
             auth_tailers[0] = host_tailer
             await host_tailer.start()
-            logging.info("Запущено отслеживание логов авторизации хоста через journalctl.")
+            logging.info("host_authorization_log_tracking_via_journalctl_started")
 
     while True:
         try:
@@ -127,7 +127,7 @@ async def monitor_lxc_auth():
             for vmid in list(auth_tailers.keys()):
                 t = auth_tailers[vmid]
                 if t.task and t.task.done():
-                    logging.warning(f"[Auth Monitor] Тайлер для VMID {vmid} неожиданно завершил работу. Очищаем для автоперезапуска.")
+                    logging.warning("auth_monitor_tailer_for_vmid_unexpectedly_terminated", vmid)
                     auth_tailers.pop(vmid, None)
 
             # Автоматическая инициализация / перезапуск тайлера хоста (vmid=0)
@@ -141,13 +141,13 @@ async def monitor_lxc_auth():
                     host_tailer = LogTailer(host_log, handle_auth_log_line, 0)
                     auth_tailers[0] = host_tailer
                     await host_tailer.start()
-                    logging.info(f"Запущено файловое отслеживание логов авторизации хоста ({host_log}).")
+                    logging.info("zapuscheno_faylovoe_otslezhivanie_logov_avtorizatsii_khosta", host_log)
                 else:
                     cmd = ["stdbuf", "-oL", "journalctl", "-f", "-n", "0"]
                     host_tailer = LogTailer(cmd, handle_auth_log_line, 0)
                     auth_tailers[0] = host_tailer
                     await host_tailer.start()
-                    logging.info("Запущено отслеживание логов авторизации хоста через journalctl.")
+                    logging.info("host_authorization_log_tracking_via_journalctl_started")
 
             # Получаем список директорий из /var/lib/lxc
             if not os.path.exists("/var/lib/lxc"):
@@ -176,7 +176,7 @@ async def monitor_lxc_auth():
                         tailer = LogTailer(cmd, handle_auth_log_line, vmid)
                         auth_tailers[vmid] = tailer
                         await tailer.start()
-                        logging.info(f"Файл логов не найден. Запущено отслеживание логов через pct exec для LXC {vmid}.")
+                        logging.info("log_file_not_found_started_log_tracking", vmid)
                         
                 # Если контейнер выключен, но tailer активен
                 elif state != "running" and vmid in auth_tailers:
@@ -191,6 +191,6 @@ async def monitor_lxc_auth():
                     await tailer.stop()
                     
         except Exception as e:
-            logging.error(f"Ошибка в сервисе tailer-ов авторизаций: {e}")
+            logging.error("error_in_authorization_tailers_service", e)
             
         await asyncio.sleep(15)

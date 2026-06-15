@@ -32,7 +32,7 @@ async def probe_panel_url(ip: str, port: str) -> str:
             url = f"{proto}://{ip}:{port}"
             try:
                 async with session.get(url, timeout=2) as response:
-                    logging.info(f"[Spectre Discovery] Панель ответила по протоколу {proto} на {url} (статус {response.status})")
+                    logging.info("spectre_discovery_panel_otvetila_po_protokolu_na", proto, url, response.status)
                     return url
             except (aiohttp.ClientConnectorError, aiohttp.ServerDisconnectedError, asyncio.TimeoutError):
                 continue
@@ -99,10 +99,10 @@ class SpectrePanelInstance:
                                 return True, {"raw_content": text}
                     else:
                         text = await response.text()
-                        logging.warning(f"[Spectre API {self.name}] Ошибка {response.status}: {text[:200]}")
+                        logging.warning("spectre_api_error", self.name, response.status, text[:200])
                         return False, {"error": f"HTTP {response.status}", "details": text}
         except Exception as e:
-            logging.error(f"[Spectre API {self.name}] Исключение при запросе: {e}")
+            logging.error("spectre_api_exception_during_request", self.name, e)
             return False, {"error": str(e)}
 
     async def get_audit_logs(self, limit: int = 10) -> Tuple[bool, dict]:

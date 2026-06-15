@@ -14,7 +14,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 try:
     from core.spectre_client import spectre_manager
 except Exception as e:
-    logging.error(f"Не удалось импортировать spectre_manager: {e}")
+    logging.error("failed_to_import_spectre_manager", e)
     sys.exit(1)
 
 async def main():
@@ -36,7 +36,7 @@ async def main():
         # Print JSON list of newly auto-detected panels to stdout
         print(json.dumps(panels_list))
     except Exception as e:
-        logging.error(f"Ошибка во время поиска панелей: {e}")
+        logging.error("error_while_searching_for_panels", e)
         sys.exit(1)
 
 if __name__ == "__main__":

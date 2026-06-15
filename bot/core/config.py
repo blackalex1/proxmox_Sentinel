@@ -217,7 +217,7 @@ class Settings(BaseSettings):
                 self.spectre_panels = json.loads(self.spectre_panels_json)
             except Exception as e:
                 import logging
-                logging.error(f"Ошибка парсинга SPECTRE_PANELS JSON: {e}")
+                logging.error("error_parsing_spectre_panels_json", e)
                 self.spectre_panels = []
         return self
 

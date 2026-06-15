@@ -22,7 +22,7 @@ async def handle_traffic_log_line(line):
         if not event:
             return
             
-        logging.debug(f"[Traffic Monitor] Получено сетевое событие: {event}")
+        logging.debug("traffic_monitor_network_event_received", event)
         vmid = event['vmid']
         direction = event['direction']
         proto = event['proto']
@@ -73,16 +73,16 @@ async def handle_traffic_log_line(line):
             # Сначала проверяем наш сверхбыстрый мгновенный кэш портов бота
             if spt in recent_bot_ports:
                 is_bot = True
-                logging.debug(f"[Traffic Monitor] Порт {spt} найден в recent_bot_ports.")
+                logging.debug("traffic_monitor_port_found_in_recent_bot_ports", spt)
             else:
                 # Проверяем, является ли это активной проверкой прокси ботом
                 try:
                     from modules.proxmox.monitor.state import active_proxy_checks
                     if active_proxy_checks.get((dst, dpt), 0) > 0:
                         is_bot = True
-                        logging.debug(f"[Traffic Monitor] Найдено совпадение в active_proxy_checks для {dst}:{dpt}")
+                        logging.debug("traffic_monitor_match_found_in_active_proxy_checks_for", dst, dpt)
                 except Exception as e:
-                    logging.error(f"[Traffic Monitor] Ошибка проверки active_proxy_checks: {e}")
+                    logging.error("traffic_monitor_error_checking_active_proxy_checks", e)
 
                 # Вносим кратковременную задержку для устранения гонки при установлении сессии
                 # (так как логирование трафика ОС опережает завершение хэндшейка asyncssh/ansible)
@@ -90,7 +90,7 @@ async def handle_traffic_log_line(line):
                     await asyncio.sleep(0.5)
                     if spt in recent_bot_ports:
                         is_bot = True
-                        logging.debug(f"[Traffic Monitor] Порт {spt} найден в recent_bot_ports после ожидания.")
+                        logging.debug("traffic_monitor_port_found_in_recent_bot_ports_after", spt)
                 
                 if not is_bot:
                     # Резервная проверка через ss и procfs
@@ -100,17 +100,17 @@ async def handle_traffic_log_line(line):
                         
                         if await is_local_bot_process(spt, dst):
                             is_bot = True
-                            logging.debug(f"[Traffic Monitor] Порт {spt} определен как процесс бота через is_local_bot_process.")
+                            logging.debug("traffic_monitor_port_identified_as_bot_process", spt)
                     except Exception as e:
-                        logging.error(f"Ошибка проверки локального процесса бота в watcher: {e}")
+                        logging.error("error_checking_local_bot_process_in_watcher", e)
 
         if is_bot:
-            logging.debug(f"[Traffic Monitor] Событие {spt} определено как BOT! recent_bot_ports={list(recent_bot_ports)}")
+            logging.debug("traffic_monitor_sobytie_opredeleno_kak_bot_recent_bot_ports", spt, list(recent_bot_ports))
             risk_level, label, desc = ('INFO', '🟢 Служебный SSH Хоста (Бот)', 'Легитимный служебный трафик бота (ре сверка/conntrack/SSH)')
         else:
             risk_level, label, desc = classify_connection(event)
             
-        logging.debug(f"[Traffic Monitor] Событие {spt} классифицировано: risk_level={risk_level}, is_bot={is_bot}, label={label}")
+        logging.debug("traffic_monitor_event_classified_risk_level_is_bot_label", spt, risk_level, is_bot, label)
         risk_emoji = "🟢" if risk_level == 'INFO' else "⚠️" if risk_level == 'WARNING' else "🚨"
         
         traffic_event = {
@@ -154,21 +154,21 @@ async def handle_traffic_log_line(line):
                     try:
                         inventory_ips = get_ansible_inventory_ips(ANSIBLE_PLAYBOOKS_DIR)
                         if target_ip in inventory_ips:
-                            logging.info(f"[Traffic Monitor] Игнорируем легитимное SSH-соединение Ansible/PVE между Proxmox ({proxmox_ip}) и хостом {target_ip}")
+                            logging.info("traffic_monitor_ignoriruem_legitimnoe_ssh-soedinenie_ansible_pve", proxmox_ip, target_ip)
                             return
                     except Exception as e:
-                        logging.error(f"[Traffic Monitor] Ошибка при автоматическом белом списке инвентаря Ansible: {e}")
+                        logging.error("traffic_monitor_error_during_automatic_ansible_inventory", e)
                 
             if whitelisted:
-                logging.info(f"[Traffic Monitor] Соединение ({src} -> {dst}:{dpt}) находится в белом списке ноды {node} или global. Игнорируем.")
+                logging.info("traffic_monitor_soedinenie_-_nakhoditsya_v_belom", src, dst, dpt, node)
                 return
 
             is_transit_vpn = (vmid == settings.vpn_vmid and not is_local)
             proc_name, killed_pid = None, None
             if direction == 'OUT' and dpt in settings.monitor_lxc_ports_sensitive:
-                logging.info(f"[Traffic Monitor] Попытка уничтожить процесс для vmid={vmid}, sport={spt}")
+                logging.info("traffic_monitor_attempting_to_destroy_process_for", vmid, spt)
                 proc_name, killed_pid = await get_and_kill_local_or_lxc_process(vmid, spt)
-                logging.info(f"[Traffic Monitor] Результат уничтожения процесса: proc_name={proc_name}, killed_pid={killed_pid}")
+                logging.info("traffic_monitor_process_destruction_result_proc_name_killed_pid", proc_name, killed_pid)
 
             # Троттлинг одинаковых алертов (в пределах 15 секунд)
             now = time.time()
@@ -267,17 +267,17 @@ async def handle_traffic_log_line(line):
             await send_alert_to_admins(msg, parse_mode="markdown", reply_markup=kb)
 
     except Exception as e:
-        logging.error(f"Ошибка в обработчике трафика: {e}")
+        logging.error("error_in_traffic_handler", e)
 
 async def monitor_lxc_traffic():
     """Запуск tailer-watcher для системных логов с сетевой активностью (с автоподдержкой journalctl)."""
-    logging.info("Запуск отслеживания сетевого трафика LXC...")
+    logging.info("starting_lxc_network_traffic_tracking")
     
     # Очищаем временные блокировки iptables от прошлых запусков бота
     asyncio.create_task(cleanup_local_blocks_on_startup())
     
     if not setup_iptables():
-        logging.warning("Мониторинг сетевых соединений не запущен (недостаточно прав или не Linux).")
+        logging.warning("monitoring_setevykh_soedineniy_ne_zapuschen_nedostatochno_prav")
         return
         
     log_path = find_kernel_log_path()
@@ -293,7 +293,7 @@ async def monitor_lxc_traffic():
         tailer = LogTailer(cmd, handle_traffic_log_line)
         state.traffic_tailer = tailer
         await tailer.start()
-        logging.info("Системный лог (/var/log/messages) не найден. Запущено journalctl-отслеживание для ядра (-k) без stdbuf.")
+        logging.info("sistemnyy_log_var_log_messages_ne_nayden")
         
     if tailer and tailer.task:
         await tailer.task

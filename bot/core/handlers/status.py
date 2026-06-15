@@ -99,7 +99,7 @@ async def callback_status_check(callback: CallbackQuery):
         if "message is not modified" in str(e).lower():
             pass
         else:
-            logging.error(f"Ошибка при показе статуса систем: {e}")
+            logging.error("error_showing_systems_status", e)
     finally:
         try:
             await callback.answer()

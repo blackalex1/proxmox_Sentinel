@@ -5,7 +5,7 @@ from core.config import settings
 class ProxmoxClient:
     def __init__(self):
         if not settings.proxmox_host:
-            logging.warning("PROXMOX_HOST не задан! Работа с Proxmox будет недоступна.")
+            logging.warning("proxmox_host_is_not_set_work_with_proxmox")
             return
             
         if settings.proxmox_token_id and settings.proxmox_token_secret:
@@ -18,7 +18,7 @@ class ProxmoxClient:
                 verify_ssl=settings.proxmox_verify_ssl
             )
         else:
-            logging.error("Не заданы PROXMOX_TOKEN_ID или PROXMOX_TOKEN_SECRET!")
+            logging.error("proxmox_token_id_or_proxmox_token_secret_not_set")
 
     def get_nodes(self):
         return self.proxmox.nodes.get()
@@ -31,7 +31,7 @@ class ProxmoxClient:
             resources = self.proxmox.cluster.resources.get(type='vm')
             return [res for res in resources if res.get('node') == node_name]
         except Exception as e:
-            logging.error(f"Ошибка получения списка машин: {e}")
+            logging.error("error_obtaining_machines_list", e)
             return []
 
     def get_lxc_ip(self, node_name, vm_id):
@@ -64,7 +64,7 @@ class ProxmoxClient:
                                 if ip and ip != 'dhcp' and ip != 'manual':
                                     return ip
         except Exception as e:
-            logging.error(f"Ошибка получения IP для LXC {vm_id}: {e}")
+            logging.error("error_obtaining_ip_for_lxc", vm_id, e)
         return None
 
     def start_vm(self, node_name, vm_id, is_lxc=False):
@@ -92,7 +92,7 @@ class ProxmoxClient:
         try:
             return self.proxmox.nodes(node_name).status.get()
         except Exception as e:
-            logging.error(f"Ошибка получения статуса ноды {node_name}: {e}")
+            logging.error("error_obtaining_status_for_node", node_name, e)
             return {}
 
     def clone_vm(self, node_name, vm_id, new_id, new_name, is_lxc=False):

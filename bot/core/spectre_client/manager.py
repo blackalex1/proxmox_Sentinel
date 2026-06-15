@@ -87,7 +87,7 @@ class SpectreClientManager:
         """
         Производит автоматический поиск Spectre Panel на Proxmox LXC и удаленных VPS.
         """
-        logging.info("[Spectre Discovery] Запуск автообнаружения панелей...")
+        logging.info("spectre_discovery_starting_panel_autodiscovery")
         new_panels = {}
         candidate_paths = [
             "/opt/vpn_panel/config/.env",
@@ -146,9 +146,9 @@ class SpectreClientManager:
                                     identifier=str(vmid),
                                     env_path=path
                                 )
-                                logging.info(f"[Spectre Discovery] Найдена локальная панель: {new_panels[key].name} ({url})")
+                                logging.info("spectre_discovery_naydena_lokalnaya_panel", new_panels[key].name, url)
             except Exception as e:
-                logging.error(f"[Spectre Discovery] Ошибка при поиске в LXC {vmid}: {e}")
+                logging.error("spectre_discovery_error_searching_in_lxc", vmid, e)
 
         async def discover_vps_panel(server):
             vps_ip = server['ip']
@@ -189,9 +189,9 @@ class SpectreClientManager:
                                 identifier=vps_ip,
                                 env_path=path
                             )
-                            logging.info(f"[Spectre Discovery] Найдена удаленная панель: {new_panels[key].name} ({url})")
+                            logging.info("spectre_discovery_naydena_udalennaya_panel", new_panels[key].name, url)
             except Exception as e:
-                logging.error(f"[Spectre Discovery] Ошибка при поиске на удаленном VPS {vps_ip}: {e}")
+                logging.error("spectre_discovery_error_searching_on_remote_vps", vps_ip, e)
 
         # Собираем все асинхронные задачи поиска
         tasks = []
@@ -208,7 +208,7 @@ class SpectreClientManager:
                         if vm.get('type') == 'lxc' and vm.get('status') == 'running':
                             tasks.append(discover_lxc_panel(node_name, vm))
             except Exception as e:
-                logging.error(f"[Spectre Discovery] Ошибка при поиске в Proxmox: {e}")
+                logging.error("spectre_discovery_error_searching_in_proxmox", e)
 
         # 2. Поиск на удаленных серверах VPS
         if settings.remote_monitor_enable and settings.remote_servers:
@@ -259,11 +259,11 @@ class SpectreClientManager:
                             source_type="manual",
                             identifier=str(idx)
                         )
-                        logging.info(f"[Spectre Discovery] Добавлена ручная панель: {name} ({url})")
+                        logging.info("spectre_discovery_dobavlena_ruchnaya_panel", name, url)
 
         async with self._lock:
             self.panels = new_panels
-        logging.info(f"[Spectre Discovery] Автообнаружение завершено. Найдено панелей: {len(self.panels)}")
+        logging.info("spectre_discovery_avtoobnaruzhenie_zaversheno_naydeno_paneley", len(self.panels))
         
     async def start_discovery_loop(self):
         """Фоновый периодический запуск поиска новых панелей раз в 5 минут."""
@@ -271,7 +271,7 @@ class SpectreClientManager:
             try:
                 await self.discover_panels()
             except Exception as e:
-                logging.error(f"[Spectre Discovery] Ошибка в цикле автообнаружения: {e}")
+                logging.error("spectre_discovery_error_in_autodiscovery_loop", e)
             await asyncio.sleep(300)
 
     # --- Высокоуровневые API для взаимодействия с панелями ---
@@ -364,14 +364,14 @@ class SpectreClientManager:
                     "details": details
                 })
                 if success and res.get("reported"):
-                    logging.info(f"[Spectre] Панель {p.name} переслала отчёт о расследовании мастер-панели")
+                    logging.info("spectre_panel_forwarded_investigation_report_to_master", p.name)
                     return True
                 elif success and not res.get("reported"):
-                    logging.debug(f"[Spectre] Панель {p.name} не является слейвом, пропускаем")
+                    logging.debug("spectre_panel_is_not_a_slave_skipping", p.name)
             except Exception as e:
-                logging.error(f"[Spectre] Ошибка при отправке отчёта через {p.name}: {e}")
+                logging.error("spectre_error_sending_report_via", p.name, e)
         
-        logging.debug("[Spectre] Ни одна панель не является слейвом — отчёт не отправлен (это нормально для мастер-бота)")
+        logging.debug("spectre_ni_odna_panel_ne_yavlyaetsya_sleyvom")
         return False
 
 

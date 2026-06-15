@@ -26,14 +26,14 @@ async def sync_whitelists_to_panels():
             node_ips = whitelists.get(p_key, {}).get("ip_ports", [])
             merged_ips = list(set(global_ips + node_ips))
             
-            logging.info(f"[Whitelist Sync] Синхронизация {len(merged_ips)} IP с панелью {panel.name}...")
+            logging.info("whitelist_sync_sinkhronizatsiya_ip_s_panelyu", len(merged_ips), panel.name)
             success, res = await panel.request("POST", "/api/security/whitelist/sync", json={"ips": merged_ips})
             if success and res.get("success"):
-                logging.info(f"[Whitelist Sync] Панель {panel.name} успешно синхронизирована.")
+                logging.info("whitelist_sync_panel_successfully_synchronized", panel.name)
             else:
-                logging.warning(f"[Whitelist Sync] Ошибка синхронизации с {panel.name}: {res.get('msg') or res.get('error')}")
+                logging.warning("whitelist_sync_oshibka_sinkhronizatsii_s", panel.name, res.get('msg') or res.get('error'))
     except Exception as e:
-        logging.error(f"[Whitelist Sync] Ошибка во время синхронизации: {e}")
+        logging.error("whitelist_sync_error_during_synchronization", e)
 
 class WhitelistState(StatesGroup):
     waiting_for_ip_port = State()
@@ -439,5 +439,5 @@ async def cb_quick_whitelist(callback: CallbackQuery):
             except Exception:
                 pass
     except Exception as e:
-        logging.error(f"Ошибка при быстром добавлении в белый список: {e}")
+        logging.error("error_during_quick_white-listing", e)
         await callback.answer(_("whitelist", "qwl_save_error"), show_alert=True)

@@ -11,13 +11,13 @@ from .router_handlers import (
 async def monitor_router_conntrack():
     """Фоновый воркер для чтения событий conntrack роутера через SSH в реальном времени."""
     if not settings.router_monitor_enable:
-        logging.warning("[Router IPS] Мониторинг роутера отключен в настройках. Невозможно запустить мониторинг по conntrack.")
+        logging.warning("router_ips_router_monitoring_is_disabled_in_1")
         return
         
     path_prefix = "export PATH=$PATH:/sbin:/usr/sbin:/opt/bin:/opt/sbin; "
     cmd = f"{path_prefix}conntrack -E -p tcp -e NEW"
     
-    logging.info(f"[Router IPS] Запуск чтения событий conntrack роутера через SSH command: '{cmd}'...")
+    logging.info("router_ips_starting_router_conntrack_events_reading", cmd)
     
     key_path = settings.router_ssh_key
     if key_path and not os.path.isabs(key_path):
@@ -54,7 +54,7 @@ async def monitor_router_conntrack():
                         recent_bot_ports.append(sockname[1])
                     except Exception:
                         pass
-                logging.info("[Router IPS] Успешно подключено по SSH для чтения conntrack!")
+                logging.info("router_ips_successfully_connected_via_ssh_to")
                 async with conn.create_process(cmd) as process:
                     async for line in process.stdout:
                         await handle_router_conntrack_log_line(line)
@@ -62,15 +62,15 @@ async def monitor_router_conntrack():
             break
         except Exception as e:
             err_msg = str(e) or type(e).__name__
-            logging.warning(f"[Router IPS] Ошибка подключения по SSH к роутеру (conntrack): {err_msg}")
+            logging.warning("router_ips_oshibka_podklyucheniya_po_ssh_k", err_msg)
             
-        logging.info("[Router IPS] Переподключение к SSH (conntrack) через 15 секунд...")
+        logging.info("router_ips_perepodklyuchenie_k_ssh_conntrack_cherez")
         await asyncio.sleep(15)
 
 async def monitor_router_syslog():
     """Фоновый воркер для чтения логов роутера через SSH в реальном времени."""
     if not settings.router_monitor_enable:
-        logging.warning("[Router IPS] Мониторинг роутера отключен в настройках. Невозможно запустить мониторинг по syslog.")
+        logging.warning("router_ips_router_monitoring_is_disabled_in_2")
         return
         
     await setup_router_logging_rules()
@@ -80,7 +80,7 @@ async def monitor_router_syslog():
     if settings.router_type != 'openwrt':
         cmd = f"{path_prefix}tail -f /var/log/messages"
         
-    logging.info(f"[Router IPS] Запуск чтения логов роутера через SSH command: '{cmd}'...")
+    logging.info("router_ips_starting_router_log_reading_via", cmd)
     
     key_path = settings.router_ssh_key
     if key_path and not os.path.isabs(key_path):
@@ -117,7 +117,7 @@ async def monitor_router_syslog():
                         recent_bot_ports.append(sockname[1])
                     except Exception:
                         pass
-                logging.info("[Router IPS] Успешно подключено по SSH для чтения логов!")
+                logging.info("router_ips_successfully_connected_via_ssh_to_1")
                 async with conn.create_process(cmd) as process:
                     async for line in process.stdout:
                         if "ROUTER-IPS:" in line:
@@ -126,9 +126,9 @@ async def monitor_router_syslog():
             break
         except Exception as e:
             err_msg = str(e) or type(e).__name__
-            logging.warning(f"[Router IPS] Ошибка подключения по SSH к роутеру: {err_msg}")
+            logging.warning("router_ips_error_connecting_via_ssh_to", err_msg)
             
-        logging.info("[Router IPS] Переподключение к SSH через 15 секунд...")
+        logging.info("router_ips_reconnecting_to_ssh_in_15")
         await asyncio.sleep(15)
         
     await remove_router_logging_rules()
@@ -136,7 +136,7 @@ async def monitor_router_syslog():
 async def monitor_router_syslog_v2():
     """Фоновый воркер для чтения логов роутера через SSH в реальном времени."""
     if not settings.router_monitor_enable:
-        logging.warning("[Router IPS] Мониторинг роутера отключен в настройках. Невозможно запустить мониторинг по syslog.")
+        logging.warning("router_ips_router_monitoring_is_disabled_in_2")
         return
         
     await setup_router_logging_rules()
@@ -145,7 +145,7 @@ async def monitor_router_syslog_v2():
     if settings.router_type != 'openwrt':
         cmd = "tail -f /var/log/messages"
         
-    logging.info(f"[Router IPS] Запуск чтения логов роутера через SSH command: '{cmd}'...")
+    logging.info("router_ips_starting_router_log_reading_via", cmd)
     
     key_path = settings.router_ssh_key
     if key_path and not os.path.isabs(key_path):
@@ -182,7 +182,7 @@ async def monitor_router_syslog_v2():
                         recent_bot_ports.append(sockname[1])
                     except Exception:
                         pass
-                logging.info("[Router IPS] Успешно подключено по SSH для чтения логов!")
+                logging.info("router_ips_successfully_connected_via_ssh_to_1")
                 async with conn.create_process(cmd) as process:
                     async for line in process.stdout:
                         if "ROUTER-IPS:" in line:
@@ -191,9 +191,9 @@ async def monitor_router_syslog_v2():
             break
         except Exception as e:
             err_msg = str(e) or type(e).__name__
-            logging.warning(f"[Router IPS] Ошибка подключения по SSH к роутеру: {err_msg}")
+            logging.warning("router_ips_error_connecting_via_ssh_to", err_msg)
             
-        logging.info("[Router IPS] Переподключение к SSH через 15 секунд...")
+        logging.info("router_ips_reconnecting_to_ssh_in_15")
         await asyncio.sleep(15)
         
     await remove_router_logging_rules()

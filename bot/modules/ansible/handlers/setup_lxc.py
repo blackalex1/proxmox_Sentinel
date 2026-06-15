@@ -25,7 +25,7 @@ async def setup_ansible_user_in_lxc(vmid: int, pub_key_content: str) -> bool:
             create_cmd = ["pct", "exec", str(vmid), "--", "useradd", "-m", "-s", "/bin/bash", "ansible"]
             proc = await asyncio.create_subprocess_exec(*create_cmd)
             await proc.wait()
-            logging.info(f"Создан пользователь ansible в LXC {vmid}")
+            logging.info("created_user_ansible_in_lxc", vmid)
             
         # 2. Добавляем в sudoers для беспарольного доступа
         # В некоторых дистрибутивах нужно установить sudo, если его нет
@@ -53,10 +53,10 @@ async def setup_ansible_user_in_lxc(vmid: int, pub_key_content: str) -> bool:
         proc = await asyncio.create_subprocess_exec(*setup_ssh_cmd)
         await proc.wait()
         
-        logging.info(f"Успешно настроен пользователь ansible в LXC {vmid}")
+        logging.info("successfully_configured_user_ansible_in_lxc", vmid)
         return True
     except Exception as e:
-        logging.error(f"Ошибка настройки пользователя ansible в LXC {vmid}: {e}")
+        logging.error("error_configuring_user_ansible_in_lxc", vmid, e)
         return False
 
 @router.callback_query(F.data == "ansible_setup_lxc")

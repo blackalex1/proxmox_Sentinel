@@ -97,6 +97,6 @@ def setup_logging():
     # чтобы не забивать логи INFO-сообщениями о каждом сессионном канале SSH.
     logging.getLogger('asyncssh').setLevel(logging.WARNING)
 
-    logging.info(f"[Logging] Инициализировано общее логирование: {log_file} (5x10MB)")
-    logging.info(f"[Logging] Инициализирован выделенный лог предупреждений: {warnings_file} (max 50MB)")
+    logging.info("logging_initsializirovano_obschee_logirovanie_5x10mb", log_file)
+    logging.info("logging_initsializirovan_vydelennyy_log_preduprezhdeniy_max_50mb", warnings_file)
 

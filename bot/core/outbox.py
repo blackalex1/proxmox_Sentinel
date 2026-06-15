@@ -167,13 +167,13 @@ class ResilientOutbox:
                                         keyboard.append(new_row)
                                     kwargs["reply_markup"] = InlineKeyboardMarkup(inline_keyboard=keyboard)
                             except Exception as e:
-                                logger.error(f"[Outbox] Ошибка десериализации reply_markup: {e}")
+                                logger.error("outbox_oshibka_deserializatsii_reply_markup", e)
                                 kwargs["reply_markup"] = None
                     self.queue.append(msg)
                     
-                logger.info(f"[Outbox] Загружена очередь отложенных сообщений: {len(self.queue)} шт.")
+                logger.info("outbox_zagruzhena_ochered_otlozhennykh_soobscheniy_sht", len(self.queue))
             except Exception as e:
-                logger.error(f"[Outbox] Ошибка при чтении {OUTBOX_FILE}: {e}")
+                logger.error("outbox_oshibka_pri_chtenii", OUTBOX_FILE, e)
                 self.queue = []
         else:
             self.queue = []
@@ -206,7 +206,7 @@ class ResilientOutbox:
             with open(OUTBOX_FILE, 'w', encoding='utf-8') as f:
                 json.dump(serialized_queue, f, ensure_ascii=False, indent=2)
         except Exception as e:
-            logger.error(f"[Outbox] Ошибка при сохранении очереди на диск: {e}")
+            logger.error("outbox_oshibka_pri_sokhranenii_ocheredi_na_disk", e)
 
     async def add_message(self, chat_id, text, **kwargs):
         """Добавляет сообщение в очередь."""
@@ -220,7 +220,7 @@ class ResilientOutbox:
             }
             self.queue.append(msg_data)
             self.save_to_disk()
-            logger.info(f"[Outbox] Сообщение для {chat_id} добавлено в очередь отложенной отправки. Всего в очереди: {len(self.queue)}")
+            logger.info("outbox_soobschenie_dlya_dobavleno_v_ochered_otlozhennoy", chat_id, len(self.queue))
 
     async def flush_queue(self, bot: Bot):
         """
@@ -234,7 +234,7 @@ class ResilientOutbox:
 
         async with self.lock:
             total_count = len(self.queue)
-            logger.info(f"[Outbox] Запуск отправки отложенных сообщений ({total_count} шт)...")
+            logger.info("outbox_zapusk_otpravki_otlozhennykh_soobscheniy_sht", total_count)
             remaining_queue = []
             
             for idx, msg in enumerate(self.queue, 1):
@@ -254,7 +254,7 @@ class ResilientOutbox:
                     
                     rich_msg = await self._send_rich_message_impl(bot, chat_id, rich_text, parse_mode=parse_mode, reply_markup=reply_markup)
                     if rich_msg:
-                        logger.info(f"[Outbox] Сообщение для {chat_id} успешно доставлено как Rich Message из очереди ({idx}/{total_count}).")
+                        logger.info("outbox_soobschenie_dlya_uspeshno_dostavleno_kak_rich", chat_id, idx, total_count)
                         await asyncio.sleep(0.5)
                         continue
                     
@@ -275,13 +275,13 @@ class ResilientOutbox:
                     
                     # Используем оригинальный метод класса Bot для отправки без перехвата
                     await bot._original_send_message(chat_id, resilient_text, **kwargs)
-                    logger.info(f"[Outbox] Сообщение для {chat_id} успешно доставлено из очереди ({idx}/{total_count}).")
+                    logger.info("outbox_soobschenie_dlya_uspeshno_dostavleno_iz_ocheredi", chat_id, idx, total_count)
                     
                     # Анти-спам защита: задержка 0.5 сек между сообщениями
                     await asyncio.sleep(0.5)
                 except (TelegramNetworkError, ClientOSError, asyncio.TimeoutError) as e:
                     # Если всё еще нет сети, прерываем отправку и оставляем это и все последующие сообщения
-                    logger.warning(f"[Outbox] Ошибка сети при отправке сообщения для {chat_id} ({e}). Приостанавливаем отправку.")
+                    logger.warning("outbox_oshibka_seti_pri_otpravke_soobscheniya_dlya", chat_id, e)
                     remaining_queue.append(msg)
                     # Добавляем все оставшиеся сообщения обратно в очередь
                     # (ВАЖНО: сохраняем оригинальный индекс текущего элемента для правильного слайсинга)
@@ -290,7 +290,7 @@ class ResilientOutbox:
                     break
                 except TelegramRetryAfter as e:
                     # Защита от флуда: если Telegram попросил подождать (Flood Control)
-                    logger.warning(f"[Outbox] Превышен лимит частоты отправки Telegram (Flood Control). Требуется подождать {e.retry_after} сек.")
+                    logger.warning("outbox_prevyshen_limit_chastoty_otpravki_telegram_flood", e.retry_after)
                     remaining_queue.append(msg)
                     current_idx = self.queue.index(msg)
                     remaining_queue.extend(self.queue[current_idx+1:])
@@ -300,9 +300,9 @@ class ResilientOutbox:
                 except TelegramAPIError as e:
                     # Если это ошибка Telegram API (например, пользователь заблокировал бота),
                     # сообщение больше не отправляем, удаляем из очереди
-                    logger.error(f"[Outbox] Ошибка Telegram API при отправке {chat_id} ({e}). Сообщение удалено из очереди.")
+                    logger.error("outbox_oshibka_telegram_api_pri_otpravke_soobschenie", chat_id, e)
                 except Exception as e:
-                    logger.error(f"[Outbox] Неизвестная ошибка при отправке {chat_id} ({e}). Сообщение удалено.")
+                    logger.error("outbox_neizvestnaya_oshibka_pri_otpravke_soobschenie_udaleno", chat_id, e)
             
             self.queue = remaining_queue
             self.save_to_disk()
@@ -344,9 +344,9 @@ class ResilientOutbox:
                     from aiogram.types import Message
                     return Message.model_validate(res["result"])
                 else:
-                    logger.warning(f"[Rich Message] Не удалось отправить Rich Message для {chat_id}, код: {res.get('description')}")
+                    logger.warning("rich_message_ne_udalos_otpravit_rich_message", chat_id, res.get('description'))
         except Exception as e:
-            logger.warning(f"[Rich Message] Исключение при отправке Rich Message для {chat_id}: {e}")
+            logger.warning("rich_message_exception_sending_rich_message_for", chat_id, e)
             
         return None
 
@@ -390,11 +390,11 @@ class ResilientOutbox:
                 else:
                     desc = res.get('description', '')
                     if "message is not modified" in desc.lower():
-                        logger.debug(f"[Rich Message Edit] Сообщение не изменено: {desc}")
+                        logger.debug("rich_message_edit_message_not_modified", desc)
                     else:
-                        logger.warning(f"[Rich Message Edit] Не удалось отредактировать Rich Message, код: {desc}")
+                        logger.warning("rich_message_edit_failed_to_edit_rich", desc)
         except Exception as e:
-            logger.warning(f"[Rich Message Edit] Исключение при редактировании Rich Message: {e}")
+            logger.warning("rich_message_edit_exception_while_editing_rich", e)
             
         return None
 
@@ -437,7 +437,7 @@ class ResilientOutbox:
                 err_msg = str(e).lower()
                 
                 if is_network or any(x in err_msg for x in ["connection", "timeout", "reset", "abort"]):
-                    logger.warning(f"[Outbox] Сбой сети при отправке сообщения для {chat_id} ({e}). Перенаправляем в исходящую очередь...")
+                    logger.warning("outbox_sboy_seti_pri_otpravke_soobscheniya_dlya", chat_id, e)
                     await self.add_message(chat_id, original_text, **original_kwargs)
                     return None
                 else:
@@ -484,18 +484,18 @@ class ResilientOutbox:
             return await bot._original_edit_message_text(*args_list, **kwargs)
             
         bot.edit_message_text = resilient_edit_message_text
-        logger.info("[Outbox] Бот успешно пропатчен: все отправляемые сообщения защищены от сбоев прокси/сети и очищены от несовместимых HTML тегов.")
+        logger.info("outbox_bot_uspeshno_propatchen_vse_otpravlyaemye_soobscheniya")
 
 # Глобальный инстанс исходящей очереди
 outbox = ResilientOutbox()
 
 async def outbox_sender_loop(bot: Bot):
     """Фоновый цикл отправки отложенных сообщений."""
-    logger.info("[Outbox] Фоновый сервис отложенной отправки успешно запущен.")
+    logger.info("outbox_fonovyy_servis_otlozhennoy_otpravki_uspeshno_zapuschen")
     while True:
         try:
             await asyncio.sleep(5)
             if outbox.queue:
                 await outbox.flush_queue(bot)
         except Exception as e:
-            logger.error(f"[Outbox] Ошибка в цикле отправки: {e}")
+            logger.error("outbox_oshibka_v_tsikle_otpravki", e)

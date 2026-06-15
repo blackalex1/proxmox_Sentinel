@@ -48,7 +48,7 @@ async def monitor_nodes():
                                 except:
                                     pass
         except Exception as e:
-            logging.error(f"Ошибка в фоновом мониторинге Proxmox: {e}")
+            logging.error("error_in_background_proxmox_monitoring", e)
             
         await asyncio.sleep(60)
 

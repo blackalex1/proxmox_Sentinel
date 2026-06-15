@@ -30,8 +30,8 @@ def check_and_generate_ansible_keys(directory: str) -> tuple:
             except Exception:
                 pass
                 
-        logging.info(f"Успешно сгенерирована новая пара ED25519 ключей для Ansible в {directory}")
+        logging.info("successfully_generated_new_ed25519_keys_pair_for", directory)
         return True, True # Ключи были сгенерированы впервые
     except Exception as e:
-        logging.error(f"Ошибка генерации SSH ключей для Ansible: {e}")
+        logging.error("error_generating_ssh_keys_for_ansible", e)
         return False, False
