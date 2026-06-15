@@ -10,6 +10,7 @@ from aiogram.filters.command import Command
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery, WebAppInfo
 
 from core.spectre_client import spectre_manager
+from core.messages.i18n import _
 
 router = Router(name="spectre_panel_router")
 
@@ -20,7 +21,7 @@ async def cmd_panel(message: types.Message):
     """
     panels = spectre_manager.panels
     if not panels:
-        await message.reply("❌ <b>Панели Spectre Panel не обнаружены.</b>\nУбедитесь, что панели запущены и доступны.")
+        await message.reply(_("spectre", "panel_not_found_err"))
         return
         
     if len(panels) == 1:
@@ -34,18 +35,18 @@ async def cmd_panel(message: types.Message):
             port_str = f":{parsed.port}" if parsed.port and parsed.port not in (80, 443) else ""
             webapp_url = f"https://{domain}{port_str}/{panel.secret_path}/"
         kb = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text=f"📱 Открыть {panel.name}", web_app=WebAppInfo(url=webapp_url))],
+            [InlineKeyboardButton(text=_("spectre", "open_panel_btn", name=panel.name), web_app=WebAppInfo(url=webapp_url))],
             [
-                InlineKeyboardButton(text="👥 Список клиентов", callback_data=f"spectre_clients:{panel_key}:0"),
-                InlineKeyboardButton(text="⚙️ Статус", callback_data=f"spectre_status:{panel_key}")
+                InlineKeyboardButton(text=_("spectre", "clients_list_btn"), callback_data=f"spectre_clients:{panel_key}:0"),
+                InlineKeyboardButton(text=_("spectre", "status_btn"), callback_data=f"spectre_status:{panel_key}")
             ],
             [
-                InlineKeyboardButton(text="➕ Добавить слейв", callback_data=f"spectre_add_slave:{panel_key}"),
-                InlineKeyboardButton(text="➕ Добавить мастер", callback_data="spectre_add_master")
+                InlineKeyboardButton(text=_("spectre", "add_slave_btn"), callback_data=f"spectre_add_slave:{panel_key}"),
+                InlineKeyboardButton(text=_("spectre", "add_master_btn"), callback_data="spectre_add_master")
             ]
         ])
         await message.reply(
-            f"🚀 <b>Панель управления Spectre Panel</b>\n\nСервер: <code>{panel.name}</code>",
+            _("spectre", "spectre_panel_title", name=panel.name),
             reply_markup=kb,
             parse_mode="HTML"
         )
@@ -53,10 +54,10 @@ async def cmd_panel(message: types.Message):
         buttons = []
         for p_key, p in panels.items():
             buttons.append([InlineKeyboardButton(text=f"📱 {p.name}", callback_data=f"spectre_menu:{p_key}")])
-        buttons.append([InlineKeyboardButton(text="➕ Добавить мастер ноду", callback_data="spectre_add_master")])
+        buttons.append([InlineKeyboardButton(text=_("spectre", "add_master_node_btn"), callback_data="spectre_add_master")])
         kb = InlineKeyboardMarkup(inline_keyboard=buttons)
         await message.reply(
-            "🚀 <b>Выберите Spectre Panel для управления:</b>",
+            _("spectre", "select_panel_title"),
             reply_markup=kb,
             parse_mode="HTML"
         )
@@ -66,7 +67,7 @@ async def cb_spectre_menu(callback: CallbackQuery):
     panel_key = callback.data.split(":", 1)[1]
     panel = spectre_manager.panels.get(panel_key)
     if not panel:
-        await callback.answer("❌ Панель не найдена.", show_alert=True)
+        await callback.answer(_("spectre", "panel_not_found"), show_alert=True)
         return
         
     webapp_url = f"{panel.url}/{panel.secret_path}/"
@@ -77,30 +78,30 @@ async def cb_spectre_menu(callback: CallbackQuery):
         port_str = f":{parsed.port}" if parsed.port and parsed.port not in (80, 443) else ""
         webapp_url = f"https://{domain}{port_str}/{panel.secret_path}/"
     menu_buttons = [
-        [InlineKeyboardButton(text=f"📱 Открыть WebApp", web_app=WebAppInfo(url=webapp_url))],
+        [InlineKeyboardButton(text=_("spectre", "open_webapp_btn"), web_app=WebAppInfo(url=webapp_url))],
         [
-            InlineKeyboardButton(text="⚙️ Статус", callback_data=f"spectre_status:{panel_key}"),
-            InlineKeyboardButton(text="📋 Логи аудита", callback_data=f"spectre_audit:{panel_key}")
+            InlineKeyboardButton(text=_("spectre", "status_btn"), callback_data=f"spectre_status:{panel_key}"),
+            InlineKeyboardButton(text=_("spectre", "audit_logs_btn"), callback_data=f"spectre_audit:{panel_key}")
         ],
         [
-            InlineKeyboardButton(text="👥 Список клиентов", callback_data=f"spectre_clients:{panel_key}:0"),
-            InlineKeyboardButton(text="📥 Бэкап", callback_data=f"spectre_backup:{panel_key}")
+            InlineKeyboardButton(text=_("spectre", "clients_list_btn"), callback_data=f"spectre_clients:{panel_key}:0"),
+            InlineKeyboardButton(text=_("spectre", "backup_btn"), callback_data=f"spectre_backup:{panel_key}")
         ]
     ]
     
     if panel.source_type == 'vps':
         menu_buttons.append([
-            InlineKeyboardButton(text="🔒 Логи входа VPS", callback_data=f"vps_auth_{panel.identifier}")
+            InlineKeyboardButton(text=_("spectre", "vps_logs_btn"), callback_data=f"vps_auth_{panel.identifier}")
         ])
         
     menu_buttons.append([
-        InlineKeyboardButton(text="➕ Добавить слейв", callback_data=f"spectre_add_slave:{panel_key}"),
-        InlineKeyboardButton(text="🔙 Назад к списку", callback_data="spectre_list")
+        InlineKeyboardButton(text=_("spectre", "add_slave_btn"), callback_data=f"spectre_add_slave:{panel_key}"),
+        InlineKeyboardButton(text=_("spectre", "back_to_list_btn"), callback_data="spectre_list")
     ])
     
     kb = InlineKeyboardMarkup(inline_keyboard=menu_buttons)
     await callback.message.edit_text(
-        f"🚀 <b>Управление панелью {panel.name}</b>\n\nВыберите действие:",
+        _("spectre", "manage_panel_title", name=panel.name),
         reply_markup=kb,
         parse_mode="HTML"
     )
@@ -112,11 +113,11 @@ async def cb_spectre_list(callback: CallbackQuery):
     buttons = []
     for p_key, p in panels.items():
         buttons.append([InlineKeyboardButton(text=f"📱 {p.name}", callback_data=f"spectre_menu:{p_key}")])
-    buttons.append([InlineKeyboardButton(text="➕ Добавить мастер ноду", callback_data="spectre_add_master")])
-    buttons.append([InlineKeyboardButton(text="🔙 В главное меню", callback_data="main_menu")])
+    buttons.append([InlineKeyboardButton(text=_("spectre", "add_master_node_btn"), callback_data="spectre_add_master")])
+    buttons.append([InlineKeyboardButton(text=_("keyboards", "btn_back_to_menu"), callback_data="main_menu")])
     kb = InlineKeyboardMarkup(inline_keyboard=buttons)
     await callback.message.edit_text(
-        "🚀 <b>Выберите Spectre Panel для управления:</b>",
+        _("spectre", "select_panel_title"),
         reply_markup=kb,
         parse_mode="HTML"
     )
@@ -127,11 +128,11 @@ async def cb_add_slave(callback: CallbackQuery):
     panel_key = callback.data.split(":", 1)[1]
     panel = spectre_manager.panels.get(panel_key)
     if not panel:
-        await callback.answer("❌ Панель не найдена.", show_alert=True)
+        await callback.answer(_("spectre", "panel_not_found"), show_alert=True)
         return
         
     await callback.message.edit_text(
-        f"⏳ <b>Генерация кода подключения для слейв-ноды на {panel.name}...</b>",
+        _("spectre", "generating_join_code", name=panel.name),
         parse_mode="HTML"
     )
     
@@ -149,32 +150,27 @@ async def cb_add_slave(callback: CallbackQuery):
             if panel.secret_path:
                 master_url += f"/{panel.secret_path}"
             
-        msg = (
-            f"➕ <b>Добавление слейв-ноды для {panel.name}</b>\n"
-            f"━━━━━━━━━━━━━━━━━━━━━━━━\n"
-            f"🔑 Код подключения (Join Code):\n<code>{join_code}</code>\n"
-            f"⏱ Истекает: <b>{expiry_str}</b>\n\n"
-            f"💻 <b>Команда для запуска на слейв-сервере:</b>\n\n"
-            f"🐳 <b>Вариант А (в Docker-контейнере):</b>\n"
-            f"<code>docker compose exec -T spectre-panel python register_node.py --master \"{master_url}\" --join-code \"{join_code}\"</code>\n\n"
-            f"🐍 <b>Вариант Б (локально на хосте через Virtualenv):</b>\n"
-            f"<code>.venv/bin/python register_node.py --master \"{master_url}\" --join-code \"{join_code}\"</code>\n\n"
-            f"<i>Запустите подходящую команду в директории слейв-панели для регистрации публичного ключа.</i>"
+        msg = _(
+            "spectre", "add_slave_title",
+            name=panel.name,
+            join_code=join_code,
+            expiry_str=expiry_str,
+            master_url=master_url
         )
         
         back_data = f"spectre_menu:{panel_key}" if len(spectre_manager.panels) > 1 else "spectre_list"
         kb = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="🔙 Назад", callback_data=back_data)]
+            [InlineKeyboardButton(text=_("spectre", "back_btn"), callback_data=back_data)]
         ])
         await callback.message.edit_text(msg, reply_markup=kb, parse_mode="HTML")
     else:
-        error_info = res.get("msg") or res.get("error") or "Неизвестная ошибка"
+        error_info = res.get("msg") or res.get("error") or "Unknown error"
         back_data = f"spectre_menu:{panel_key}" if len(spectre_manager.panels) > 1 else "spectre_list"
         kb = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="🔙 Назад", callback_data=back_data)]
+            [InlineKeyboardButton(text=_("spectre", "back_btn"), callback_data=back_data)]
         ])
         await callback.message.edit_text(
-            f"❌ <b>Ошибка генерации кода подключения для {panel.name}:</b>\n<code>{error_info}</code>",
+            _("spectre", "generating_error", name=panel.name, error_info=error_info),
             reply_markup=kb,
             parse_mode="HTML"
         )
@@ -183,20 +179,10 @@ async def cb_add_slave(callback: CallbackQuery):
 
 @router.callback_query(F.data == "spectre_add_master")
 async def cb_add_master(callback: CallbackQuery):
-    msg = (
-        f"➕ <b>Добавление новой Мастер-панели в Контроллер</b>\n"
-        f"━━━━━━━━━━━━━━━━━━━━━━━━\n"
-        f"Чтобы подключить еще одну Мастер-панель к вашему Telegram-боту:\n\n"
-        f"1️⃣ Откройте конфигурационный файл <code>.env</code> контроллера.\n"
-        f"2️⃣ Добавьте или отредактируйте переменную <code>SPECTRE_PANELS</code>. Это JSON-список панелей:\n\n"
-        f"<code>SPECTRE_PANELS='[\n"
-        f"  {{\"name\": \"Моя Панель\", \"url\": \"https://ip:port\", \"token\": \"api_token_here\", \"secret_path\": \"secret\"}}\n"
-        f"]'</code>\n\n"
-        f"3️⃣ Перезапустите бота. Он автоматически обнаружит её и добавит в меню."
-    )
+    msg = _("spectre", "add_master_title")
     back_data = "spectre_list"
     kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🔙 Назад", callback_data=back_data)]
+        [InlineKeyboardButton(text=_("spectre", "back_btn"), callback_data=back_data)]
     ])
     await callback.message.edit_text(msg, reply_markup=kb, parse_mode="HTML")
     await callback.answer()
@@ -210,9 +196,7 @@ async def cmd_setup_slave(message: types.Message):
     args = message.text.split(maxsplit=2)
     if len(args) < 3:
         await message.reply(
-            "💻 <b>Настройка сервера как слейв-ноды:</b>\n"
-            "Используйте формат: <code>/setup_slave &lt;master_url&gt; &lt;join_code&gt;</code>\n\n"
-            "<i>Пример:</i>\n<code>/setup_slave https://master.com/secret JOIN-E5A73D1C</code>",
+            _("spectre", "setup_slave_help"),
             parse_mode="HTML"
         )
         return
@@ -220,7 +204,7 @@ async def cmd_setup_slave(message: types.Message):
     master_url = args[1].strip()
     join_code = args[2].strip()
     
-    status_msg = await message.reply("⏳ <b>Инициализация подключения к Мастер-серверу...</b>")
+    status_msg = await message.reply(_("spectre", "setup_slave_init"))
     
     try:
         from cryptography.hazmat.primitives.asymmetric import ed25519
@@ -244,7 +228,7 @@ async def cmd_setup_slave(message: types.Message):
                 if response.status != 200:
                     text = await response.text()
                     await status_msg.edit_text(
-                        f"❌ <b>Регистрация отклонена Мастером (код {response.status}):</b>\n<code>{text[:200]}</code>"
+                        _("spectre", "setup_slave_rejected", status=response.status, error_info=text[:200])
                     )
                     return
                     
@@ -295,14 +279,11 @@ async def cmd_setup_slave(message: types.Message):
             pass
             
         await status_msg.edit_text(
-            f"✅ <b>Сервер успешно настроен как слейв-нода!</b>\n\n"
-            f"ID Ноды: <code>{data['node_id']}</code>\n"
-            f"Конфиг сохранен в: <code>{config_path}</code>\n"
-            f"🔗 Связь с Мастером установлена успешно."
+            _("spectre", "setup_slave_success", node_id=data["node_id"], config_path=config_path)
         )
     except Exception as e:
         logging.error(f"Error in setup_slave handler: {e}")
-        await status_msg.edit_text(f"❌ <b>Произошла ошибка при настройке слейв-ноды:</b>\n<code>{e}</code>")
+        await status_msg.edit_text(_("spectre", "setup_slave_error", error_info=str(e)))
 
 
 @router.callback_query(F.data.startswith("ctrl_term_sess:"))
@@ -310,7 +291,7 @@ async def cb_ctrl_term_sess(callback: CallbackQuery):
     # Format: ctrl_term_sess:<p_key>:<username>:<ip>
     parts = callback.data.split(":", 3)
     if len(parts) < 4:
-        await callback.answer("Ошибка формата данных", show_alert=True)
+        await callback.answer(_("spectre", "data_format_err"), show_alert=True)
         return
     p_key = parts[1]
     username = parts[2]
@@ -318,14 +299,14 @@ async def cb_ctrl_term_sess(callback: CallbackQuery):
 
     panel = spectre_manager.panels.get(p_key)
     if not panel:
-        await callback.answer("Панель не найдена или отключена", show_alert=True)
+        await callback.answer(_("spectre", "panel_not_found_or_disabled"), show_alert=True)
         return
 
     try:
         # 1. Получаем список сессий
         success, res = await panel.request("GET", "/api/security/sessions")
         if not success or not res.get("success"):
-            await callback.answer("Не удалось получить сессии с панели", show_alert=True)
+            await callback.answer(_("spectre", "sessions_fetch_err"), show_alert=True)
             return
 
         sessions = res.get("sessions", [])
@@ -338,13 +319,13 @@ async def cb_ctrl_term_sess(callback: CallbackQuery):
                     terminated += 1
 
         if terminated > 0:
-            await callback.message.edit_text(callback.message.html_text + f"\n\n❌ <b>Сессии пользователя {username} с IP {ip} успешно сброшены ({terminated} сесс.).</b>", parse_mode="HTML")
-            await callback.answer("Сессии успешно сброшены", show_alert=False)
+            await callback.message.edit_text(callback.message.html_text + _("spectre", "sessions_terminated", username=username, ip=ip, terminated=terminated), parse_mode="HTML")
+            await callback.answer(_("spectre", "sessions_terminated_alert"), show_alert=False)
         else:
-            await callback.answer("Активные сессии не найдены на панели", show_alert=True)
+            await callback.answer(_("spectre", "no_active_sessions_err"), show_alert=True)
     except Exception as e:
         logging.error(f"Error terminating session via controller callback: {e}")
-        await callback.answer(f"Ошибка: {e}", show_alert=True)
+        await callback.answer(_("spectre", "error_alert", error=str(e)), show_alert=True)
 
 
 @router.callback_query(F.data.startswith("ctrl_reset_pwd:"))
@@ -352,14 +333,14 @@ async def cb_ctrl_reset_pwd(callback: CallbackQuery):
     # Format: ctrl_reset_pwd:<p_key>:<username>
     parts = callback.data.split(":", 2)
     if len(parts) < 3:
-        await callback.answer("Ошибка формата данных", show_alert=True)
+        await callback.answer(_("spectre", "data_format_err"), show_alert=True)
         return
     p_key = parts[1]
     username = parts[2]
 
     panel = spectre_manager.panels.get(p_key)
     if not panel:
-        await callback.answer("Панель не найдена или отключена", show_alert=True)
+        await callback.answer(_("spectre", "panel_not_found_or_disabled"), show_alert=True)
         return
 
     try:
@@ -405,7 +386,7 @@ async def cb_ctrl_reset_pwd(callback: CallbackQuery):
                     break
             
             if not server_cfg:
-                await callback.answer("Конфиг удаленного сервера не найден", show_alert=True)
+                await callback.answer(_("spectre", "panel_not_found_or_disabled"), show_alert=True)
                 return
                 
             ssh_ok, stdout, stderr = await run_remote_ssh_cmd(server_cfg, docker_cmd)
@@ -415,18 +396,18 @@ async def cb_ctrl_reset_pwd(callback: CallbackQuery):
                 error_msg = stderr.strip() or "SSH execution failed"
         else:
             # Ручные/мануальные панели, у нас нет прямого доступа к шеллу ноды
-            await callback.answer("Невозможно сбросить пароль для панели с ручной настройкой (.env)", show_alert=True)
+            await callback.answer(_("spectre", "reset_pwd_manual_unsupported"), show_alert=True)
             return
 
         if success:
-            await callback.message.edit_text(callback.message.html_text + f"\n\n🔑 <b>Пароль пользователя {username} успешно изменен!</b>\nНовый пароль: <tg-spoiler><code>{new_pwd}</code></tg-spoiler>", parse_mode="HTML")
-            await callback.answer("Пароль успешно изменен", show_alert=False)
+            await callback.message.edit_text(callback.message.html_text + _("spectre", "reset_pwd_success", username=username, new_pwd=new_pwd), parse_mode="HTML")
+            await callback.answer(_("spectre", "reset_pwd_success_alert"), show_alert=False)
         else:
-            await callback.answer(f"Не удалось сбросить пароль: {error_msg}", show_alert=True)
+            await callback.answer(_("spectre", "reset_pwd_failed", error_info=error_msg), show_alert=True)
             
     except Exception as e:
         logging.error(f"Error resetting password via controller callback: {e}")
-        await callback.answer(f"Ошибка: {e}", show_alert=True)
+        await callback.answer(_("spectre", "error_alert", error=str(e)), show_alert=True)
 
 
 # --- Управление клиентами и просмотр статистики ---
@@ -442,18 +423,18 @@ async def cb_spectre_clients(callback: CallbackQuery):
         
     panel = spectre_manager.panels.get(panel_key)
     if not panel:
-        await callback.answer("❌ Панель не найдена.", show_alert=True)
+        await callback.answer(_("spectre", "panel_not_found"), show_alert=True)
         return
         
-    await callback.message.edit_text(f"⏳ Загрузка списка клиентов для <b>{panel.name}</b>...", parse_mode="HTML")
+    await callback.message.edit_text(_("spectre", "loading_clients", name=panel.name), parse_mode="HTML")
     
     success, res = await panel.request("GET", "/api/security/search-client", params={"key": ""})
     if not success or not res.get("success"):
         await callback.message.edit_text(
-            f"❌ <b>Не удалось загрузить клиентов с панели {panel.name}</b>",
+            _("spectre", "load_clients_err", name=panel.name),
             parse_mode="HTML",
             reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text="🔙 Назад", callback_data=f"spectre_menu:{panel_key}")]
+                [InlineKeyboardButton(text=_("spectre", "back_btn"), callback_data=f"spectre_menu:{panel_key}")]
             ])
         )
         await callback.answer()
@@ -462,10 +443,10 @@ async def cb_spectre_clients(callback: CallbackQuery):
     clients = res.get("clients", [])
     if not clients:
         await callback.message.edit_text(
-            f"👥 <b>Список клиентов на панели {panel.name} пуст.</b>",
+            _("spectre", "clients_list_empty", name=panel.name),
             parse_mode="HTML",
             reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text="🔙 Назад", callback_data=f"spectre_menu:{panel_key}")]
+                [InlineKeyboardButton(text=_("spectre", "back_btn"), callback_data=f"spectre_menu:{panel_key}")]
             ])
         )
         await callback.answer()
@@ -515,23 +496,23 @@ async def cb_spectre_clients(callback: CallbackQuery):
         
     nav_row = []
     if page > 0:
-        nav_row.append(InlineKeyboardButton(text="◀️ Назад", callback_data=f"spectre_clients:{panel_key}:{page - 1}"))
+        nav_row.append(InlineKeyboardButton(text=_("spectre", "nav_back"), callback_data=f"spectre_clients:{panel_key}:{page - 1}"))
     else:
-        nav_row.append(InlineKeyboardButton(text="⏹️ Начало", callback_data="noop"))
+        nav_row.append(InlineKeyboardButton(text=_("spectre", "nav_start"), callback_data="noop"))
         
     nav_row.append(InlineKeyboardButton(text=f"{page + 1}/{total_pages}", callback_data="noop"))
     
     if page < total_pages - 1:
-        nav_row.append(InlineKeyboardButton(text="Вперед ▶️", callback_data=f"spectre_clients:{panel_key}:{page + 1}"))
+        nav_row.append(InlineKeyboardButton(text=_("spectre", "nav_forward"), callback_data=f"spectre_clients:{panel_key}:{page + 1}"))
     else:
-        nav_row.append(InlineKeyboardButton(text="⏹️ Конец", callback_data="noop"))
+        nav_row.append(InlineKeyboardButton(text=_("spectre", "nav_end"), callback_data="noop"))
         
     buttons.append(nav_row)
-    buttons.append([InlineKeyboardButton(text="🔙 Назад в меню панели", callback_data=f"spectre_menu:{panel_key}")])
+    buttons.append([InlineKeyboardButton(text=_("spectre", "back_to_menu_btn"), callback_data=f"spectre_menu:{panel_key}")])
     
     kb = InlineKeyboardMarkup(inline_keyboard=buttons)
     await callback.message.edit_text(
-        f"👥 <b>Список клиентов на панели {panel.name}</b> (Всего: {total_clients}):",
+        _("spectre", "clients_list_title", name=panel.name, total_clients=total_clients),
         parse_mode="HTML",
         reply_markup=kb
     )
@@ -545,16 +526,16 @@ async def cb_spectre_client_view(callback: CallbackQuery):
     
     panel = spectre_manager.panels.get(panel_key)
     if not panel:
-        await callback.answer("❌ Панель не найдена.", show_alert=True)
+        await callback.answer(_("spectre", "panel_not_found"), show_alert=True)
         return
         
     # Попробуем сначала получить текущие данные о клиенте через API панели
     success, res = await panel.request("GET", "/api/security/search-client", params={"key": email})
     if not success or not res.get("success") or not res.get("clients"):
         await callback.message.edit_text(
-            f"❌ <b>Клиент {email} не найден на панели.</b>",
+            _("spectre", "client_not_found_err", email=email),
             reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text="🔙 Назад к списку", callback_data=f"spectre_clients:{panel_key}:0")]
+                [InlineKeyboardButton(text=_("spectre", "back_to_list_btn"), callback_data=f"spectre_clients:{panel_key}:0")]
             ])
         )
         await callback.answer()
@@ -564,7 +545,7 @@ async def cb_spectre_client_view(callback: CallbackQuery):
     c = item.get("client") if isinstance(item, dict) and "client" in item else item
     up_gb = c["up"] / (1024**3)
     down_gb = c["down"] / (1024**3)
-    total_gb = c["total"] / (1024**3) if c["total"] > 0 else "Без лимита"
+    total_gb = c["total"] / (1024**3) if c["total"] > 0 else _("spectre", "no_limit")
     total_gb_str = f"{total_gb:.2f} GB" if isinstance(total_gb, float) else total_gb
     
     # Запрашиваем онлайн статус через API панели
@@ -579,37 +560,28 @@ async def cb_spectre_client_view(callback: CallbackQuery):
         logging.error(f"Error checking online status for {email}: {e}")
         
     if c.get("enable") == 1:
-        status_str = "🟢 Онлайн" if is_online else "⚪ Офлайн"
-        action_btn = InlineKeyboardButton(text="🛑 Заблокировать", callback_data=f"spectre_client_act:{panel_key}:{email}:ban")
+        status_str = _("spectre", "status_online") if is_online else _("spectre", "status_offline")
+        action_btn = InlineKeyboardButton(text=_("spectre", "btn_ban_client"), callback_data=f"spectre_client_act:{panel_key}:{email}:ban")
     else:
-        reason = c.get('block_reason') or "Заблокирован администратором"
-        status_str = f"🔴 Заблокирован ({reason})"
-        action_btn = InlineKeyboardButton(text="🟢 Разблокировать", callback_data=f"spectre_client_act:{panel_key}:{email}:unban")
+        reason = c.get('block_reason') or _("spectre", "blocked_by_admin")
+        status_str = _("spectre", "status_blocked", reason=reason)
+        action_btn = InlineKeyboardButton(text=_("spectre", "btn_unban_client"), callback_data=f"spectre_client_act:{panel_key}:{email}:unban")
         
-    exp_str = "Никогда"
+    exp_str = _("spectre", "expiry_never")
     if c.get("expiry_time", 0) > 0:
         dt = datetime.datetime.fromtimestamp(c["expiry_time"] / 1000)
         exp_str = dt.strftime("%Y-%m-%d %H:%M:%S")
         
     # Формируем GFM Markdown Rich-таблицу для карточки клиента
-    msg = (
-        f"# 👤 Client Profile: {email}\n"
-        f"---\n\n"
-        f"### 👤 Информация о клиенте VPN\n\n"
-        f"| Параметр | Значение |\n"
-        f"| :--- | :--- |\n"
-        f"| **🖥️ Панель** | `{panel.name}` |\n"
-        f"| **🚦 Скачано (DL)** | `{down_gb:.3f} GB` |\n"
-        f"| **📤 Загружено (UL)** | `{up_gb:.3f} GB` |\n"
-        f"| **💾 Лимит трафика** | `{total_gb_str}` |\n"
-        f"| **⏱️ Истекает** | `{exp_str}` |\n"
-        f"| **⚡ Статус** | **{status_str}** |\n"
+    msg = _(
+        "spectre", "client_profile_card",
+        email=email, panel_name=panel.name, down_gb=down_gb, up_gb=up_gb, total_gb_str=total_gb_str, exp_str=exp_str, status_str=status_str
     )
     
     kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="📊 История подключений и IP", callback_data=f"vpn_hist:{email}:0")],
+        [InlineKeyboardButton(text=_("spectre", "btn_conn_history"), callback_data=f"vpn_hist:{email}:0")],
         [action_btn],
-        [InlineKeyboardButton(text="🔙 Назад к списку", callback_data=f"spectre_clients:{panel_key}:0")]
+        [InlineKeyboardButton(text=_("spectre", "back_to_list_btn"), callback_data=f"spectre_clients:{panel_key}:0")]
     ])
     
     from modules.proxmox.monitor.utils import edit_rich_message
@@ -631,23 +603,23 @@ async def cb_spectre_client_act(callback: CallbackQuery):
     
     panel = spectre_manager.panels.get(panel_key)
     if not panel:
-        await callback.answer("❌ Панель не найдена.", show_alert=True)
+        await callback.answer(_("spectre", "panel_not_found"), show_alert=True)
         return
         
     if action == "ban":
         success, res = await panel.request("POST", "/api/security/disable-client", data={"email": email})
-        success_msg = "Успешно заблокирован"
+        success_msg = _("spectre", "act_banned_success")
     else:
         success, res = await panel.request("POST", "/api/security/enable-client", data={"email": email})
-        success_msg = "Успешно разблокирован"
+        success_msg = _("spectre", "act_unbanned_success")
         
     ok = success and res.get("success", False)
-    desc = res.get("msg", "OK" if ok else "Ошибка на стороне панели")
+    desc = res.get("msg", _("spectre", "act_panel_error") if not ok else "OK")
     
     if ok:
-        await callback.answer(f"✅ {success_msg}!", show_alert=True)
+        await callback.answer(_("spectre", "act_success_alert", success_msg=success_msg), show_alert=True)
     else:
-        await callback.answer(f"❌ Ошибка: {desc}", show_alert=True)
+        await callback.answer(_("spectre", "act_failed_alert", desc=desc), show_alert=True)
         
     # Возвращаемся в просмотр клиента
     callback.data = f"spectre_client_view:{panel_key}:{email}"

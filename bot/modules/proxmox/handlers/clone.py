@@ -3,6 +3,7 @@ from aiogram.types import CallbackQuery
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from modules.proxmox.api import proxmox
+from core.messages.i18n import _
 
 router = Router(name="proxmox_clone_router")
 
@@ -26,8 +27,7 @@ async def start_proxmox_clone(callback: CallbackQuery, state: FSMContext):
     
     await state.set_state(ProxmoxCloneState.waiting_for_new_id)
     await callback.message.answer(
-        f"📝 <b>Клонирование {vm_type.upper()} {vmid} ({node_name})</b>\n\n"
-        f"Введите <b>ID</b> для новой машины (например, 105):",
+        _("proxmox", "clone_title", vm_type=vm_type.upper(), vmid=vmid, node_name=node_name),
         parse_mode="HTML"
     )
     await callback.answer()
@@ -36,12 +36,12 @@ async def start_proxmox_clone(callback: CallbackQuery, state: FSMContext):
 async def process_clone_id(message: types.Message, state: FSMContext):
     new_id = message.text.strip()
     if not new_id.isdigit():
-        await message.answer("❌ ID должен быть числом! Попробуйте еще раз:")
+        await message.answer(_("proxmox", "clone_id_nan"))
         return
         
     await state.update_data(new_id=new_id)
     await state.set_state(ProxmoxCloneState.waiting_for_new_name)
-    await message.answer("Введите <b>имя</b> для новой машины (например, my-new-server):", parse_mode="HTML")
+    await message.answer(_("proxmox", "clone_name_prompt"), parse_mode="HTML")
 
 @router.message(ProxmoxCloneState.waiting_for_new_name)
 async def process_clone_name(message: types.Message, state: FSMContext):
@@ -54,9 +54,9 @@ async def process_clone_name(message: types.Message, state: FSMContext):
     new_id = data['new_id']
     is_lxc = data['is_lxc']
     
-    status_msg = await message.answer("⏳ Начинаю клонирование...")
+    status_msg = await message.answer(_("proxmox", "clone_starting"))
     try:
         proxmox.clone_vm(node_name, src_vmid, new_id, new_name, is_lxc)
-        await status_msg.edit_text(f"✅ Клонирование успешно запущено!\nНовая машина ID: {new_id}, Имя: {new_name}")
+        await status_msg.edit_text(_("proxmox", "clone_success", new_id=new_id, new_name=new_name))
     except Exception as e:
-        await status_msg.edit_text(f"❌ Ошибка клонирования: {str(e)[:3500]}")
+        await status_msg.edit_text(_("proxmox", "clone_error", error=str(e)[:3500]))
