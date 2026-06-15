@@ -6,6 +6,7 @@ from aiogram.filters.command import Command
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery, BufferedInputFile, InputMediaPhoto
 
 from core.spectre_client import spectre_manager
+from core.messages.i18n import _
 
 router = Router(name="spectre_clients_router")
 
@@ -34,20 +35,19 @@ async def cmd_my_spectre(message: types.Message):
     args = message.text.split(maxsplit=1)
     if len(args) < 2:
         await message.reply(
-            "🔑 <b>Поиск подписки клиента:</b>\n"
-            "Используйте команду: <code>/my &lt;email или UUID&gt;</code>",
+            _("spectre", "my_subscription_title"),
             parse_mode="HTML"
         )
         return
         
     search_key = args[1].strip()
-    status_msg = await message.reply("🔍 Поиск клиента по всем базам данных панелей...")
+    status_msg = await message.reply(_("spectre", "lookup_in_progress"))
     
     try:
         found_clients = await spectre_manager.search_client_all(search_key)
         
         if not found_clients:
-            await status_msg.edit_text("❌ <b>Клиент с таким email или UUID не найден ни на одной панели.</b>")
+            await status_msg.edit_text(_("spectre", "client_not_found_everywhere"))
             return
             
         await status_msg.delete()
@@ -60,42 +60,42 @@ async def cmd_my_spectre(message: types.Message):
             
             up_gb = c["up"] / (1024**3)
             down_gb = c["down"] / (1024**3)
-            total_gb = c["total"] / (1024**3) if c["total"] > 0 else "Без лимита"
-            total_gb_str = f"{total_gb:.2f} ГБ" if isinstance(total_gb, float) else total_gb
+            total_gb = c["total"] / (1024**3) if c["total"] > 0 else _("spectre", "no_traffic_limit")
+            total_gb_str = _("spectre", "limit_gb", limit=total_gb) if isinstance(total_gb, float) else total_gb
             
             if c["enable"] == 1:
-                status_str = "🟢 Активен"
+                status_str = _("spectre", "status_active")
             else:
-                reason = c.get('block_reason') or "Превышены лимиты"
-                status_str = f"🔴 Заблокирован ({reason})"
+                reason = c.get('block_reason') or _("spectre", "reason_limit_exceeded")
+                status_str = _("spectre", "status_blocked_with_reason", reason=reason)
                 
-            exp_str = "Никогда"
+            exp_str = _("spectre", "expires_never")
             if c["expiry_time"] > 0:
                 dt = datetime.datetime.fromtimestamp(c["expiry_time"] / 1000)
                 exp_str = dt.strftime("%Y-%m-%d %H:%M:%S")
                 
-            msg = (
-                f"🔑 <b>Подписка: {html.escape(c['email'])}</b>\n"
-                f"📡 Панель/Сервер: <b>{panel_name}</b>\n"
-                f"━━━━━━━━━━━━━━━━━━━━━━━━\n"
-                f"📌 Подключение: <b>{ib['remark']} (:{ib['port']})</b>\n"
-                f"📡 Протокол: <b>{ib['protocol'].upper()}</b>\n"
-                f"🚦 Скачано (DL): <b>{down_gb:.3f} ГБ</b>\n"
-                f"📤 Загружено (UL): <b>{up_gb:.3f} ГБ</b>\n"
-                f"💾 Лимит трафика: <b>{total_gb_str}</b>\n"
-                f"⏱ Истекает: <b>{exp_str}</b>\n"
-                f"⚡ Статус: <b>{status_str}</b>\n"
-                f"━━━━━━━━━━━━━━━━━━━━━━━━\n"
-                f"🔗 <b>Ссылки для подключения:</b>\n"
+            msg = _(
+                "spectre",
+                "client_card_sub_title",
+                email=html.escape(c['email']),
+                panel_name=panel_name,
+                remark=ib['remark'],
+                port=ib['port'],
+                protocol=ib['protocol'].upper(),
+                download_gb=down_gb,
+                upload_gb=up_gb,
+                total_gb_str=total_gb_str,
+                expiry_str=exp_str,
+                status_str=status_str
             )
             
             for link in links:
                 msg += f"<code>{html.escape(link)}</code>\n\n"
                 
-            msg += "<i>Нажмите на ссылку, чтобы скопировать её.</i>"
+            msg += _("spectre", "copy_link_hint")
             
             kb = InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text="📊 История подключений и IP", callback_data=f"vpn_hist:{c['email']}:0")]
+                [InlineKeyboardButton(text=_("spectre", "btn_conn_history_and_ip"), callback_data=f"vpn_hist:{c['email']}:0")]
             ])
             await message.answer(msg, parse_mode="HTML", reply_markup=kb)
             
@@ -106,7 +106,7 @@ async def cmd_my_spectre(message: types.Message):
                     qr_bytes = generate_qr_code_png(link)
                     photo_file = BufferedInputFile(qr_bytes, filename=f"qr_{idx}.png")
                     proto_name = link.split("://")[0].upper() if "://" in link else "VPN"
-                    caption = f"QR-код {proto_name} ({idx+1})"
+                    caption = _("spectre", "qr_code_caption", protocol=proto_name, index=idx+1)
                     media_group.append(InputMediaPhoto(media=photo_file, caption=caption))
                 except Exception as qr_err:
                     logging.error(f"Error generating QR code in Sentinel bot: {qr_err}")
@@ -119,7 +119,7 @@ async def cmd_my_spectre(message: types.Message):
             
     except Exception as e:
         logging.error(f"Error executing search all in bot: {e}")
-        await status_msg.edit_text(f"❌ Произошла ошибка при поиске: {e}")
+        await status_msg.edit_text(_("spectre", "lookup_error", error=e))
 
 @router.callback_query(F.data.startswith("unban_tunnel:"))
 async def cb_unban_tunnel(callback: CallbackQuery):
@@ -127,11 +127,14 @@ async def cb_unban_tunnel(callback: CallbackQuery):
     
     original_text = callback.message.html_text if callback.message else ""
     # Удаляем часть с кнопкой ручной разблокировки
-    if "👇 Вы можете разблокировать туннель вручную в один клик:" in original_text:
+    hint_text = _("spectre", "unbanning_tunnel_hint")
+    if hint_text in original_text:
+        original_text = original_text.split(hint_text)[0].strip()
+    elif "👇 Вы можете разблокировать туннель вручную в один клик:" in original_text:
         original_text = original_text.split("👇 Вы можете разблокировать туннель вручную в один клик:")[0].strip()
         
     await callback.message.edit_text(
-        f"{original_text}\n\n⏳ <b>Выполняется разблокировка туннеля...</b>",
+        f"{original_text}\n\n" + _("spectre", "unbanning_tunnel_progress"),
         parse_mode="HTML"
     )
     
@@ -141,7 +144,7 @@ async def cb_unban_tunnel(callback: CallbackQuery):
         unblock_details = []
         all_success = True
         for panel_name, success, msg in unblock_res:
-            status_str = "🟢 Успешно" if success else "🔴 Ошибка"
+            status_str = _("spectre", "unban_status_success") if success else _("spectre", "unban_status_error")
             if not success:
                 all_success = False
             unblock_details.append(f"  • {panel_name}: {status_str} ({msg})")
@@ -150,23 +153,19 @@ async def cb_unban_tunnel(callback: CallbackQuery):
         timestamp = datetime.datetime.now().strftime("%H:%M:%S")
         if all_success:
             await callback.message.edit_text(
-                f"{original_text}\n\n✅ <b>Туннель успешно разблокирован вручную!</b>\n"
-                f"📋 <b>Детали разблокировки:</b>\n{unblock_details_str}\n"
-                f"🕒 Время: <code>{timestamp}</code>",
+                _("spectre", "manual_unban_success_details", original_text=original_text, details=unblock_details_str, timestamp=timestamp),
                 parse_mode="HTML"
             )
         else:
             await callback.message.edit_text(
-                f"{original_text}\n\n⚠️ <b>Туннель разблокирован с ошибками:</b>\n"
-                f"📋 <b>Детали разблокировки:</b>\n{unblock_details_str}\n"
-                f"🕒 Время: <code>{timestamp}</code>",
+                _("spectre", "manual_unban_failed_details", original_text=original_text, details=unblock_details_str, timestamp=timestamp),
                 parse_mode="HTML",
                 reply_markup=callback.message.reply_markup
             )
     except Exception as e:
         logging.error(f"Error unbanning tunnel manually: {e}")
         await callback.message.edit_text(
-            f"{original_text}\n\n❌ <b>Ошибка при разблокировке:</b> <code>{e}</code>",
+            _("spectre", "manual_unban_error", original_text=original_text, error=e),
             parse_mode="HTML",
             reply_markup=callback.message.reply_markup
         )
@@ -181,14 +180,13 @@ async def cmd_ban_client(message: types.Message):
     args = message.text.split(maxsplit=1)
     if len(args) < 2:
         await message.reply(
-            "🛑 <b>Блокировка клиента:</b>\n"
-            "Используйте команду: <code>/ban &lt;email&gt;</code>",
+            _("spectre", "ban_help"),
             parse_mode="HTML"
         )
         return
         
     email = args[1].strip()
-    status_msg = await message.reply(f"⏳ Блокировка клиента <code>{email}</code> на всех панелях...")
+    status_msg = await message.reply(_("spectre", "ban_progress", email=email))
     
     try:
         results = await spectre_manager.disable_client_everywhere(email)
@@ -196,7 +194,7 @@ async def cmd_ban_client(message: types.Message):
         detail_lines = []
         any_success = False
         for panel_name, success, msg in results:
-            status_str = "🟢 Заблокирован" if success else "🔴 Ошибка"
+            status_str = _("spectre", "ban_status_success") if success else _("spectre", "ban_status_error")
             if success:
                 any_success = True
             detail_lines.append(f"  • {panel_name}: {status_str} ({msg})")
@@ -204,17 +202,17 @@ async def cmd_ban_client(message: types.Message):
         details_str = "\n".join(detail_lines)
         if any_success:
             await status_msg.edit_text(
-                f"✅ <b>Результаты блокировки клиента <code>{email}</code>:</b>\n{details_str}",
+                _("spectre", "ban_success_results", email=email, details=details_str),
                 parse_mode="HTML"
             )
         else:
             await status_msg.edit_text(
-                f"❌ <b>Не удалось заблокировать клиента <code>{email}</code>:</b>\n{details_str}",
+                _("spectre", "ban_failed_results", email=email, details=details_str),
                 parse_mode="HTML"
             )
     except Exception as e:
         logging.error(f"Error executing manual ban in Sentinel bot: {e}")
-        await status_msg.edit_text(f"❌ Произошла ошибка при блокировке: {e}")
+        await status_msg.edit_text(_("spectre", "ban_error", error=e))
 
 @router.message(Command("unban"))
 async def cmd_unban_client(message: types.Message):
@@ -224,14 +222,13 @@ async def cmd_unban_client(message: types.Message):
     args = message.text.split(maxsplit=1)
     if len(args) < 2:
         await message.reply(
-            "🟢 <b>Разблокировка клиента:</b>\n"
-            "Используйте команду: <code>/unban &lt;email&gt;</code>",
+            _("spectre", "unban_help"),
             parse_mode="HTML"
         )
         return
         
     email = args[1].strip()
-    status_msg = await message.reply(f"⏳ Разблокировка клиента <code>{email}</code> на всех панелях...")
+    status_msg = await message.reply(_("spectre", "unban_progress", email=email))
     
     try:
         results = await spectre_manager.enable_client_everywhere(email)
@@ -239,7 +236,7 @@ async def cmd_unban_client(message: types.Message):
         detail_lines = []
         any_success = False
         for panel_name, success, msg in results:
-            status_str = "🟢 Разблокирован" if success else "🔴 Ошибка"
+            status_str = _("spectre", "unban_status_success") if success else _("spectre", "unban_status_error")
             if success:
                 any_success = True
             detail_lines.append(f"  • {panel_name}: {status_str} ({msg})")
@@ -247,17 +244,17 @@ async def cmd_unban_client(message: types.Message):
         details_str = "\n".join(detail_lines)
         if any_success:
             await status_msg.edit_text(
-                f"✅ <b>Результаты разблокировки клиента <code>{email}</code>:</b>\n{details_str}",
+                _("spectre", "unban_success_results", email=email, details=details_str),
                 parse_mode="HTML"
             )
         else:
             await status_msg.edit_text(
-                f"❌ <b>Не удалось разблокировать клиента <code>{email}</code>:</b>\n{details_str}",
+                _("spectre", "unban_failed_results", email=email, details=details_str),
                 parse_mode="HTML"
             )
     except Exception as e:
         logging.error(f"Error executing manual unban in Sentinel bot: {e}")
-        await status_msg.edit_text(f"❌ Произошла ошибка при разблокировке: {e}")
+        await status_msg.edit_text(_("spectre", "unban_error", error=e))
 
 @router.callback_query(F.data.startswith("tg_2fa_approve:"))
 async def cb_tg_2fa_approve(callback: CallbackQuery):
@@ -275,9 +272,9 @@ async def cb_tg_2fa_approve(callback: CallbackQuery):
             error_msg = res.get("msg")
             
     if success_found:
-        await callback.message.edit_text("✅ <b>Вход успешно разрешен.</b>", parse_mode="HTML")
+        await callback.message.edit_text(_("spectre", "tg_2fa_approved"), parse_mode="HTML")
     else:
-        await callback.answer(f"❌ Ошибка: {error_msg or 'Не удалось подтвердить ни на одной панели'}", show_alert=True)
+        await callback.answer(_("spectre", "tg_2fa_error", error=error_msg or _("spectre", "tg_2fa_approve_failed")), show_alert=True)
 
 @router.callback_query(F.data.startswith("tg_2fa_block:"))
 async def cb_tg_2fa_block(callback: CallbackQuery):
@@ -296,22 +293,22 @@ async def cb_tg_2fa_block(callback: CallbackQuery):
                 error_msg = res.get("msg")
                 
         if success_found:
-            await callback.message.edit_text("🛑 <b>IP-адрес заблокирован.</b>", parse_mode="HTML")
+            await callback.message.edit_text(_("spectre", "tg_2fa_blocked"), parse_mode="HTML")
         else:
-            await callback.answer(f"❌ Ошибка: {error_msg or 'Не удалось заблокировать ни на одной панели'}", show_alert=True)
+            await callback.answer(_("spectre", "tg_2fa_error", error=error_msg or _("spectre", "tg_2fa_unblock_failed")), show_alert=True)
         return
         
     # Запрос подтверждения
     original_text = callback.message.html_text if callback.message else ""
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [
-            InlineKeyboardButton(text="🔥 Да, заблокировать IP", callback_data=f"tg_2fa_block:{token}:confirm"),
-            InlineKeyboardButton(text="🔙 Отмена", callback_data=f"tg_2fa_cancel_block:{token}")
+            InlineKeyboardButton(text=_("spectre", "tg_2fa_block_confirm_btn"), callback_data=f"tg_2fa_block:{token}:confirm"),
+            InlineKeyboardButton(text=_("spectre", "tg_2fa_block_cancel_btn"), callback_data=f"tg_2fa_cancel_block:{token}")
         ]
     ])
     
     await callback.message.edit_text(
-        f"{original_text}\n\n⚠️ <b>Вы уверены? Блокировка вашего IP лишит вас доступа к серверу!</b>",
+        _("spectre", "tg_2fa_block_confirm_text", original_text=original_text),
         parse_mode="HTML",
         reply_markup=kb
     )
@@ -324,15 +321,18 @@ async def cb_tg_2fa_cancel_block(callback: CallbackQuery):
     
     original_text = callback.message.html_text if callback.message else ""
     warning_marker = "\n\n⚠️ Вы уверены?"
+    warning_marker_en = "\n\n⚠️ Are you sure?"
     if warning_marker in original_text:
         original_text = original_text.split(warning_marker)[0]
+    elif warning_marker_en in original_text:
+        original_text = original_text.split(warning_marker_en)[0]
     elif "⚠️" in original_text:
         original_text = original_text.split("⚠️")[0].strip()
         
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [
-            InlineKeyboardButton(text="✅ Да, разрешить", callback_data=f"tg_2fa_approve:{token}"),
-            InlineKeyboardButton(text="❌ Заблокировать IP", callback_data=f"tg_2fa_block:{token}")
+            InlineKeyboardButton(text=_("spectre", "tg_2fa_approve_btn"), callback_data=f"tg_2fa_approve:{token}"),
+            InlineKeyboardButton(text=_("spectre", "tg_2fa_block_btn"), callback_data=f"tg_2fa_block:{token}")
         ]
     ])
     
@@ -341,4 +341,4 @@ async def cb_tg_2fa_cancel_block(callback: CallbackQuery):
         parse_mode="HTML",
         reply_markup=kb
     )
-    await callback.answer("Блокировка IP отменена")
+    await callback.answer(_("spectre", "tg_2fa_block_cancelled_alert"))
