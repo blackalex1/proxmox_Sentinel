@@ -17,6 +17,20 @@ source "${MODULES_DIR}/service_setup.sh"
 main() {
     # 1. Base checks and setup
     check_root
+    
+    # Prompt for language selection at the very beginning
+    echo "=================================================="
+    echo "Select installation language / Выберите язык:"
+    echo "1) English"
+    echo "2) Русский (Russian)"
+    echo "=================================================="
+    read -rp ">> " lang_choice
+    if [ "${lang_choice}" = "2" ]; then
+        export INSTALL_LANG="ru"
+    else
+        export INSTALL_LANG="en"
+    fi
+    
     show_welcome_banner
     setup_install_proxy
     

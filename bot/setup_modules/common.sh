@@ -9,33 +9,49 @@ CYAN='\033[0;36m'
 MAGENTA='\033[0;35m'
 NC='\033[0m' # No Color
 
+echo_lang() {
+    if [ "${INSTALL_LANG}" = "ru" ]; then
+        echo -e -n "$1"
+    else
+        echo -e -n "$2"
+    fi
+}
+
+print_lang() {
+    if [ "${INSTALL_LANG}" = "ru" ]; then
+        echo -e "$1"
+    else
+        echo -e "$2"
+    fi
+}
+
 # Check if running as root
 check_root() {
     if [ "$EUID" -ne 0 ]; then
-        echo -e "${RED}❌ Ошибка: Этот скрипт должен быть запущен с правами ROOT (sudo).${NC}"
-        echo -e "Пожалуйста, запустите его как: ${YELLOW}sudo ./setup.sh${NC}"
+        echo -e "${RED}❌ Error: This script must be run as ROOT (sudo) / Этот скрипт должен быть запущен с правами ROOT (sudo).${NC}"
+        echo -e "Please run as / Пожалуйста, запустите как: ${YELLOW}sudo ./setup.sh${NC}"
         exit 1
     fi
 }
 
 # Display welcome banner
 show_welcome_banner() {
-    echo -e "${BLUE}=== Proxmox LXC Monitor Bot - Fully Automated Setup ===${NC}"
-    echo -e "Директория установки: ${GREEN}${SCRIPT_DIR}${NC}"
+    print_lang "${BLUE}=== Proxmox LXC Monitor Bot - Полная автоматическая настройка ===${NC}" "${BLUE}=== Proxmox LXC Monitor Bot - Fully Automated Setup ===${NC}"
+    print_lang "Директория установки: ${GREEN}${SCRIPT_DIR}${NC}" "Installation directory: ${GREEN}${SCRIPT_DIR}${NC}"
 }
 
 # Ask for installation proxy or auto-detect
 setup_install_proxy() {
     echo -e "\n${MAGENTA}==================================================${NC}"
-    echo -e "${MAGENTA}        НАСТРОЙКА УСТАНОВОЧНОГО ПРОКСИ (PIP)${NC}"
+    print_lang "${MAGENTA}        НАСТРОЙКА УСТАНОВОЧНОГО ПРОКСИ (PIP)${NC}" "${MAGENTA}        INSTALLATION PROXY CONFIGURATION (PIP)${NC}"
     echo -e "${MAGENTA}==================================================${NC}"
-    echo -e "Проверка прямого доступа к серверам Python (pypi.org)..."
+    print_lang "Проверка прямого доступа к серверам Python (pypi.org)..." "Checking direct access to Python servers (pypi.org)..."
 
     INSTALL_PROXY=""
     if python3 -c "import urllib.request; urllib.request.urlopen('https://pypi.org', timeout=3)" 2>/dev/null; then
-        echo -e "${GREEN}✓ Прямой доступ к PyPI стабилен. Прокси не требуется.${NC}"
+        print_lang "${GREEN}✓ Прямой доступ к PyPI стабилен. Прокси не требуется.${NC}" "${GREEN}✓ Direct access to PyPI is stable. No proxy needed.${NC}"
     else
-        echo -e "${YELLOW}⚠️ Прямой доступ к PyPI отсутствует или заблокирован.${NC}"
+        print_lang "${YELLOW}⚠️ Прямой доступ к PyPI отсутствует или заблокирован.${NC}" "${YELLOW}⚠️ Direct access to PyPI is missing or blocked.${NC}"
         
         # Try to auto-detect proxy from existing .env
         ENV_FILE="${SCRIPT_DIR}/config/.env"
@@ -44,19 +60,19 @@ setup_install_proxy() {
             # Strip potential quotes or spaces
             EXISTING_PROXY=$(echo "${EXISTING_PROXY}" | tr -d '"' | tr -d "'")
             if [ -n "${EXISTING_PROXY}" ]; then
-                echo -e "${GREEN}✓ Автоматически подтягиваем рабочий прокси из .env: ${YELLOW}${EXISTING_PROXY}${NC}"
+                print_lang "${GREEN}✓ Автоматически подтягиваем рабочий прокси из .env: ${YELLOW}${EXISTING_PROXY}${NC}" "${GREEN}✓ Auto-loading working proxy from .env: ${YELLOW}${EXISTING_PROXY}${NC}"
                 INSTALL_PROXY="${EXISTING_PROXY}"
             fi
         fi
 
         if [ -z "${INSTALL_PROXY}" ]; then
-            echo -e "${YELLOW}Хотите ли вы указать прокси-сервер вручную? (y/n) [n]${NC}"
+            print_lang "${YELLOW}Хотите ли вы указать прокси-сервер вручную? (y/n) [n]${NC}" "${YELLOW}Do you want to specify a proxy server manually? (y/n) [n]${NC}"
             read -rp ">> " use_install_proxy
             if [ "${use_install_proxy}" = "y" ] || [ "${use_install_proxy}" = "Y" ]; then
-                echo -e "\n${BLUE}Введите URL прокси (например, socks5://127.0.0.1:10808 или http://127.0.0.1:10809):${NC}"
+                print_lang "\n${BLUE}Введите URL прокси (например, socks5://127.0.0.1:10808 или http://127.0.0.1:10809):${NC}" "\n${BLUE}Enter proxy URL (e.g. socks5://127.0.0.1:10808 or http://127.0.0.1:10809):${NC}"
                 read -rp ">> " INSTALL_PROXY
                 if [ -n "${INSTALL_PROXY}" ]; then
-                    echo -e "${GREEN}✓ Установочный прокси настроен: ${INSTALL_PROXY}${NC}"
+                    print_lang "${GREEN}✓ Установочный прокси настроен: ${INSTALL_PROXY}${NC}" "${GREEN}✓ Installation proxy configured: ${INSTALL_PROXY}${NC}"
                 fi
             fi
         fi
@@ -82,9 +98,13 @@ prompt_var() {
 
     echo -e "\n${BLUE}👉 ${prompt_text}${NC}"
     if [ -n "${current_val}" ]; then
-        echo -e "   ${CYAN}[Текущее значение / По умолчанию: ${YELLOW}${current_val}${CYAN}]${NC}"
+        print_lang "   ${CYAN}[Текущее значение / По умолчанию: ${YELLOW}${current_val}${CYAN}]${NC}" "   ${CYAN}[Current Value / Default: ${YELLOW}${current_val}${CYAN}]${NC}"
     fi
-    read -rp "   Введите значение (нажмите Enter для сохранения текущего): " user_input
+    if [ "${INSTALL_LANG}" = "ru" ]; then
+        read -rp "   Введите значение (нажмите Enter для сохранения текущего): " user_input
+    else
+        read -rp "   Enter value (press Enter to keep current): " user_input
+    fi
 
     if [ -z "${user_input}" ]; then
         user_input="${current_val}"
@@ -102,11 +122,13 @@ prompt_var() {
             printf "%s\n" "$line" >> "$tmp_file"
         fi
     done < "${ENV_FILE}"
+
     if [ $found -eq 0 ]; then
         printf "%s\n" "${var_name}=${user_input}" >> "$tmp_file"
     fi
+
     mv "$tmp_file" "${ENV_FILE}"
-    echo -e "   ${GREEN}✓ Успешно сохранено: ${var_name}=${user_input}${NC}"
+    print_lang "   ${GREEN}✓ Успешно сохранено: ${var_name}=${user_input}${NC}" "   ${GREEN}✓ Successfully saved: ${var_name}=${user_input}${NC}"
 }
 
 # Функция для интерактивного опроса булевой переменной (y/n)
@@ -132,8 +154,13 @@ prompt_bool() {
         default_yn="y"
     fi
 
-    echo -e "\n${BLUE}👉 ${prompt_text} (y/n) [по умолчанию: ${default_yn}]${NC}"
-    read -rp "   Введите значение (y/n): " user_input
+    if [ "${INSTALL_LANG}" = "ru" ]; then
+        echo -e "\n${BLUE}👉 ${prompt_text} (y/n) [по умолчанию: ${default_yn}]${NC}"
+        read -rp "   Введите значение (y/n): " user_input
+    else
+        echo -e "\n${BLUE}👉 ${prompt_text} (y/n) [default: ${default_yn}]${NC}"
+        read -rp "   Enter value (y/n): " user_input
+    fi
 
     if [ -z "${user_input}" ]; then
         user_input="${default_yn}"
@@ -152,5 +179,5 @@ prompt_bool() {
     else
         echo "${var_name}=${final_val}" >> "${ENV_FILE}"
     fi
-    echo -e "   ${GREEN}✓ Успешно сохранено: ${var_name}=${final_val}${NC}"
+    print_lang "   ${GREEN}✓ Успешно сохранено: ${var_name}=${final_val}${NC}" "   ${GREEN}✓ Successfully saved: ${var_name}=${final_val}${NC}"
 }
