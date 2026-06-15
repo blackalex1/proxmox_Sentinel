@@ -15,7 +15,7 @@ async def reconcile_router_bans():
     Если на роутере найдены правила блокировок, которых нет в temp_bans,
     они автоматически удаляются, и отправляется уведомление админам в Telegram.
     """
-    logging.info("[Router Reconciliation] Запуск сверки правил блокировки на роутере...")
+    logging.info("router_reconciliation_starting_reconciliation_of_blocking_rules")
 
     # 1. Получаем список известных IP-адресов из таблицы temp_bans
     known_bans = await execute_read_all("SELECT dst_ip FROM temp_bans WHERE server_ip = 'router'")
@@ -27,7 +27,7 @@ async def reconcile_router_bans():
     cmd = "iptables -S INPUT 2>/dev/null; iptables -S FORWARD 2>/dev/null; nft list table inet fw4 2>/dev/null; true"
     ok, stdout, stderr = await run_router_ssh_cmd(cmd)
     if not ok:
-        logging.warning(f"[Router Reconciliation] Не удалось прочитать правила с роутера: {stderr or stdout}")
+        logging.warning("router_reconciliation_failed_to_read_rules_from", stderr or stdout)
         return
 
     # 3. Парсим вывод
@@ -70,7 +70,7 @@ async def reconcile_router_bans():
     reconciled_count = 0
     for ip, rules in detected_rules.items():
         if ip not in known_ips:
-            logging.info(f"[Router Reconciliation] Обнаружен неизвестный бан для {ip} на роутере. Правила: {rules}")
+            logging.info("router_reconciliation_unknown_ban_detected_for_on", ip, rules)
 
             # Удаляем блокировку на роутере
             success, unban_desc = await unban_router_ip(ip)
@@ -97,28 +97,28 @@ async def reconcile_router_bans():
                 try:
                     await send_alert_to_admins(alert_text, parse_mode="markdown")
                 except Exception as tg_err:
-                    logging.error(f"[Router Reconciliation] Ошибка отправки Telegram-оповещения: {tg_err}")
+                    logging.error("router_reconciliation_error_sending_telegram_alert", tg_err)
             else:
-                logging.error(f"[Router Reconciliation] Не удалось снять неизвестную блокировку для {ip}: {unban_desc}")
+                logging.error("router_reconciliation_failed_to_remove_unknown_block", ip, unban_desc)
 
     if reconciled_count > 0:
-        logging.info(f"[Router Reconciliation] Сверка успешно завершена. Снято {reconciled_count} неизвестных блокировок.")
+        logging.info("router_reconciliation_reconciliation_completed_successfully_removed_unknown", reconciled_count)
     else:
-        logging.info("[Router Reconciliation] Сверка успешно завершена. Неизвестных блокировок не обнаружено.")
+        logging.info("router_reconciliation_reconciliation_completed_successfully_no_unknown")
 
 async def monitor_expired_bans():
     """
     Периодический фоновый воркер, который проверяет БД на наличие истекших временных блокировок
     и автоматически удаляет их из iptables (как локально, так и удаленно по SSH).
     """
-    logging.info("[Garbage Collector] Запущен фоновый воркер проверки просроченных блокировок...")
+    logging.info("garbage_collector_background_worker_checking_for_expired")
     
     # Сверяем правила на роутере ОДИН РАЗ при старте воркера
     if settings.router_monitor_enable:
         try:
             await reconcile_router_bans()
         except Exception as e:
-            logging.error(f"[Garbage Collector] Ошибка при стартовой сверке правил роутера: {e}")
+            logging.error("garbage_collector_error_during_startup_router_rules", e)
 
     while True:
         try:
@@ -132,7 +132,7 @@ async def monitor_expired_bans():
             for ban in expired_bans:
                 server_ip = ban['server_ip']
                 dst_ip = ban['dst_ip']
-                logging.info(f"[Garbage Collector] Обнаружена истекшая блокировка для {dst_ip} на сервере {server_ip}. Снятие...")
+                logging.info("garbage_collector_expired_block_detected_for_on", dst_ip, server_ip)
                 
                 if server_ip == "local":
                     # Снимаем локальную блокировку
@@ -146,14 +146,14 @@ async def monitor_expired_bans():
                             stderr=asyncio.subprocess.DEVNULL
                         )
                         await proc.wait()
-                    logging.info(f"[Garbage Collector] Локальная блокировка {dst_ip} снята.")
+                    logging.info("garbage_collector_local_block_of_removed", dst_ip)
                 elif server_ip == "router":
                     # Снимаем блокировку на роутере через SSH
                     success, desc = await unban_router_ip(dst_ip)
                     if success:
-                        logging.info(f"[Garbage Collector] Временная блокировка {dst_ip} на роутере успешно снята.")
+                        logging.info("garbage_collector_temporary_block_of_on_router", dst_ip)
                     else:
-                        logging.error(f"[Garbage Collector] Не удалось снять временную блокировку {dst_ip} на роутере: {desc}")
+                        logging.error("garbage_collector_failed_to_remove_temporary_block", dst_ip, desc)
                 else:
                     # Снимаем удаленную блокировку
                     # Ищем настройки нужного сервера
@@ -162,11 +162,11 @@ async def monitor_expired_bans():
                         unblock_cmd = [f"iptables -D OUTPUT -d {dst_ip} -m comment --comment \"AEGIS-TEMP-BLOCK\" -j DROP 2>/dev/null || true"]
                         success, _, stderr = await run_remote_ssh_cmd(server, unblock_cmd)
                         if success:
-                            logging.info(f"[Garbage Collector] Удаленная блокировка {dst_ip} на VPS {server_ip} успешно снята.")
+                            logging.info("garbage_collector_remote_block_of_on_vps", dst_ip, server_ip)
                         else:
-                            logging.error(f"[Garbage Collector] Не удалось снять удаленную блокировку {dst_ip} на VPS {server_ip}: {stderr}")
+                            logging.error("garbage_collector_failed_to_remove_remote_block", dst_ip, server_ip, stderr)
                     else:
-                        logging.warning(f"[Garbage Collector] Сервер {server_ip} не найден в настройках remote_servers для разблокировки {dst_ip}.")
+                        logging.warning("garbage_collector_server_not_found_in_remote_servers", server_ip, dst_ip)
                 
                 # Удаляем запись из БД
                 await execute_write(
@@ -174,6 +174,6 @@ async def monitor_expired_bans():
                     (server_ip, dst_ip)
                 )
         except Exception as e:
-            logging.error(f"[Garbage Collector] Ошибка в фоновом воркере: {e}")
+            logging.error("garbage_collector_error_in_background_worker", e)
             
         await asyncio.sleep(30)

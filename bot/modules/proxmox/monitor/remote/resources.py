@@ -17,7 +17,7 @@ vps_alert_throttle = {}
 
 async def monitor_remote_resources():
     """Периодический опрос удаленных VPS для контроля использования CPU, RAM и диска."""
-    logging.info("Запущен мониторинг ресурсов удаленных VPS...")
+    logging.info("remote_vps_resource_monitoring_started")
     while True:
         try:
             if not settings.remote_servers:
@@ -96,6 +96,6 @@ async def monitor_remote_resources():
                     vps_alert_throttle.pop((ip, 'disk'), None)
                     
         except Exception as e:
-            logging.error(f"Ошибка в цикле мониторинга ресурсов VPS: {e}")
+            logging.error("error_in_vps_resources_monitoring_loop", e)
             
         await asyncio.sleep(60)

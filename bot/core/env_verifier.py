@@ -35,8 +35,8 @@ def verify_env_configuration():
         missing.append("REMOTE_SERVER_* (REMOTE_SERVER_IP, REMOTE_SERVER_USER - SSH доступ к удаленным серверам)")
         
     if missing:
-        logging.warning("⚠️ [ENV Verifier] В конфигурации .env не хватает следующих параметров для полной работы бота:")
+        logging.warning("env_verifier_the_following_parameters_are_missing")
         for item in missing:
             logging.warning(f"  - {item}")
     else:
-        logging.info("✅ [ENV Verifier] Все необходимые переменные окружения заполнены. Бот готов к полной работе.")
+        logging.info("env_verifier_all_required_environment_variables_are")

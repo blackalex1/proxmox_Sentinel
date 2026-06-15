@@ -31,7 +31,7 @@ def find_real_vpn_client_ip(proto, container_ip, dst_ip, sport, dpt):
                 if res.returncode == 0:
                     lines = res.stdout.splitlines()
             except Exception as ex:
-                logging.error(f"Не удалось запустить conntrack -L для поиска IP: {ex}")
+                logging.error("failed_to_run_conntrack_-l_to_find", ex)
 
         if not lines:
             return None
@@ -79,7 +79,7 @@ def find_real_vpn_client_ip(proto, container_ip, dst_ip, sport, dpt):
                     return orig_src
                         
     except Exception as e:
-        logging.error(f"Ошибка при поиске реального IP клиента в conntrack: {e}")
+        logging.error("error_searching_for_real_client_ip_in", e)
     return None
 
 async def find_xray_client_email(vmid, dst_ip, dpt, client_ip=None):
@@ -99,10 +99,10 @@ async def find_xray_client_email(vmid, dst_ip, dpt, client_ip=None):
         )
         if res:
             email, panel, *extra = res
-            logging.info(f"[VPN IPS] Успешно найден email '{email}' клиента через API панели '{panel.name}'")
+            logging.info("vpn_ips_successfully_found_client_email_via", email, panel.name)
             return email
     except Exception as e:
-        logging.error(f"Ошибка при обращении к API Spectre Panel: {e}")
+        logging.error("error_calling_spectre_panel_api", e)
 
     # 2. Резервный метод (поиск в xray.log Spectre Panel напрямую в LXC)
     if platform.system() != 'Linux':
@@ -133,5 +133,5 @@ async def find_xray_client_email(vmid, dst_ip, dpt, client_ip=None):
                             return match.group(1)
                             
     except Exception as e:
-        logging.error(f"Ошибка при резервном поиске email клиента Xray в файле лога: {e}")
+        logging.error("error_backup_searching_xray_client_email_in", e)
     return None

@@ -50,7 +50,7 @@ async def run_router_ssh_cmd(command):
             
     except Exception as e:
         err_msg = str(e) or type(e).__name__
-        logging.error(f"[Router SSH] Ошибка выполнения команды: {err_msg}")
+        logging.error("router_ssh_command_execution_error", err_msg)
         return False, "", err_msg
 
 async def ban_router_ip(ip, delay=3600, reason="Вручную"):
@@ -114,9 +114,9 @@ async def ban_router_ip(ip, delay=3600, reason="Вручную"):
                 "INSERT OR REPLACE INTO temp_bans (server_ip, dst_ip, expire_time, reason) VALUES (?, ?, ?, ?)",
                 ("router", ip, expire_time, reason or "Вручную")
             )
-            logging.info(f"[Router Ban] Временная блокировка {ip} на роутере успешно сохранена в БД на {delay} сек.")
+            logging.info("router_ban_temporary_block_of_on_router", ip, delay)
         except Exception as db_err:
-            logging.error(f"[Router Ban] Ошибка записи временной блокировки в БД: {db_err}")
+            logging.error("router_ban_error_writing_temporary_block_to", db_err)
             
     return success, desc
 
@@ -158,8 +158,8 @@ async def unban_router_ip(ip):
                 "DELETE FROM temp_bans WHERE server_ip = ? AND dst_ip = ?",
                 ("router", ip)
             )
-            logging.info(f"[Router Ban] Временная блокировка {ip} успешно удалена из БД.")
+            logging.info("router_ban_temporary_block_of_successfully_removed", ip)
         except Exception as db_err:
-            logging.error(f"[Router Ban] Ошибка удаления временной блокировки из БД: {db_err}")
+            logging.error("router_ban_error_removing_temporary_block_from", db_err)
             
     return success, desc

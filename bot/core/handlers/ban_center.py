@@ -67,7 +67,7 @@ async def render_ban_center(message_or_query) -> tuple[str, InlineKeyboardMarkup
                 'reason': reason
             })
         except Exception as e:
-            logging.error(f"[Ban Center] Ошибка обработки записи бана: {e}")
+            logging.error("ban_center_error_processing_ban_record", e)
             active_bans.append({
                 'server_ip': row['server_ip'],
                 'dst_ip': row['dst_ip'],
@@ -122,7 +122,7 @@ async def cmd_bans(message: types.Message):
         text, reply_markup = await render_ban_center(message)
         await send_rich_message(chat_id=message.chat.id, text=text, parse_mode="HTML", reply_markup=reply_markup)
     except Exception as e:
-        logging.error(f"[Ban Center] Ошибка в хэндлере /bans: {e}")
+        logging.error("ban_center_error_in_bans_handler", e)
         await message.answer(_("ban_center", "load_err"))
 
 @router.callback_query(F.data == "ban_center_main")
@@ -139,7 +139,7 @@ async def process_ban_center_main(callback: CallbackQuery):
             reply_markup=reply_markup
         )
     except Exception as e:
-        logging.error(f"[Ban Center] Ошибка при переходе в Центр блокировок: {e}")
+        logging.error("ban_center_error_navigating_to_ban_center", e)
         await callback.answer(_("ban_center", "open_err"), show_alert=True)
 
 @router.callback_query(F.data.startswith("ban_center_unban:"))
@@ -192,7 +192,7 @@ async def process_ban_center_unban(callback: CallbackQuery):
             pass # Если текст не поменялся
             
     except Exception as e:
-        logging.error(f"[Ban Center] Исключение при ручном разбане: {e}")
+        logging.error("ban_center_exception_during_manual_unban", e)
         await callback.answer(_("ban_center", "unban_failed_alert", desc=str(e)), show_alert=True)
 
 def get_unban_key_cmd(keys_path: str, key_body: str) -> str:
@@ -311,7 +311,7 @@ async def process_ban_center_unbankey(callback: CallbackQuery):
             pass
             
     except Exception as e:
-        logging.error(f"[Ban Center] Исключение при ручном разбане ключа: {e}")
+        logging.error("ban_center_exception_during_manual_key_unban", e)
         await callback.answer(_("ban_center", "restore_key_failed_alert", desc=str(e)), show_alert=True)
 
 

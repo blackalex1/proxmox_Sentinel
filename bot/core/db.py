@@ -86,11 +86,11 @@ def init_db():
                 );
             """)
             
-        logging.info("[Database] Таблицы базы данных успешно проверены/созданы с поддержкой трафика и инцидентов.")
+        logging.info("database_database_tables_successfully_verified_created_with")
         
         # Миграция из JSON файла при первом запуске
         if os.path.exists(JSON_FILE):
-            logging.info("[Database] Обнаружен старый файл истории JSON. Запуск миграции...")
+            logging.info("database_old_json_history_file_detected_starting")
             try:
                 with open(JSON_FILE, 'r', encoding='utf-8') as f:
                     history = json.load(f)
@@ -119,16 +119,16 @@ def init_db():
                                 ))
                                 migrated_count += 1
                                 
-                logging.info(f"[Database] Миграция успешно завершена! Перенесено {migrated_count} записей.")
+                logging.info("database_migration_completed_successfully_transferred_records", migrated_count)
                 
                 # Переименовываем старый JSON файл в бэкап, чтобы не сканировать повторно
                 backup_file = JSON_FILE + ".backup"
                 if os.path.exists(backup_file):
                     os.remove(backup_file)
                 os.rename(JSON_FILE, backup_file)
-                logging.info(f"[Database] Старый файл истории переименован в {os.path.basename(backup_file)}")
+                logging.info("database_staryy_fayl_istorii_pereimenovan_v", os.path.basename(backup_file))
             except Exception as e:
-                logging.error(f"[Database] Ошибка при миграции старой истории: {e}")
+                logging.error("database_error_migrating_old_history", e)
     finally:
         conn.close()
 
@@ -147,7 +147,7 @@ async def execute_write(query: str, params: tuple = ()) -> bool:
                     conn.execute(query, params)
                 return True
             except Exception as e:
-                logging.error(f"[Database Error] Ошибка записи: {e} | Query: {query}")
+                logging.error("database_error_write_error_query", e, query)
                 return False
             finally:
                 conn.close()
@@ -161,7 +161,7 @@ async def execute_read_all(query: str, params: tuple = ()) -> List[dict]:
             cursor = conn.execute(query, params)
             return [dict(row) for row in cursor.fetchall()]
         except Exception as e:
-            logging.error(f"[Database Error] Ошибка чтения: {e} | Query: {query}")
+            logging.error("database_error_read_error_query", e, query)
             return []
         finally:
             conn.close()
@@ -176,7 +176,7 @@ async def execute_read_one(query: str, params: tuple = ()) -> Optional[dict]:
             row = cursor.fetchone()
             return dict(row) if row else None
         except Exception as e:
-            logging.error(f"[Database Error] Ошибка чтения строки: {e} | Query: {query}")
+            logging.error("database_error_row_read_error_query", e, query)
             return None
         finally:
             conn.close()
@@ -191,7 +191,7 @@ async def get_state(key: str, default=None):
     try:
         return json.loads(row['value'])
     except Exception as e:
-        logging.error(f"[Database] Ошибка десериализации состояния для '{key}': {e}")
+        logging.error("database_deserialization_state_error_for", key, e)
         return default
 
 
@@ -204,7 +204,7 @@ async def set_state(key: str, value) -> bool:
             (key, val_str)
         )
     except Exception as e:
-        logging.error(f"[Database] Ошибка сериализации состояния для '{key}': {e}")
+        logging.error("database_serialization_state_error_for", key, e)
         return False
 
 async def log_ips_incident(attacker_ip: str, tunnel_name: str, attacker_email: str, reaction_time: str) -> bool:
@@ -240,7 +240,7 @@ async def is_whitelisted(node: str, ip: Optional[str] = None, port: Optional[int
         if process:
             proc_wl = wl.get("processes", [])
             if process.lower().strip() in [p.lower().strip() for p in proc_wl]:
-                logging.info(f"[Whitelist Check] Процесс {process} находится в белом списке ноды {n}")
+                logging.info("whitelist_check_process_is_whitelisted_on_node", process, n)
                 return True
                 
         # Проверяем IP и Порт
@@ -252,11 +252,11 @@ async def is_whitelisted(node: str, ip: Optional[str] = None, port: Optional[int
                     entry_ip, entry_port = entry.rsplit(":", 1)
                     if entry_ip == ip:
                         if entry_port == "*" or (port is not None and str(entry_port) == str(port)):
-                            logging.info(f"[Whitelist Check] Соединение {ip}:{port} совпало с правилом {entry} на ноде {n}")
+                            logging.info("whitelist_check_connection_matched_rule_on_node", ip, port, entry, n)
                             return True
                 else:
                     if entry == ip:
-                        logging.info(f"[Whitelist Check] IP {ip} совпал с правилом {entry} на ноде {n}")
+                        logging.info("whitelist_check_ip_matched_rule_on_node", ip, entry, n)
                         return True
                         
     return False
@@ -284,7 +284,7 @@ async def save_vpn_connect(username: str, ip: str, connect_time_str: str, tx: in
         "INSERT INTO vpn_sessions (session_id, username, ip, connect_time, disconnect_time, duration, is_new_ip, download_bytes, upload_bytes) VALUES (?, ?, ?, ?, NULL, NULL, ?, ?, ?)",
         (session_id, username, ip, connect_time_str, is_new_ip, tx, rx)
     )
-    logging.info(f"[Database] Зарегистрировано подключение: {username} ({ip}), session_id: {session_id}")
+    logging.info("database_zaregistrirovano_podklyuchenie_session_id", username, ip, session_id)
     return session_id
 
 
@@ -328,7 +328,7 @@ async def save_vpn_disconnect(username: str, ip: str, disconnect_time_str: str, 
             "UPDATE vpn_sessions SET disconnect_time = ?, duration = ?, download_bytes = ?, upload_bytes = ? WHERE username = ? AND session_id = ?",
             (disconnect_time_str, duration_str, diff_tx, diff_rx, username, session_id)
         )
-        logging.info(f"[Database] Зарегистрировано отключение: {username} ({ip}), использовано {diff_tx} tx / {diff_rx} rx, session_id: {session_id}")
+        logging.info("database_zaregistrirovano_otklyuchenie_ispolzovano_tx_rx_session_id", username, ip, diff_tx, diff_rx, session_id)
     else:
         # Резервный вариант: если сессия не найдена (пропустили подключение), создаем завершенную с нулевым трафиком
         import uuid
@@ -345,7 +345,7 @@ async def save_vpn_disconnect(username: str, ip: str, disconnect_time_str: str, 
             "INSERT INTO vpn_sessions (session_id, username, ip, connect_time, disconnect_time, duration, is_new_ip, download_bytes, upload_bytes) VALUES (?, ?, ?, ?, ?, ?, ?, 0, 0)",
             (session_id, username, ip, disconnect_time_str, disconnect_time_str, duration_str, is_new_ip)
         )
-        logging.info(f"[Database] Зарегистрировано отключение (без подключения): {username} ({ip}), session_id: {session_id}")
+        logging.info("database_zaregistrirovano_otklyuchenie_bez_podklyucheniya_session_id", username, ip, session_id)
 
 
 

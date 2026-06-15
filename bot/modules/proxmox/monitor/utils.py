@@ -17,7 +17,7 @@ class LogTailer:
     async def start(self):
         self.running = True
         self.task = asyncio.create_task(self._run())
-        logging.info(f"Запущен tailer для источника: {self.source}")
+        logging.info("tailer_started_for_source", self.source)
 
     async def stop(self):
         self.running = False
@@ -27,7 +27,7 @@ class LogTailer:
                 await self.task
             except asyncio.CancelledError:
                 pass
-        logging.info(f"Остановлен tailer для источника: {self.source}")
+        logging.info("tailer_stopped_for_source", self.source)
 
     async def _run(self):
         if isinstance(self.source, list):
@@ -52,7 +52,7 @@ class LogTailer:
                         if self.running:
                             stderr_bytes = await proc.stderr.read()
                             stderr_text = stderr_bytes.decode('utf-8', errors='ignore').strip()
-                            logging.error(f"[LogTailer] Процесс {self.source} завершился с кодом {proc.returncode}. Ошибка: {stderr_text}")
+                            logging.error("logtailer_process_terminated_with_code_error", self.source, proc.returncode, stderr_text)
                         break
                     await asyncio.sleep(1)
                     continue
@@ -61,7 +61,7 @@ class LogTailer:
         except asyncio.CancelledError:
             pass
         except Exception as e:
-            logging.error(f"Ошибка в cmd-tailer {self.source}: {e}")
+            logging.error("error_in_cmd-tailer", self.source, e)
         finally:
             if proc:
                 try:
@@ -94,7 +94,7 @@ class LogTailer:
         except asyncio.CancelledError:
             pass
         except Exception as e:
-            logging.error(f"Ошибка в file-tailer {self.source}: {e}")
+            logging.error("error_in_file-tailer", self.source, e)
 
     async def _trigger_callback(self, line):
         try:
@@ -103,7 +103,7 @@ class LogTailer:
             else:
                 self.callback(line, *self.args, **self.kwargs)
         except Exception as ex:
-            logging.error(f"Ошибка при вызове callback в tailer: {ex}")
+            logging.error("error_executing_callback_in_tailer", ex)
 
 
 def make_progress_bar(pct, length=10):
@@ -212,9 +212,9 @@ async def send_rich_message(chat_id, text, parse_mode="HTML", reply_markup=None)
             if res.get("ok"):
                 sent_msg = Message.model_validate(res["result"])
             else:
-                logging.warning(f"[Rich Message] Не удалось отправить Rich Message для {chat_id}, код: {res.get('description')}")
+                logging.warning("rich_message_ne_udalos_otpravit_rich_message", chat_id, res.get('description'))
     except Exception as e:
-        logging.warning(f"[Rich Message] Исключение при отправке Rich Message для {chat_id}: {e}")
+        logging.warning("rich_message_exception_sending_rich_message_for", chat_id, e)
         
     if not sent_msg:
         try:
@@ -223,7 +223,7 @@ async def send_rich_message(chat_id, text, parse_mode="HTML", reply_markup=None)
                 fallback_text = convert_rich_html_to_standard(text)
             sent_msg = await bot.send_message(chat_id, fallback_text, parse_mode=actual_parse_mode, reply_markup=reply_markup)
         except Exception as e:
-            logging.error(f"Не удалось отправить стандартное сообщение для {chat_id}: {e}")
+            logging.error("failed_to_send_standard_message_for", chat_id, e)
             raise e
     return sent_msg
 
@@ -274,11 +274,11 @@ async def edit_rich_message(chat_id, message_id, text, parse_mode="HTML", reply_
             else:
                 desc = res.get('description', '')
                 if "message is not modified" in desc.lower():
-                    logging.debug(f"[Rich Message Edit] Сообщение не изменено: {desc}")
+                    logging.debug("rich_message_edit_message_not_modified", desc)
                 else:
-                    logging.warning(f"[Rich Message Edit] Не удалось отредактировать Rich Message, код: {desc}")
+                    logging.warning("rich_message_edit_failed_to_edit_rich", desc)
     except Exception as e:
-        logging.warning(f"[Rich Message Edit] Исключение при редактировании Rich Message: {e}")
+        logging.warning("rich_message_edit_exception_while_editing_rich", e)
         
     if not edited_msg:
         try:
@@ -292,7 +292,7 @@ async def edit_rich_message(chat_id, message_id, text, parse_mode="HTML", reply_
             edited_msg = await bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=fallback_text, parse_mode=actual_parse_mode, reply_markup=reply_markup)
         except Exception as e:
             if "message is not modified" not in str(e).lower():
-                logging.error(f"Не удалось отредактировать стандартное сообщение: {e}")
+                logging.error("failed_to_edit_standard_message", e)
                 raise e
     return edited_msg
 
@@ -374,7 +374,7 @@ async def get_geoip_info(ip: str) -> str:
                         geo_parts.append(f"ISP: {org}")
                     return " - ".join(geo_parts) if geo_parts else "Определено"
     except Exception as e:
-        logging.warning(f"[GeoIP] Не удалось получить данные для {ip}: {e}")
+        logging.warning("geoip_failed_to_obtain_data_for", ip, e)
     return "Неизвестно"
 
 

@@ -105,11 +105,11 @@ def generate_ansible_hosts_ini(directory: str) -> bool:
                             os.chmod(target_key_path, 0o600)
                         except Exception:
                             pass
-                    logging.info(f"Приватный ключ успешно скопирован из {old_key_path_abs} в {target_key_path}")
+                    logging.info("private_key_successfully_copied_from_to", old_key_path_abs, target_key_path)
                     # Обновляем путь в переменных
                     global_vars["ansible_ssh_private_key_file"] = target_key_path
                 except Exception as e:
-                    logging.error(f"Не удалось скопировать ключ в папку ansible: {e}")
+                    logging.error("failed_to_copy_key_to_ansible_directory", e)
             else:
                 # Если старый путь не существует, но мы хотим, чтобы ключ лежал в папке ansible
                 global_vars["ansible_ssh_private_key_file"] = target_key_path

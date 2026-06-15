@@ -9,14 +9,14 @@ async def is_local_bot_process(sport, dst_ip=None):
     """
     Проверяет, принадлежит ли порт sport самому процессу бота или его потомкам/белому списку на хосте Proxmox.
     """
-    logging.debug(f"[is_local_bot_process] ВХОД: sport={sport}, dst_ip={dst_ip}")
+    logging.debug("is_local_bot_process_input_sport_dst_ip", sport, dst_ip)
     try:
         from modules.proxmox.monitor.state import recent_bot_ports
         if sport in recent_bot_ports:
-            logging.debug(f"[is_local_bot_process] sport={sport} найден в recent_bot_ports (выходим True)")
+            logging.debug("is_local_bot_process_sport_nayden_v_recent_bot_ports_vykhodim_true", sport)
             return True
     except Exception as e:
-        logging.error(f"[is_local_bot_process] Ошибка при проверке recent_bot_ports: {e}")
+        logging.error("is_local_bot_process_error_checking_recent_bot_ports", e)
 
     # 0. Если передан dst_ip, пробуем сверхнадежный и быстрый поиск по procfs дочерних SSH-процессов бота
     if dst_ip:
@@ -85,7 +85,7 @@ async def is_local_bot_process(sport, dst_ip=None):
                                     with open(cmdline_path, "r") as f:
                                         cmdline = f.read()
                                     if settings.ips_temp_whitelist_cmdline in cmdline:
-                                        logging.debug(f"[is_local_bot_process] sport={sport}, target_pid={target_pid} совпал с временным белым списком cmdline. Разрешаем.")
+                                        logging.debug("is_local_bot_process_sport_target_pid_matched_temporary_cmdline_whitelist", sport, target_pid)
                                         return True
                                 except Exception:
                                     pass
@@ -112,7 +112,7 @@ async def is_local_bot_process(sport, dst_ip=None):
                     if in_whitelist:
                         return True
     except Exception as e:
-        logging.error(f"Ошибка проверки локального процесса бота: {e}")
+        logging.error("error_checking_local_bot_process", e)
     return False
 
 async def check_is_bot_or_admin(src_ip, src_port, dst_host=None, dst_port=None):
@@ -122,10 +122,10 @@ async def check_is_bot_or_admin(src_ip, src_port, dst_host=None, dst_port=None):
         try:
             from modules.proxmox.monitor.state import active_proxy_checks
             if active_proxy_checks.get((dst_host, dst_port), 0) > 0:
-                logging.debug(f"[check_is_bot_or_admin] Найдено совпадение в active_proxy_checks для {dst_host}:{dst_port}")
+                logging.debug("check_is_bot_or_admin_match_found_in_active_proxy_checks_for", dst_host, dst_port)
                 return True
         except Exception as e:
-            logging.error(f"[check_is_bot_or_admin] Ошибка проверки active_proxy_checks: {e}")
+            logging.error("check_is_bot_or_admin_error_checking_active_proxy_checks", e)
 
     # 1. Проверяем белый список администраторов из настроек
     if hasattr(settings, 'trusted_admin_ips'):

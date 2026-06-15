@@ -21,7 +21,7 @@ async def setup_ansible_user_on_remote_vps(server: dict, pub_key_content: str) -
             # Создаем пользователя
             create_success, _, create_err = await run_remote_ssh_cmd(server, ["useradd -m -s /bin/bash ansible"])
             if not create_success:
-                logging.error(f"Не удалось создать пользователя ansible на VPS {server['ip']}: {create_err}")
+                logging.error("failed_to_create_user_ansible_on_vps", server['ip'], create_err)
                 return False
                 
         # 2. Настраиваем sudoers
@@ -32,7 +32,7 @@ async def setup_ansible_user_on_remote_vps(server: dict, pub_key_content: str) -
         sudo_cmd = f"echo '{sudoers_line}' > /etc/sudoers.d/ansible && chmod 440 /etc/sudoers.d/ansible"
         sudo_success, _, sudo_err = await run_remote_ssh_cmd(server, [sudo_cmd])
         if not sudo_success:
-            logging.error(f"Не удалось настроить sudoers на VPS {server['ip']}: {sudo_err}")
+            logging.error("failed_to_configure_sudoers_on_vps", server['ip'], sudo_err)
             return False
             
         # 3. Настраиваем SSH авторизацию
@@ -43,13 +43,13 @@ async def setup_ansible_user_on_remote_vps(server: dict, pub_key_content: str) -
                    f"chmod 600 /home/ansible/.ssh/authorized_keys")
         ssh_success, _, ssh_err = await run_remote_ssh_cmd(server, [ssh_cmd])
         if not ssh_success:
-            logging.error(f"Не удалось настроить SSH authorized_keys на VPS {server['ip']}: {ssh_err}")
+            logging.error("failed_to_configure_ssh_authorized_keys_on_vps", server['ip'], ssh_err)
             return False
             
-        logging.info(f"Успешно настроен пользователь ansible на удаленном VPS {server['ip']}")
+        logging.info("successfully_configured_user_ansible_on_remote_vps", server['ip'])
         return True
     except Exception as e:
-        logging.error(f"Ошибка настройки пользователя ansible на VPS {server['ip']}: {e}")
+        logging.error("error_configuring_user_ansible_on_vps", server['ip'], e)
         return False
 
 @router.callback_query(F.data == "ansible_setup_vps")

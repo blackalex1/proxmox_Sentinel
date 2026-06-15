@@ -11,7 +11,7 @@ def setup_vpn_container_rules():
     if platform.system() != 'Linux' or os.geteuid() != 0:
         return False
     if not VPN_VMID:
-        logging.info("Мониторинг внутреннего трафика VPN-контейнера отключен (VPN_VMID=0).")
+        logging.info("monitoring_vnutrennego_trafika_vpn-konteynera_otklyuchen_vpn_vmid_0")
         return False
     try:
         # Проверяем, запущен ли контейнер
@@ -21,7 +21,7 @@ def setup_vpn_container_rules():
             text=True
         )
         if "status: running" not in status_check.stdout:
-            logging.info(f"VPN контейнер {VPN_VMID} не запущен. Пропускаем установку правил.")
+            logging.info("vpn_container_is_not_running_skipping_rules", VPN_VMID)
             return False
 
         # Проверяем наличие правила во внутренней цепочке OUTPUT
@@ -36,12 +36,12 @@ def setup_vpn_container_rules():
                 "iptables", "-I", "OUTPUT", "-m", "conntrack", "--ctstate", "NEW", "-j", "LOG", "--log-prefix", "LXC_VPN_LOCAL_OUT: "
             ]
             subprocess.run(insert_cmd, check=True)
-            logging.info(f"Успешно установлено iptables правило для локальных процессов внутри VPN контейнера {VPN_VMID}.")
+            logging.info("successfully_set_iptables_rule_for_local_processes", VPN_VMID)
         else:
-            logging.info(f"Правило для локальных процессов уже установлено в VPN контейнере {VPN_VMID}.")
+            logging.info("rule_for_local_processes_is_already_set", VPN_VMID)
         return True
     except Exception as e:
-        logging.error(f"Ошибка при установке iptables правил в VPN контейнере {VPN_VMID}: {e}")
+        logging.error("error_setting_iptables_rules_in_vpn_container", VPN_VMID, e)
         return False
 
 
@@ -65,21 +65,21 @@ def cleanup_vpn_container_rules():
             "iptables", "-D", "OUTPUT", "-m", "conntrack", "--ctstate", "NEW", "-j", "LOG", "--log-prefix", "LXC_VPN_LOCAL_OUT: "
         ]
         subprocess.run(delete_cmd, capture_output=True)
-        logging.info(f"Правила iptables успешно удалены из VPN контейнера {VPN_VMID}.")
+        logging.info("iptables_rules_successfully_removed_from_vpn_container", VPN_VMID)
     except Exception as e:
-        logging.error(f"Ошибка при удалении iptables правил из VPN контейнера {VPN_VMID}: {e}")
+        logging.error("error_removing_iptables_rules_from_vpn_container", VPN_VMID, e)
 
 
 def setup_iptables():
     """Установка logging-правил в iptables для захвата трафика LXC и Хоста."""
     if platform.system() != 'Linux':
-        logging.warning("Трафик портов: Мониторинг доступен только на Linux.")
+        logging.warning("port_traffic_monitoring_is_only_available_on")
         return False
         
     try:
         # Проверяем, есть ли права root
         if os.geteuid() != 0:
-            logging.error("Трафик портов: Требуются права ROOT (sudo) для установки правил iptables.")
+            logging.error("trafik_portov_trebuyutsya_prava_root_sudo_dlya")
             return False
 
         # Автоматическая настройка ядерных параметров фильтрации моста (sysctl)
@@ -103,11 +103,11 @@ def setup_iptables():
                     check=True,
                     timeout=3
                 )
-                logging.info("Автоматически включен ядерный параметр sysctl net.bridge.bridge-nf-call-iptables=1.")
+                logging.info("kernel_parameter_sysctl_net_bridge_bridge-nf-call-iptables_1")
             else:
-                logging.info("Ядерный параметр net.bridge.bridge-nf-call-iptables уже включен (1).")
+                logging.info("yadernyy_parametr_net_bridge_bridge-nf-call-iptables_uzhe_vklyuchen")
         except Exception as sysctl_err:
-            logging.warning(f"Не удалось автоматически настроить bridge-nf-call-iptables: {sysctl_err}. Убедитесь, что модуль br_netfilter загружен.")
+            logging.warning("failed_to_configure_bridge-nf-call-iptables_automatically_make_sure", sysctl_err)
 
         # Inbound правило (входящие к LXC через physdev)
         in_check = subprocess.run(
@@ -119,7 +119,7 @@ def setup_iptables():
                 ["iptables", "-I", "FORWARD", "-m", "physdev", "--physdev-out", "veth+", "-m", "conntrack", "--ctstate", "NEW", "-j", "LOG", "--log-prefix", "LXC_CONN: "],
                 check=True
             )
-            logging.info("Установлено iptables правило для ВХОДЯЩЕГО трафика LXC (physdev).")
+            logging.info("ustanovleno_iptables_pravilo_dlya_vkhodyaschego_trafika_lxc")
 
         # Outbound правило (исходящие от LXC через physdev)
         out_check = subprocess.run(
@@ -131,7 +131,7 @@ def setup_iptables():
                 ["iptables", "-I", "FORWARD", "-m", "physdev", "--physdev-in", "veth+", "-m", "conntrack", "--ctstate", "NEW", "-j", "LOG", "--log-prefix", "LXC_CONN_OUT: "],
                 check=True
             )
-            logging.info("Установлено iptables правило для ИСХОДЯЩЕГО трафика LXC (physdev).")
+            logging.info("ustanovleno_iptables_pravilo_dlya_iskhodyaschego_trafika_lxc")
 
         # Host Inbound правило (входящие к хосту на порты управления 22, 8006)
         host_check = subprocess.run(
@@ -143,7 +143,7 @@ def setup_iptables():
                 ["iptables", "-I", "INPUT", "-p", "tcp", "-m", "multiport", "--dports", "22,8006", "-m", "conntrack", "--ctstate", "NEW", "-j", "LOG", "--log-prefix", "HOST_CONN: "],
                 check=True
             )
-            logging.info("Установлено iptables правило для ВХОДЯЩЕГО трафика Хоста (ports 22, 8006).")
+            logging.info("ustanovleno_iptables_pravilo_dlya_vkhodyaschego_trafika_khosta")
             
         # Host Outbound правило (исходящие от хоста на sensitive порты)
         host_out_check = subprocess.run(
@@ -155,14 +155,14 @@ def setup_iptables():
                 ["iptables", "-I", "OUTPUT", "-p", "tcp", "-m", "multiport", "--dports", "22,3389,3306,5432,27017,8006", "-m", "conntrack", "--ctstate", "NEW", "-j", "LOG", "--log-prefix", "HOST_CONN_OUT: "],
                 check=True
             )
-            logging.info("Установлено iptables правило для ИСХОДЯЩЕГО трафика Хоста (ports 22, 3389, 3306, 5432, 27017, 8006).")
+            logging.info("ustanovleno_iptables_pravilo_dlya_iskhodyaschego_trafika_khosta")
             
         # Настройка логирования внутренних процессов VPN контейнера
         setup_vpn_container_rules()
             
         return True
     except Exception as e:
-        logging.error(f"Ошибка при установке iptables LOG правил: {e}")
+        logging.error("error_setting_iptables_log_rules", e)
         return False
 
 
@@ -196,6 +196,6 @@ def cleanup_iptables():
         # Удаляем внутренние правила VPN контейнера
         cleanup_vpn_container_rules()
         
-        logging.info("Правила iptables для трафика LXC и Хоста успешно удалены.")
+        logging.info("iptables_rules_for_lxc_and_host_traffic")
     except Exception as e:
-        logging.error(f"Ошибка при удалении iptables правил: {e}")
+        logging.error("error_removing_iptables_rules", e)

@@ -42,7 +42,7 @@ async def process_main_menu(callback: CallbackQuery):
             reply_markup=get_main_menu_keyboard()
         )
     except Exception as e:
-        logging.error(f"Ошибка при возврате в главное меню: {e}")
+        logging.error("error_returning_to_main_menu", e)
     finally:
         try:
             await callback.answer()
@@ -71,7 +71,7 @@ async def callback_help_info(callback: CallbackQuery):
     try:
         await callback.message.edit_text(get_help_text(), parse_mode="HTML", reply_markup=kb)
     except Exception as e:
-        logging.error(f"Ошибка при показе справки: {e}")
+        logging.error("error_showing_help", e)
     finally:
         try:
             await callback.answer()

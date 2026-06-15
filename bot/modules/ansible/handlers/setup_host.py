@@ -25,7 +25,7 @@ async def setup_ansible_user_on_host(pub_key_content: str) -> bool:
             create_cmd = ["useradd", "-m", "-s", "/bin/bash", "ansible"]
             proc = await asyncio.create_subprocess_exec(*create_cmd)
             await proc.wait()
-            logging.info("Создан пользователь ansible на хосте Proxmox")
+            logging.info("created_user_ansible_on_proxmox_host")
             
         # 2. Добавляем в sudoers для беспарольного доступа
         sudoers_line = "ansible ALL=(ALL) NOPASSWD: ALL"
@@ -45,10 +45,10 @@ async def setup_ansible_user_on_host(pub_key_content: str) -> bool:
         proc = await asyncio.create_subprocess_exec(*setup_ssh_cmd)
         await proc.wait()
         
-        logging.info("Успешно настроен пользователь ansible на хосте Proxmox")
+        logging.info("successfully_configured_user_ansible_on_proxmox_host")
         return True
     except Exception as e:
-        logging.error(f"Ошибка настройки пользователя ansible на хосте Proxmox: {e}")
+        logging.error("error_configuring_user_ansible_on_proxmox_host", e)
         return False
 
 @router.callback_query(F.data == "ansible_setup_host")

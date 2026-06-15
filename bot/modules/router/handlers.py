@@ -33,17 +33,17 @@ async def handle_router_block_ip(callback: CallbackQuery):
                     try:
                         await callback.message.edit_text(new_text, reply_markup=kb, parse_mode="HTML")
                     except Exception as e:
-                        logging.error(f"Не удалось отредактировать сообщение при бане: {e}")
+                        logging.error("failed_to_edit_message_on_ban", e)
             else:
                 try:
                     await callback.message.edit_reply_markup(reply_markup=kb)
                 except Exception as e:
-                    logging.error(f"Не удалось изменить клавиатуру при бане: {e}")
+                    logging.error("failed_to_change_keyboard_on_ban", e)
         else:
             await callback.answer(f"❌ Ошибка блокировки: {desc}", show_alert=True)
             
     except Exception as e:
-        logging.error(f"Ошибка в callback-обработчике router block: {e}")
+        logging.error("error_in_router_block_callback_handler", e)
         await callback.answer(f"Ошибка при блокировке: {e}", show_alert=True)
 
 @router.callback_query(F.data.startswith("router_unblock:"))
@@ -74,15 +74,15 @@ async def handle_router_unblock_ip(callback: CallbackQuery):
                 try:
                     await callback.message.edit_text(new_text, reply_markup=kb, parse_mode="HTML")
                 except Exception as e:
-                    logging.error(f"Не удалось отредактировать сообщение при разбане: {e}")
+                    logging.error("failed_to_edit_message_on_unban", e)
             else:
                 try:
                     await callback.message.edit_reply_markup(reply_markup=kb)
                 except Exception as e:
-                    logging.error(f"Не удалось изменить клавиатуру при разбане: {e}")
+                    logging.error("failed_to_change_keyboard_on_unban", e)
         else:
             await callback.answer(f"❌ Ошибка снятия блокировки: {desc}", show_alert=True)
             
     except Exception as e:
-        logging.error(f"Ошибка в callback-обработчике router unblock: {e}")
+        logging.error("error_in_router_unblock_callback_handler", e)
         await callback.answer(f"Ошибка при разблокировке: {e}", show_alert=True)

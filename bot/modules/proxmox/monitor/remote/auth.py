@@ -122,21 +122,14 @@ async def handle_remote_ssh_auth_line(line, server=None):
                             # Ключ совпал, но проверка подлинности процесса провалилась!
                             if not ip_is_trusted:
                                 # Кейс 1: Утечка ключа, вход с неавторизованного IP
-                                logging.warning(
-                                    f"[Remote SSH Auth {server['ip']}] ПОДОЗРИТЕЛЬНАЯ АКТИВНОСТЬ: "
-                                    f"Использован служебный ключ '{key_name or fingerprint}', но вход выполнен с чужого IP: {client_ip}!"
-                                )
+                                logging.warning("remote_ssh_auth_suspicious_activity", server['ip'], key_name or fingerprint, client_ip)
                                 security_warning_str = (
                                     "⚠️ <b>КРИТИЧЕСКАЯ УГРОЗА!</b> Вход по служебному SSH-ключу с неавторизованного IP! "
                                     "Возможна утечка приватного ключа."
                                 )
                             else:
                                 # Кейс 2: Вход с IP бота, но процесс сторонний (компрометация контейнера!)
-                                logging.warning(
-                                    f"[Remote SSH Auth {server['ip']}] ПОДОЗРИТЕЛЬНАЯ АКТИВНОСТЬ: "
-                                    f"Использован служебный ключ '{key_name or fingerprint}' с доверенного IP, "
-                                    f"но порт {client_port} не принадлежит боту!"
-                                )
+                                logging.warning("remote_ssh_auth_suspicious_activity_1", server['ip'], key_name or fingerprint, client_port)
                                 security_warning_str = (
                                     "⚠️ <b>КРИТИЧЕСКАЯ УГРОЗА!</b> Вход по служебному SSH-ключу с IP бота сторонним процессом. "
                                     "Высокий риск компрометации хоста/контейнера!"
@@ -149,10 +142,7 @@ async def handle_remote_ssh_auth_line(line, server=None):
                     ignore_by_ip = True
 
                 if (ignore_by_key or ignore_by_ip) and not security_warning_str:
-                    logging.info(
-                        f"[Remote SSH Auth {server['ip']}] Игнорируем успешный вход для {username} с IP {client_ip} "
-                        f"(ключ: {key_name or fingerprint}, IP в игноре: {client_ip in ignore_ips or ip_is_trusted})"
-                    )
+                    logging.info("remote_ssh_auth_ignoriruem_uspeshnyy_vkhod_dlya", server['ip'], username, client_ip, key_name or fingerprint, client_ip in ignore_ips or ip_is_trusted)
                     return
 
                 from modules.proxmox.monitor.utils import get_geoip_info
@@ -213,4 +203,4 @@ async def handle_remote_ssh_auth_line(line, server=None):
                 logging.warning(f"[Remote SSH Auth {server['ip']}] Failed login attempt for {username} from {client_ip}")
 
     except Exception as e:
-        logging.error(f"Ошибка при разборе лог-линии SSH Auth на {server['ip']}: {e}")
+        logging.error("error_parsing_ssh_auth_log_line_on", server['ip'], e)

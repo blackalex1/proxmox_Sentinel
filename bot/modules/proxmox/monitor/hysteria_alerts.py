@@ -115,7 +115,7 @@ async def process_hysteria_audit_event(panel, action, client_ip, log_timestamp, 
                 conn_time_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             session_id = await save_vpn_connect(username, client_ip, conn_time_str, tx, rx)
         except Exception as db_err:
-            logging.error(f"[Controller Database] Ошибка сохранения подключения: {db_err}")
+            logging.error("controller_database_error_saving_connection", db_err)
 
         # Check for new IP connection on controller using bot database
         if session_id:
@@ -183,7 +183,7 @@ async def process_hysteria_audit_event(panel, action, client_ip, log_timestamp, 
                 disc_time_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             await save_vpn_disconnect(username, client_ip, disc_time_str, tx, rx)
         except Exception as db_err:
-            logging.error(f"[Controller Database] Ошибка сохранения отключения: {db_err}")
+            logging.error("controller_database_error_saving_disconnection", db_err)
 
         if card and is_card_active(card, now_time):
             card['last_activity_at'] = now_time

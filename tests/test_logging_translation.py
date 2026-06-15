@@ -9,26 +9,26 @@ def test_localized_formatter_ru():
         settings.bot_language = "ru"
         formatter = LocalizedFormatter(fmt="%(message)s")
         
-        # Test static message
+        # Test static message key
         record = logging.LogRecord(
             name="test",
             level=logging.INFO,
             pathname="test.py",
             lineno=10,
-            msg="PROXMOX_HOST не задан! Работа с Proxmox будет недоступна.",
+            msg="proxmox_host_is_not_set_work_with_proxmox",
             args=(),
             exc_info=None
         )
         assert formatter.format(record) == "PROXMOX_HOST не задан! Работа с Proxmox будет недоступна."
         
-        # Test dynamic message with captures
+        # Test dynamic message key with format arguments
         record_dyn = logging.LogRecord(
             name="test",
             level=logging.INFO,
             pathname="test.py",
             lineno=10,
-            msg="[Backup Scheduler] Ошибка при бэкапе панели test_panel: connection error",
-            args=(),
+            msg="backup_scheduler_error_backing_up_panel",
+            args=("test_panel", "connection error"),
             exc_info=None
         )
         assert formatter.format(record_dyn) == "[Backup Scheduler] Ошибка при бэкапе панели test_panel: connection error"
@@ -41,26 +41,26 @@ def test_localized_formatter_en():
         settings.bot_language = "en"
         formatter = LocalizedFormatter(fmt="%(message)s")
         
-        # Test static message
+        # Test static message key
         record = logging.LogRecord(
             name="test",
             level=logging.INFO,
             pathname="test.py",
             lineno=10,
-            msg="PROXMOX_HOST не задан! Работа с Proxmox будет недоступна.",
+            msg="proxmox_host_is_not_set_work_with_proxmox",
             args=(),
             exc_info=None
         )
         assert formatter.format(record) == "PROXMOX_HOST is not set! Work with Proxmox will be unavailable."
         
-        # Test dynamic message with captures
+        # Test dynamic message key with format arguments
         record_dyn = logging.LogRecord(
             name="test",
             level=logging.INFO,
             pathname="test.py",
             lineno=10,
-            msg="[Backup Scheduler] Ошибка при бэкапе панели test_panel: connection error",
-            args=(),
+            msg="backup_scheduler_error_backing_up_panel",
+            args=("test_panel", "connection error"),
             exc_info=None
         )
         assert formatter.format(record_dyn) == "[Backup Scheduler] Error backing up panel test_panel: connection error"
@@ -81,17 +81,16 @@ def test_keys_parity_between_ru_and_en_logs():
     assert not missing_in_en, f"В английской локале логов отсутствуют ключи: {missing_in_en}"
     assert not missing_in_ru, f"В русской локале логов отсутствуют ключи: {missing_in_ru}"
 
-def test_all_cyrillic_logs_have_translations():
-    """Проверяет, что каждый кириллический лог в кодовой базе имеет перевод."""
+def test_no_cyrillic_logs_in_codebase():
+    """Проверяет, что в вызовах логов (logging.info, и т.д.) по всей кодовой базе
+    больше нет захардкоженных кириллических строк.
+    """
     import os
     import re
-    import core.messages.locales.en.logs as en_logs
+    import ast
     
     project_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../bot"))
     cyrillic_pattern = re.compile(r"[а-яА-ЯёЁ]")
-    log_pattern = re.compile(r"logging\.(info|warning|error|exception|debug|log)\((.*?)\)", re.DOTALL)
-    
-    en_patterns = [re.compile(p) for p in en_logs.translation.keys()]
     
     untranslated = []
     
@@ -105,43 +104,39 @@ def test_all_cyrillic_logs_have_translations():
                 with open(path, "r", encoding="utf-8", errors="ignore") as f:
                     content = f.read()
                 
-                for match in log_pattern.finditer(content):
-                    log_content = match.group(2).strip()
-                    str_literals = re.findall(
-                        r'(?:f|r|fr|rf)?"""(?:.*?)"""|(?:f|r|fr|rf)?\'\'\'(?:.*?)\'\'\'|(?:f|r|fr|rf)?"(?:[^"\\]|\\.)*"|(?:f|r|fr|rf)?\'(?:[^\'\\]|\\.)*\'', 
-                        log_content, 
-                        re.DOTALL
-                    )
-                    for lit in str_literals:
-                        if cyrillic_pattern.search(lit):
-                            clean_lit = re.sub(r'^(?:f|r|fr|rf)', '', lit.strip())
-                            if clean_lit.startswith('"""') and clean_lit.endswith('"""'):
-                                clean_lit = clean_lit[3:-3]
-                            elif clean_lit.startswith("'''") and clean_lit.endswith("'''"):
-                                clean_lit = clean_lit[3:-3]
-                            elif clean_lit.startswith('"') and clean_lit.endswith('"'):
-                                clean_lit = clean_lit[1:-1]
-                            elif clean_lit.startswith("'") and clean_lit.endswith("'"):
-                                clean_lit = clean_lit[1:-1]
-                                
-                            mock_str = re.sub(r'\{.*?\}', 'dummy_val', clean_lit)
-                            
-                            matched = False
-                            for pattern in en_patterns:
-                                if pattern.match(mock_str):
-                                    matched = True
-                                    break
-                            
-                            if not matched:
-                                untranslated.append((file, lit, mock_str))
+                try:
+                    tree = ast.parse(content, filename=path)
+                except SyntaxError:
+                    continue
+                    
+                class LogCyrillicChecker(ast.NodeVisitor):
+                    def visit_Call(self, node):
+                        is_log = False
+                        if isinstance(node.func, ast.Attribute) and isinstance(node.func.value, ast.Name):
+                            if node.func.value.id in ('logging', 'logger') and node.func.attr in ('info', 'error', 'warning', 'exception', 'debug', 'log'):
+                                is_log = True
+                        if is_log and node.args:
+                            first_arg = node.args[0]
+                            if isinstance(first_arg, ast.Constant) and isinstance(first_arg.value, str):
+                                if cyrillic_pattern.search(first_arg.value):
+                                    untranslated.append((file, node.lineno, first_arg.value))
+                            elif isinstance(first_arg, ast.JoinedStr):
+                                for val in first_arg.values:
+                                    if isinstance(val, ast.Constant) and isinstance(val.value, str):
+                                        if cyrillic_pattern.search(val.value):
+                                            untranslated.append((file, node.lineno, ast.unparse(first_arg)))
+                                            break
+                        self.generic_visit(node)
+                
+                LogCyrillicChecker().visit(tree)
                                 
     if untranslated:
-        details = "\n".join([f"Файл: {f} | Лог: {l} | Макетная строка: {m}" for f, l, m in untranslated])
-        pytest.fail(f"Найдены логи без перевода ({len(untranslated)} шт.):\n{details}")
+        details = "\n".join([f"Файл: {f}:{line} | Лог содержит кириллицу: {text}" for f, line, text in untranslated])
+        pytest.fail(f"Найдены захардкоженные кириллические логи в коде ({len(untranslated)} шт.):\n{details}")
 
 def test_how_log_is_called():
-    """Тестирует, что стандартные вызовы логирования (например, logging.info)
-    автоматически переводятся на лету, если настроена английская локаль.
+    """Тестирует, как теперь вызывается лог и проверяет, что переводы применяются
+    динамически на лету.
     """
     import logging
     from core.config import settings
@@ -149,28 +144,48 @@ def test_how_log_is_called():
     
     orig_lang = settings.bot_language
     try:
-        settings.bot_language = "en"
-        
-        test_logger = logging.getLogger("test_how_log_is_called")
+        # 1. Проверяем русский язык
+        settings.bot_language = "ru"
+        test_logger = logging.getLogger("test_how_log_is_called_ru")
         test_logger.setLevel(logging.INFO)
         test_logger.propagate = False
         
-        formatter = LocalizedFormatter("%(message)s")
+        formatter_ru = LocalizedFormatter("%(message)s")
         
         from io import StringIO
         stream = StringIO()
         handler = logging.StreamHandler(stream)
-        handler.setFormatter(formatter)
+        handler.setFormatter(formatter_ru)
         test_logger.addHandler(handler)
         
-        test_logger.info("Бот запускается...")
-        test_logger.warning("Правила iptables для трафика LXC и Хоста успешно удалены.")
+        # Вызов с ключом и параметром (как теперь пишется в коде)
+        test_logger.info("bot_is_starting")
+        test_logger.warning("iptables_rules_for_lxc_and_host_traffic")
         
         handler.flush()
         output = stream.getvalue()
+        assert "Бот запускается..." in output
+        assert "Правила iptables для трафика LXC и Хоста успешно удалены." in output
         
-        assert "Bot is starting..." in output
-        assert "Iptables rules for LXC and Host traffic successfully removed." in output
+        # 2. Проверяем английский язык
+        settings.bot_language = "en"
+        test_logger_en = logging.getLogger("test_how_log_is_called_en")
+        test_logger_en.setLevel(logging.INFO)
+        test_logger_en.propagate = False
+        
+        formatter_en = LocalizedFormatter("%(message)s")
+        stream_en = StringIO()
+        handler_en = logging.StreamHandler(stream_en)
+        handler_en.setFormatter(formatter_en)
+        test_logger_en.addHandler(handler_en)
+        
+        test_logger_en.info("bot_is_starting")
+        test_logger_en.warning("iptables_rules_for_lxc_and_host_traffic")
+        
+        handler_en.flush()
+        output_en = stream_en.getvalue()
+        assert "Bot is starting..." in output_en
+        assert "Iptables rules for LXC and Host traffic successfully removed." in output_en
         
     finally:
         settings.bot_language = orig_lang
