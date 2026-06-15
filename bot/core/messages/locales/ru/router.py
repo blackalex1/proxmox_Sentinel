@@ -46,5 +46,15 @@ translation = {
         "| **👤 Источник** | `{src_ip}:{src_port}` |\n"
         "| **🎯 Назначение** | `{dst_host}:{dst_port}` |\n\n"
         "*Aegis Security Guard • Время: {timestamp}*"
-    )
+    ),
+    "btn_unblock_ip_router": "🟢 Разблокировать IP на роутере",
+    "btn_block_ip_router": "🛑 Заблокировать IP на роутере",
+    "ip_blocked_successfully": "🛑 IP {ip} успешно заблокирован на роутере!",
+    "ip_block_failed": "❌ Ошибка блокировки: {desc}",
+    "ip_block_error": "Ошибка при блокировке: {e}",
+    "ip_unblocked_successfully": "🟢 Блокировка с IP {ip} снята!",
+    "ip_unblock_failed": "❌ Ошибка снятия блокировки: {desc}",
+    "ip_unblock_error": "Ошибка при разблокировке: {e}",
+    "device_blocked_text": "\n\n🛑 <b>УСТРОЙСТВО {ip} ЗАБЛОКИРОВАНО НА РОУТЕРЕ!</b>",
+    "invalid_data_format": "Ошибка: неверный формат данных.",
 }

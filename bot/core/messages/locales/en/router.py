@@ -46,5 +46,15 @@ translation = {
         "| **👤 Source** | `{src_ip}:{src_port}` |\n"
         "| **🎯 Target** | `{dst_host}:{dst_port}` |\n\n"
         "*Aegis Security Guard • Time: {timestamp}*"
-    )
+    ),
+    "btn_unblock_ip_router": "🟢 Unblock IP on router",
+    "btn_block_ip_router": "🛑 Block IP on router",
+    "ip_blocked_successfully": "🛑 IP {ip} successfully blocked on router!",
+    "ip_block_failed": "❌ Block error: {desc}",
+    "ip_block_error": "Error during block: {e}",
+    "ip_unblocked_successfully": "🟢 Block from IP {ip} successfully removed!",
+    "ip_unblock_failed": "❌ Unblock error: {desc}",
+    "ip_unblock_error": "Error during unblock: {e}",
+    "device_blocked_text": "\n\n🛑 <b>DEVICE {ip} BLOCKED ON ROUTER!</b>",
+    "invalid_data_format": "Error: invalid data format.",
 }

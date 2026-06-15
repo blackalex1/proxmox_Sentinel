@@ -7,6 +7,7 @@ from modules.proxmox.monitor.state import lxc_alert_throttle
 from modules.router.router import ban_router_ip
 from .parser import parse_router_conntrack_line, parse_router_iptables_line
 from .helpers import check_is_bot_or_admin
+from core.messages.i18n import _
 
 recent_router_violations = {}
 
@@ -53,7 +54,7 @@ async def handle_router_iptables_log_line(line):
                     
                     from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
                     kb = InlineKeyboardMarkup(inline_keyboard=[
-                        [InlineKeyboardButton(text="🟢 Разблокировать IP на роутере", callback_data=f"router_unblock:{src_ip}")]
+                        [InlineKeyboardButton(text=_("router", "btn_unblock_ip_router"), callback_data=f"router_unblock:{src_ip}")]
                     ])
                     
                     await send_alert_to_admins(msg, parse_mode="markdown", reply_markup=kb)
@@ -71,7 +72,7 @@ async def handle_router_iptables_log_line(line):
         buttons = []
         
         if settings.router_monitor_enable:
-            buttons.append([InlineKeyboardButton(text="🛑 Заблокировать IP на роутере", callback_data=f"router_block:{src_ip}")])
+            buttons.append([InlineKeyboardButton(text=_("router", "btn_block_ip_router"), callback_data=f"router_block:{src_ip}")])
             
         kb = InlineKeyboardMarkup(inline_keyboard=buttons) if buttons else None
         
@@ -127,7 +128,7 @@ async def handle_router_conntrack_log_line(line):
                     
                     from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
                     kb = InlineKeyboardMarkup(inline_keyboard=[
-                        [InlineKeyboardButton(text="🟢 Разблокировать IP на роутере", callback_data=f"router_unblock:{src_ip}")]
+                        [InlineKeyboardButton(text=_("router", "btn_unblock_ip_router"), callback_data=f"router_unblock:{src_ip}")]
                     ])
                     
                     await send_alert_to_admins(msg, parse_mode="markdown", reply_markup=kb)
@@ -145,7 +146,7 @@ async def handle_router_conntrack_log_line(line):
         buttons = []
         
         if settings.router_monitor_enable:
-            buttons.append([InlineKeyboardButton(text="🛑 Заблокировать IP на роутере", callback_data=f"router_block:{src_ip}")])
+            buttons.append([InlineKeyboardButton(text=_("router", "btn_block_ip_router"), callback_data=f"router_block:{src_ip}")])
             
         kb = InlineKeyboardMarkup(inline_keyboard=buttons) if buttons else None
         
