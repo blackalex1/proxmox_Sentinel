@@ -16,6 +16,7 @@ os.environ['PROXMOX_USER'] = 'root@pam'
 os.environ['PROXMOX_TOKEN_ID'] = 'bot-token'
 os.environ['PROXMOX_TOKEN_SECRET'] = 'secret'
 os.environ['REMOTE_SERVER_IP'] = '198.51.100.50'
+os.environ['BOT_LANGUAGE'] = 'ru'
 
 @pytest.fixture(scope="session", autouse=True)
 def setup_test_env():
