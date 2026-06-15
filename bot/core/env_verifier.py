@@ -1,5 +1,6 @@
 import logging
 from core.config import settings
+from core.messages.i18n import _
 
 def verify_env_configuration():
     """
@@ -10,29 +11,32 @@ def verify_env_configuration():
     
     # 1. Администраторы для получения алертов
     if not settings.admin_ids:
-        missing.append("ADMIN_IDS (получение алертов администраторами)")
+        missing.append(_("logs", "env_verifier_admin_ids"))
         
     # 2. Мониторинг Proxmox
     proxmox_fields = [settings.proxmox_host, settings.proxmox_user, settings.proxmox_token_id, settings.proxmox_token_secret]
     if not all(proxmox_fields):
-        missing.append("PROXMOX_* (PROXMOX_HOST, PROXMOX_USER, PROXMOX_TOKEN_ID, PROXMOX_TOKEN_SECRET - мониторинг Proxmox VE)")
-        
+        missing.append(_("logs", "env_verifier_proxmox"))
         
     # 4. Ansible Playbooks
     if not settings.ansible_playbooks_dir:
-        missing.append("ANSIBLE_PLAYBOOKS_DIR (запуск плейбуков автоматизации)")
+        missing.append(_("logs", "env_verifier_ansible"))
         
     # 5. Блокировки на роутере
     if not settings.router_monitor_enable:
-        missing.append("ROUTER_MONITOR_ENABLE=True (блокировки вредоносного трафика на уровне роутера)")
+        missing.append(_("logs", "env_verifier_router_enable"))
     elif not all([settings.router_ssh_host, settings.router_ssh_user]):
-        missing.append("ROUTER_SSH_* (ROUTER_SSH_HOST, ROUTER_SSH_USER - авторизация на роутере по SSH)")
+        missing.append(_("logs", "env_verifier_router_ssh"))
         
     # 6. Мониторинг удаленных серверов (VPS)
     if not settings.remote_monitor_enable:
-        missing.append("REMOTE_MONITOR_ENABLE=True (мониторинг и защита удаленных VPS)")
+        missing.append(_("logs", "env_verifier_remote_enable"))
     elif not all([settings.remote_server_ip, settings.remote_server_user]):
-        missing.append("REMOTE_SERVER_* (REMOTE_SERVER_IP, REMOTE_SERVER_USER - SSH доступ к удаленным серверам)")
+        missing.append(_("logs", "env_verifier_remote_ssh"))
+        
+    # 7. Язык бота (BOT_LANGUAGE)
+    if 'bot_language' not in settings.model_fields_set:
+        missing.append(_("logs", "env_verifier_bot_language"))
         
     if missing:
         logging.warning("env_verifier_the_following_parameters_are_missing")
