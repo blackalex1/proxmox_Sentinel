@@ -8,7 +8,7 @@ import importlib
 import core.messages
 from core.messages.i18n import translator
 
-NAMESPACES = ["auth", "nodes", "resources", "traffic", "router", "spectre", "proxy", "whitelist", "ban_center", "keyboards"]
+NAMESPACES = ["auth", "nodes", "resources", "traffic", "router", "spectre", "proxy", "whitelist", "ban_center", "keyboards", "proxmox"]
 
 @pytest.fixture(autouse=True)
 def restore_translator_lang():

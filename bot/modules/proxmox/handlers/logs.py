@@ -3,6 +3,7 @@ import logging
 from aiogram import Router, types, F
 from aiogram.types import CallbackQuery
 from aiogram.exceptions import TelegramBadRequest
+from core.messages.i18n import _
 
 router = Router(name="proxmox_logs_router")
 
@@ -15,16 +16,16 @@ async def process_lxc_auth_logs(callback: CallbackQuery):
         vmid = int(vmid_str)
         
         from modules.proxmox.monitor import lxc_auth_history, lxc_name_cache
-        name = lxc_name_cache.get(vmid, "Хост Proxmox VE" if vmid == 0 else "Unknown")
+        name = lxc_name_cache.get(vmid, _("proxmox", "host_label_default") if vmid == 0 else "Unknown")
         history = lxc_auth_history.get(vmid, [])
         
         if vmid == 0:
-            text = f"🔒 <b>Логи авторизации Хоста {node_name}:</b>\n\n"
+            text = _("proxmox", "auth_logs_host_title", node_name=node_name)
         else:
-            text = f"🔒 <b>Логи авторизации LXC {vmid} ({name}):</b>\n\n"
+            text = _("proxmox", "auth_logs_lxc_title", vmid=vmid, name=name)
         
         if not history:
-            text += "<i>История пуста или бот был недавно перезапущен. Логи появятся при новых попытках входа.</i>"
+            text += _("proxmox", "logs_empty")
         else:
             for item in list(history)[-10:]:
                 t_emoji = "🟢" if item.get('type') == 'SUCCESS' else "🔴" if item.get('type') == 'FAILED' else "🛠"
@@ -35,26 +36,26 @@ async def process_lxc_auth_logs(callback: CallbackQuery):
                 text += f"   └─ {msg_esc} (IP: <code>{ip_esc}</code>)\n\n"
                 
         if len(text) > 4000:
-            text = text[:3900] + "\n\n<i>... [Часть логов обрезана из-за лимитов Telegram] ...</i>"
+            text = text[:3900] + _("proxmox", "logs_truncated")
 
         from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
         back_type = 'host' if vmid == 0 else 'lxc'
         kb = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="🔄 Обновить лог", callback_data=f"lxc_auth_{node_name}_{vmid}")],
-            [InlineKeyboardButton(text="🔙 Назад к ВМ", callback_data=f"vm_{node_name}_{vmid}_{back_type}")]
+            [InlineKeyboardButton(text=_("proxmox", "refresh_log_btn"), callback_data=f"lxc_auth_{node_name}_{vmid}")],
+            [InlineKeyboardButton(text=_("proxmox", "back_to_vm_btn"), callback_data=f"vm_{node_name}_{vmid}_{back_type}")]
         ])
         
         try:
             await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
         except TelegramBadRequest as e:
             if "message is not modified" in str(e):
-                await callback.answer("Лог актуален")
+                await callback.answer(_("proxmox", "log_actual"))
             else:
                 raise
     except Exception as e:
         err_msg = str(e)[:120]
         try:
-            await callback.answer(f"Ошибка получения логов: {err_msg}", show_alert=True)
+            await callback.answer(_("proxmox", "log_error", err_msg=err_msg), show_alert=True)
         except Exception:
             pass
 
@@ -67,21 +68,21 @@ async def process_lxc_port_traffic(callback: CallbackQuery):
         vmid = int(vmid_str)
         
         from modules.proxmox.monitor import lxc_traffic_history, lxc_name_cache
-        name = lxc_name_cache.get(vmid, "Хост Proxmox VE" if vmid == 0 else "Unknown")
+        name = lxc_name_cache.get(vmid, _("proxmox", "host_label_default") if vmid == 0 else "Unknown")
         history = lxc_traffic_history.get(vmid, [])
         
         if vmid == 0:
-            text = f"🌐 <b>Сетевая активность Хоста {node_name}:</b>\n"
+            text = _("proxmox", "traffic_host_title", node_name=node_name)
         else:
-            text = f"🌐 <b>Сетевая активность LXC {vmid} ({name}):</b>\n"
-        text += "<i>(Последние соединения и уровень их безопасности)</i>\n\n"
+            text = _("proxmox", "traffic_lxc_title", vmid=vmid, name=name)
+        text += _("proxmox", "traffic_subtitle")
         
         if not history:
-            text += "<i>Соединений не зафиксировано. Сетевая активность появится при прохождении нового трафика.</i>"
+            text += _("proxmox", "traffic_empty")
         else:
             for item in list(history)[-10:]:
                 emoji = item.get('risk_emoji', '🟢')
-                label = item.get('label', 'Входящее соединение' if item['direction'] == 'IN' else 'Исходящее соединение')
+                label = item.get('label', _("proxmox", "traffic_direction_in_label") if item['direction'] == 'IN' else _("proxmox", "traffic_direction_out_label"))
                 
                 label_esc = html.escape(str(label)[:80])
                 proto_esc = html.escape(str(item.get('proto', 'TCP'))[:10])
@@ -99,29 +100,28 @@ async def process_lxc_port_traffic(callback: CallbackQuery):
                     text += f"      <b>:{spt_esc}</b> ➡️ <code>{dst_esc}:{dpt_esc}</code>\n\n"
                     
         if len(text) > 4000:
-            text = text[:3900] + "\n\n<i>... [Часть активности обрезана из-за лимитов Telegram] ...</i>"
+            text = text[:3900] + _("proxmox", "traffic_truncated")
 
         from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
         back_type = 'host' if vmid == 0 else 'lxc'
         kb = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="🔄 Обновить активность", callback_data=f"lxc_ports_{node_name}_{vmid}")],
-            [InlineKeyboardButton(text="🔙 Назад к ВМ", callback_data=f"vm_{node_name}_{vmid}_{back_type}")]
+            [InlineKeyboardButton(text=_("proxmox", "refresh_traffic_btn"), callback_data=f"lxc_ports_{node_name}_{vmid}")],
+            [InlineKeyboardButton(text=_("proxmox", "back_to_vm_btn"), callback_data=f"vm_{node_name}_{vmid}_{back_type}")]
         ])
         
         try:
             await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
         except TelegramBadRequest as e:
             if "message is not modified" in str(e):
-                await callback.answer("Активность актуальна")
+                await callback.answer(_("proxmox", "traffic_actual"))
             else:
                 raise
     except Exception as e:
         err_msg = str(e)[:120]
         try:
-            await callback.answer(f"Ошибка получения сетевой активности: {err_msg}", show_alert=True)
+            await callback.answer(_("proxmox", "traffic_error", err_msg=err_msg), show_alert=True)
         except Exception:
             pass
-
 
 @router.callback_query(F.data.startswith("vps_auth_"))
 async def process_vps_auth_logs(callback: CallbackQuery):
@@ -131,10 +131,10 @@ async def process_vps_auth_logs(callback: CallbackQuery):
         from modules.proxmox.monitor import lxc_auth_history
         history = lxc_auth_history.get(server_ip, [])
         
-        text = f"🔒 <b>Логи авторизации VPS ({server_ip}):</b>\n\n"
+        text = _("proxmox", "auth_logs_vps_title", server_ip=server_ip)
         
         if not history:
-            text += "<i>История пуста или бот был недавно перезапущен. Логи появятся при новых попытках входа.</i>"
+            text += _("proxmox", "logs_empty")
         else:
             for item in list(history)[-10:]:
                 t_emoji = "🟢" if item.get('type') == 'SUCCESS' else "🔴" if item.get('type') == 'FAILED' else "🛠"
@@ -145,7 +145,7 @@ async def process_vps_auth_logs(callback: CallbackQuery):
                 text += f"   └─ {msg_esc} (IP: <code>{ip_esc}</code>)\n\n"
                 
         if len(text) > 4000:
-            text = text[:3900] + "\n\n<i>... [Часть логов обрезана из-за лимитов Telegram] ...</i>"
+            text = text[:3900] + _("proxmox", "logs_truncated")
 
         from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
         from core.spectre_client.manager import spectre_manager
@@ -157,12 +157,12 @@ async def process_vps_auth_logs(callback: CallbackQuery):
                 break
                 
         kb_buttons = [
-            [InlineKeyboardButton(text="🔄 Обновить лог", callback_data=f"vps_auth_{server_ip}")]
+            [InlineKeyboardButton(text=_("proxmox", "refresh_log_btn"), callback_data=f"vps_auth_{server_ip}")]
         ]
         if panel_key:
-            kb_buttons.append([InlineKeyboardButton(text="🔙 Назад к панели", callback_data=f"spectre_menu:{panel_key}")])
+            kb_buttons.append([InlineKeyboardButton(text=_("proxmox", "back_to_panel_btn"), callback_data=f"spectre_menu:{panel_key}")])
         else:
-            kb_buttons.append([InlineKeyboardButton(text="🔙 В главное меню", callback_data="main_menu")])
+            kb_buttons.append([InlineKeyboardButton(text=_("keyboards", "btn_back_to_menu"), callback_data="main_menu")])
             
         kb = InlineKeyboardMarkup(inline_keyboard=kb_buttons)
         
@@ -170,13 +170,12 @@ async def process_vps_auth_logs(callback: CallbackQuery):
             await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
         except TelegramBadRequest as e:
             if "message is not modified" in str(e):
-                await callback.answer("Лог актуален")
+                await callback.answer(_("proxmox", "log_actual"))
             else:
                 raise
     except Exception as e:
         err_msg = str(e)[:120]
         try:
-            await callback.answer(f"Ошибка получения логов VPS: {err_msg}", show_alert=True)
+            await callback.answer(_("proxmox", "log_vps_error", err_msg=err_msg), show_alert=True)
         except Exception:
             pass
-

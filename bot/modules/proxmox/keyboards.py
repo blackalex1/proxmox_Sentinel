@@ -1,5 +1,6 @@
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from modules.proxmox.api import proxmox
+from core.messages.i18n import _
 
 def get_node_keyboard() -> InlineKeyboardMarkup:
     """Главная клавиатура: список нод"""
@@ -20,7 +21,7 @@ def get_vms_keyboard(node_name: str) -> InlineKeyboardMarkup:
     
     # Сначала добавим сам Хост Proxmox VE
     buttons.append([InlineKeyboardButton(
-        text="💻 [Хост] Proxmox VE", 
+        text=_("proxmox", "host_label"), 
         callback_data=f"vm_{node_name}_0_host"
     )])
     
@@ -35,7 +36,7 @@ def get_vms_keyboard(node_name: str) -> InlineKeyboardMarkup:
             callback_data=f"vm_{node_name}_{vmid}_{vm_type}"
         )])
         
-    buttons.append([InlineKeyboardButton(text="🔙 Назад к серверам", callback_data="back_to_nodes")])
+    buttons.append([InlineKeyboardButton(text=_("proxmox", "back_to_nodes"), callback_data="back_to_nodes")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 def get_vm_control_keyboard(node_name: str, vmid: str, vm_type: str, is_running: bool) -> InlineKeyboardMarkup:
@@ -44,38 +45,37 @@ def get_vm_control_keyboard(node_name: str, vmid: str, vm_type: str, is_running:
     
     if vm_type == 'host' or str(vmid) == '0':
         buttons.append([
-            InlineKeyboardButton(text="🔒 Логи входа Хоста", callback_data=f"lxc_auth_{node_name}_{vmid}"),
-            InlineKeyboardButton(text="🌐 Трафик Хоста", callback_data=f"lxc_ports_{node_name}_{vmid}")
+            InlineKeyboardButton(text=_("proxmox", "host_logs_btn"), callback_data=f"lxc_auth_{node_name}_{vmid}"),
+            InlineKeyboardButton(text=_("proxmox", "host_traffic_btn"), callback_data=f"lxc_ports_{node_name}_{vmid}")
         ])
         buttons.append([
-            InlineKeyboardButton(text="⚙️ Белый список IPS", callback_data="wl_view:local")
+            InlineKeyboardButton(text=_("proxmox", "wl_ips_btn"), callback_data="wl_view:local")
         ])
-        buttons.append([InlineKeyboardButton(text="🔄 Обновить статус", callback_data=f"vm_{node_name}_{vmid}_host")])
-        buttons.append([InlineKeyboardButton(text="🔙 Назад к списку ВМ", callback_data=f"node_{node_name}")])
+        buttons.append([InlineKeyboardButton(text=_("proxmox", "refresh_status_btn"), callback_data=f"vm_{node_name}_{vmid}_host")])
+        buttons.append([InlineKeyboardButton(text=_("proxmox", "back_to_vms_btn"), callback_data=f"node_{node_name}")])
         return InlineKeyboardMarkup(inline_keyboard=buttons)
         
     if is_running:
         buttons.append([
-            InlineKeyboardButton(text="🔌 Мягко выключить", callback_data=f"cmd_shutdown_{node_name}_{vmid}_{vm_type}"),
-            InlineKeyboardButton(text="🛑 Убить (Stop)", callback_data=f"cmd_stop_{node_name}_{vmid}_{vm_type}")
+            InlineKeyboardButton(text=_("proxmox", "shutdown_btn"), callback_data=f"cmd_shutdown_{node_name}_{vmid}_{vm_type}"),
+            InlineKeyboardButton(text=_("proxmox", "stop_btn"), callback_data=f"cmd_stop_{node_name}_{vmid}_{vm_type}")
         ])
-        buttons.append([InlineKeyboardButton(text="🔄 Перезагрузить", callback_data=f"cmd_reboot_{node_name}_{vmid}_{vm_type}")])
+        buttons.append([InlineKeyboardButton(text=_("proxmox", "reboot_btn"), callback_data=f"cmd_reboot_{node_name}_{vmid}_{vm_type}")])
     else:
-        buttons.append([InlineKeyboardButton(text="▶️ Запустить", callback_data=f"cmd_start_{node_name}_{vmid}_{vm_type}")])
+        buttons.append([InlineKeyboardButton(text=_("proxmox", "start_btn"), callback_data=f"cmd_start_{node_name}_{vmid}_{vm_type}")])
         
     if vm_type == 'lxc' and is_running:
         buttons.append([
-            InlineKeyboardButton(text="🔒 Логи входа", callback_data=f"lxc_auth_{node_name}_{vmid}"),
-            InlineKeyboardButton(text="🌐 Трафик портов", callback_data=f"lxc_ports_{node_name}_{vmid}")
+            InlineKeyboardButton(text=_("proxmox", "auth_logs_btn"), callback_data=f"lxc_auth_{node_name}_{vmid}"),
+            InlineKeyboardButton(text=_("proxmox", "ports_traffic_btn"), callback_data=f"lxc_ports_{node_name}_{vmid}")
         ])
 
     if vm_type == 'lxc':
         buttons.append([
-            InlineKeyboardButton(text="⚙️ Белый список IPS", callback_data=f"wl_view:lxc_{vmid}")
+            InlineKeyboardButton(text=_("proxmox", "wl_ips_btn"), callback_data=f"wl_view:lxc_{vmid}")
         ])
 
-    buttons.append([InlineKeyboardButton(text="🔄 Обновить статус", callback_data=f"vm_{node_name}_{vmid}_{vm_type}")])
-    buttons.append([InlineKeyboardButton(text="👯 Клонировать", callback_data=f"cmd_clone_{node_name}_{vmid}_{vm_type}")])
-    buttons.append([InlineKeyboardButton(text="🔙 Назад к списку ВМ", callback_data=f"node_{node_name}")])
+    buttons.append([InlineKeyboardButton(text=_("proxmox", "refresh_status_btn"), callback_data=f"vm_{node_name}_{vmid}_{vm_type}")])
+    buttons.append([InlineKeyboardButton(text=_("proxmox", "clone_btn"), callback_data=f"cmd_clone_{node_name}_{vmid}_{vm_type}")])
+    buttons.append([InlineKeyboardButton(text=_("proxmox", "back_to_vms_btn"), callback_data=f"node_{node_name}")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
-
