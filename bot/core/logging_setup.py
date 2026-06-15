@@ -1,10 +1,49 @@
 import os
 import logging
+import re
+import importlib
 from logging.handlers import RotatingFileHandler
+
+class LocalizedFormatter(logging.Formatter):
+    """Кастомный форматировщик, который локализует логи перед выводом."""
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.patterns = []
+        try:
+            from core.config import settings
+            lang = settings.bot_language.lower()
+            try:
+                module = importlib.import_module(f"core.messages.locales.{lang}.logs")
+                translation_dict = getattr(module, "translation", {})
+                for pattern, repl in translation_dict.items():
+                    self.patterns.append((re.compile(pattern), repl))
+            except ModuleNotFoundError:
+                pass
+        except Exception:
+            # Предотвращает падения при раннем импорте во время сборки/тестирования
+            pass
+
+    def format(self, record: logging.LogRecord) -> str:
+        if not getattr(record, "localized", False):
+            if isinstance(record.msg, str) and self.patterns:
+                orig_msg = record.msg
+                for pattern, repl in self.patterns:
+                    new_msg = pattern.sub(repl, orig_msg)
+                    if new_msg != orig_msg:
+                        record.msg = new_msg
+                        break
+            record.localized = True
+        
+        # Сбрасываем предварительно отформатированное сообщение, если оно есть,
+        # чтобы super().format(record) пересобрал его с новым record.msg.
+        if hasattr(record, "message"):
+            delattr(record, "message")
+            
+        return super().format(record)
+
 
 def setup_logging():
     """Настраивает асинхронно-совместимое логирование с записью в консоль, общий лог и отдельный лог варнингов."""
-    # bot/core/logging_setup.py -> bot/config/
     current_dir = os.path.dirname(os.path.abspath(__file__))
     log_dir = os.path.abspath(os.path.join(current_dir, '../config'))
     os.makedirs(log_dir, exist_ok=True)
@@ -12,7 +51,7 @@ def setup_logging():
     log_file = os.path.join(log_dir, 'bot.log')
     warnings_file = os.path.join(log_dir, 'warnings.log')
 
-    log_formatter = logging.Formatter(
+    log_formatter = LocalizedFormatter(
         '%(asctime)s [%(levelname)s] %(name)s: %(message)s',
         datefmt='%Y-%m-%d %H:%M:%S'
     )
@@ -60,3 +99,4 @@ def setup_logging():
 
     logging.info(f"[Logging] Инициализировано общее логирование: {log_file} (5x10MB)")
     logging.info(f"[Logging] Инициализирован выделенный лог предупреждений: {warnings_file} (max 50MB)")
+
