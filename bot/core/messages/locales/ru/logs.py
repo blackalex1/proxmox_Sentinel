@@ -375,4 +375,12 @@ translation = {
     "zagruzka_proksi_iz_istochnika": "Загрузка прокси из источника: %s",
     "zapuschen_vstroennyy_shadowsocks-tunnel_pproxy_na_127_0": "Запущен встроенный Shadowsocks-туннель (pproxy) на 127.0.0.1:10808",
     "zapuscheno_faylovoe_otslezhivanie_logov_avtorizatsii_khosta": "Запущено файловое отслеживание логов авторизации хоста (%s).",
+    "env_verifier_admin_ids": "ADMIN_IDS (получение алертов администраторами)",
+    "env_verifier_proxmox": "PROXMOX_* (PROXMOX_HOST, PROXMOX_USER, PROXMOX_TOKEN_ID, PROXMOX_TOKEN_SECRET - мониторинг Proxmox VE)",
+    "env_verifier_ansible": "ANSIBLE_PLAYBOOKS_DIR (запуск плейбуков автоматизации)",
+    "env_verifier_router_enable": "ROUTER_MONITOR_ENABLE=True (блокировки вредоносного трафика на уровне роутера)",
+    "env_verifier_router_ssh": "ROUTER_SSH_* (ROUTER_SSH_HOST, ROUTER_SSH_USER - авторизация на роутере по SSH)",
+    "env_verifier_remote_enable": "REMOTE_MONITOR_ENABLE=True (мониторинг и защита удаленных VPS)",
+    "env_verifier_remote_ssh": "REMOTE_SERVER_* (REMOTE_SERVER_IP, REMOTE_SERVER_USER - SSH доступ к удаленным серверам)",
+    "env_verifier_bot_language": "BOT_LANGUAGE (язык бота, не задан в .env - используется английский язык по умолчанию)",
 }

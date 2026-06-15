@@ -375,4 +375,12 @@ translation = {
     "zagruzka_proksi_iz_istochnika": "Loading proxies from source: %s",
     "zapuschen_vstroennyy_shadowsocks-tunnel_pproxy_na_127_0": "Started built-in Shadowsocks tunnel (pproxy) on 127.0.0.1:10808",
     "zapuscheno_faylovoe_otslezhivanie_logov_avtorizatsii_khosta": "Started file tracking of host auth logs (%s).",
+    "env_verifier_admin_ids": "ADMIN_IDS (receiving alerts by administrators)",
+    "env_verifier_proxmox": "PROXMOX_* (PROXMOX_HOST, PROXMOX_USER, PROXMOX_TOKEN_ID, PROXMOX_TOKEN_SECRET - Proxmox VE monitoring)",
+    "env_verifier_ansible": "ANSIBLE_PLAYBOOKS_DIR (running automation playbooks)",
+    "env_verifier_router_enable": "ROUTER_MONITOR_ENABLE=True (malicious traffic blocking at the router level)",
+    "env_verifier_router_ssh": "ROUTER_SSH_* (ROUTER_SSH_HOST, ROUTER_SSH_USER - authorization on the router via SSH)",
+    "env_verifier_remote_enable": "REMOTE_MONITOR_ENABLE=True (monitoring and protection of remote VPS)",
+    "env_verifier_remote_ssh": "REMOTE_SERVER_* (REMOTE_SERVER_IP, REMOTE_SERVER_USER - SSH access to remote servers)",
+    "env_verifier_bot_language": "BOT_LANGUAGE (bot language, not set in .env - defaults to English)",
 }
