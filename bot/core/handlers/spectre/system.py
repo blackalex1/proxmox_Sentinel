@@ -47,6 +47,11 @@ async def run_backup_for_panel(message: types.Message, panel_key: str):
     status_msg = await message.answer(_("spectre", "backup_in_progress", name=panel.name))
     success, res = await panel.request("GET", "/api/security/backup")
     
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=_("spectre", "back_to_menu_btn"), callback_data=f"spectre_menu:{panel_key}")],
+        [InlineKeyboardButton(text=_("keyboards", "btn_back_to_menu"), callback_data="main_menu")]
+    ])
+    
     if success and res.get("success") and "dump" in res:
         try:
             dump_data = res["dump"]
@@ -57,13 +62,14 @@ async def run_backup_for_panel(message: types.Message, panel_key: str):
             await status_msg.delete()
             await message.answer_document(
                 document,
-                caption=_("spectre", "backup_success", name=panel.name)
+                caption=_("spectre", "backup_success", name=panel.name),
+                reply_markup=kb
             )
         except Exception as e:
-            await status_msg.edit_text(_("spectre", "backup_send_err", error=e))
+            await status_msg.edit_text(_("spectre", "backup_send_err", error=e), reply_markup=kb)
     else:
         error_info = res.get("msg") or res.get("error") or _("spectre", "unknown_error")
-        await status_msg.edit_text(_("spectre", "backup_failed", name=panel.name, error=error_info))
+        await status_msg.edit_text(_("spectre", "backup_failed", name=panel.name, error=error_info), reply_markup=kb)
 
 @router.message(Command("status"))
 async def cmd_status_spectre(message: types.Message):
@@ -103,6 +109,11 @@ async def run_status_for_panel(message: types.Message, panel_key: str):
     status_msg = await message.answer(_("spectre", "status_fetching", name=panel.name))
     success, res = await panel.request("GET", "/api/security/system-status")
     
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=_("spectre", "back_to_menu_btn"), callback_data=f"spectre_menu:{panel_key}")],
+        [InlineKeyboardButton(text=_("keyboards", "btn_back_to_menu"), callback_data="main_menu")]
+    ])
+    
     if success and res.get("success"):
         stats = res.get("stats", {})
         counts = res.get("counts", {})
@@ -132,11 +143,12 @@ async def run_status_for_panel(message: types.Message, panel_key: str):
         await send_rich_message(
             chat_id=message.chat.id,
             text=msg,
-            parse_mode="markdown"
+            parse_mode="markdown",
+            reply_markup=kb
         )
     else:
         error_info = res.get("msg") or res.get("error") or _("spectre", "unknown_error")
-        await status_msg.edit_text(_("spectre", "status_failed", name=panel.name, error=error_info))
+        await status_msg.edit_text(_("spectre", "status_failed", name=panel.name, error=error_info), reply_markup=kb)
 
 @router.message(Command("top"))
 async def cmd_top_spectre(message: types.Message):
@@ -210,10 +222,15 @@ async def run_audit_for_panel(message: types.Message, panel_key: str):
     status_msg = await message.answer(_("spectre", "audit_logs_fetching", name=panel.name))
     success, res = await panel.get_audit_logs(limit=10)
     
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=_("spectre", "back_to_menu_btn"), callback_data=f"spectre_menu:{panel_key}")],
+        [InlineKeyboardButton(text=_("keyboards", "btn_back_to_menu"), callback_data="main_menu")]
+    ])
+    
     if success and res.get("success"):
         logs = res.get("logs", [])
         if not logs:
-            await status_msg.edit_text(_("spectre", "audit_logs_empty", name=panel.name))
+            await status_msg.edit_text(_("spectre", "audit_logs_empty", name=panel.name), reply_markup=kb)
             return
             
         msg = _("spectre", "audit_logs_title", name=panel.name)
@@ -229,7 +246,7 @@ async def run_audit_for_panel(message: types.Message, panel_key: str):
             msg += "────────────────────────\n"
             
         await status_msg.delete()
-        await message.answer(msg, parse_mode="HTML")
+        await message.answer(msg, parse_mode="HTML", reply_markup=kb)
     else:
         error_info = res.get("msg") or res.get("error") or _("spectre", "unknown_error")
-        await status_msg.edit_text(_("spectre", "audit_logs_failed", name=panel.name, error=error_info))
+        await status_msg.edit_text(_("spectre", "audit_logs_failed", name=panel.name, error=error_info), reply_markup=kb)
