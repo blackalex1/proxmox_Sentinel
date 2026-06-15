@@ -5,6 +5,7 @@ import datetime
 from core.bot import bot
 from core.config import settings
 from core.messages import get_session_activity_card, get_new_ip_alert, get_client_disconnected_alert
+from core.messages.i18n import _
 
 # In-memory cards state: (panel_name, username, protocol) -> card dict
 active_activity_cards = {}
@@ -48,7 +49,7 @@ async def check_new_ip_and_get_history(username, current_ip, session_id):
     for r in rows:
         ip = r["ip"]
         conn_time_str = r["connect_time"]
-        duration = r["duration"] or "неизвестно"
+        duration = r["duration"] or _("spectre", "history_unknown")
         
         try:
             ts = datetime.datetime.strptime(conn_time_str, "%Y-%m-%d %H:%M:%S").timestamp()
@@ -71,7 +72,7 @@ async def process_hysteria_audit_event(panel, action, client_ip, log_timestamp, 
         return
         
     username = details.get("username", "Unknown")
-    duration_str = details.get("duration", "неизвестно")
+    duration_str = details.get("duration", _("spectre", "history_unknown"))
     
     panel_name = panel.name
     protocol = "Xray" if "xray" in action else "Hysteria"
@@ -133,7 +134,7 @@ async def process_hysteria_audit_event(panel, action, client_ip, log_timestamp, 
             except Exception as e:
                 logging.error(f"[Controller Alerts] Error checking new IP: {e}")
 
-        event_line = f"🟢 <code>[{timestamp_str}]</code> Подключение с <code>{client_ip}</code>"
+        event_line = _("spectre", "timeline_connect", timestamp=timestamp_str, ip=client_ip)
         if card and is_card_active(card, now_time):
             card['lines'].append(event_line)
             card['last_activity_at'] = now_time
@@ -193,17 +194,17 @@ async def process_hysteria_audit_event(panel, action, client_ip, log_timestamp, 
                     conn_time = conn_list.pop(0)
                     duration_sec = int((datetime.datetime.now() - conn_time).total_seconds())
                     if duration_sec < 60:
-                        duration_str = f"{duration_sec} сек"
+                        duration_str = _("spectre", "duration_sec", val=duration_sec)
                     elif duration_sec < 3600:
-                        duration_str = f"{duration_sec // 60} мин {duration_sec % 60} сек"
+                        duration_str = _("spectre", "duration_min_sec", min=duration_sec // 60, sec=duration_sec % 60)
                     else:
-                        duration_str = f"{duration_sec // 3600} ч {(duration_sec % 3600) // 60} мин"
+                        duration_str = _("spectre", "duration_hour_min", hour=duration_sec // 3600, min=(duration_sec % 3600) // 60)
             else:
                 conn_list = card['connections'].get(client_ip, [])
                 if conn_list:
                     conn_list.pop(0)
             
-            event_line = f"🔴 <code>[{timestamp_str}]</code> Отключение <code>{client_ip}</code> — {duration_str}"
+            event_line = _("spectre", "timeline_disconnect", timestamp=timestamp_str, ip=client_ip, duration=duration_str)
             card['lines'].append(event_line)
             
             msg_text = format_card_msg(panel_name, username, protocol, card['lines'], tx, rx)

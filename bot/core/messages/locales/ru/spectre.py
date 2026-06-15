@@ -303,5 +303,12 @@ translation = {
     "tg_2fa_block_confirm_text": "{original_text}\n\n⚠️ <b>Вы уверены? Блокировка вашего IP лишит вас доступа к серверу!</b>",
     "tg_2fa_approve_btn": "✅ Да, разрешить",
     "tg_2fa_block_btn": "❌ Заблокировать IP",
-    "tg_2fa_block_cancelled_alert": "Блокировка IP отменена"
+    "tg_2fa_block_cancelled_alert": "Блокировка IP отменена",
+
+    # Timeline and Duration strings
+    "timeline_connect": "🟢 <code>[{timestamp}]</code> Подключение с <code>{ip}</code>",
+    "timeline_disconnect": "🔴 <code>[{timestamp}]</code> Отключение <code>{ip}</code> — {duration}",
+    "duration_sec": "{val} сек",
+    "duration_min_sec": "{min} мин {sec} сек",
+    "duration_hour_min": "{hour} ч {min} мин"
 }
