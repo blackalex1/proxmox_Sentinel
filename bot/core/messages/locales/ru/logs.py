@@ -376,6 +376,7 @@ translation = {
     "zapuschen_vstroennyy_shadowsocks-tunnel_pproxy_na_127_0": "Запущен встроенный Shadowsocks-туннель (pproxy) на 127.0.0.1:10808",
     "zapuscheno_faylovoe_otslezhivanie_logov_avtorizatsii_khosta": "Запущено файловое отслеживание логов авторизации хоста (%s).",
     "env_verifier_admin_ids": "ADMIN_IDS (получение алертов администраторами)",
+    "env_verifier_bot_token": "BOT_TOKEN (токен Telegram бота)",
     "env_verifier_proxmox": "PROXMOX_* (PROXMOX_HOST, PROXMOX_USER, PROXMOX_TOKEN_ID, PROXMOX_TOKEN_SECRET - мониторинг Proxmox VE)",
     "env_verifier_ansible": "ANSIBLE_PLAYBOOKS_DIR (запуск плейбуков автоматизации)",
     "env_verifier_router_enable": "ROUTER_MONITOR_ENABLE=True (блокировки вредоносного трафика на уровне роутера)",
