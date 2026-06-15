@@ -218,5 +218,90 @@ translation = {
     "act_unbanned_success": "Successfully unblocked",
     "act_panel_error": "Panel-side error",
     "act_success_alert": "✅ {success_msg}!",
-    "act_failed_alert": "❌ Error: {desc}"
+    "act_failed_alert": "❌ Error: {desc}",
+
+    # System and Backup handler keys
+    "no_panels_err": "❌ <b>Spectre Panels not found.</b>",
+    "select_panel_backup": "📥 <b>Select a panel to create backup:</b>",
+    "backup_in_progress": "⏳ Creating database backup for <b>{name}</b>...",
+    "backup_success": "✅ <b>Backup successfully created!</b>\nServer: <code>{name}</code>",
+    "backup_send_err": "❌ Error sending backup file: {error}",
+    "backup_failed": "❌ <b>Failed to create backup for {name}:</b>\n<code>{error}</code>",
+    "unknown_error": "Unknown error",
+    "select_panel_status": "📊 <b>Select a panel to check system status:</b>",
+    "status_fetching": "⏳ Fetching system status from <b>{name}</b>...",
+    "status_failed": "❌ <b>Failed to get status from {name}:</b>\n<code>{error}</code>",
+    "traffic_stats_fetching": "📊 Fetching traffic statistics from all panels...",
+    "select_panel_audit": "📋 <b>Select a panel to view audit logs:</b>",
+    "audit_logs_fetching": "⏳ Fetching audit logs from <b>{name}</b>...",
+    "audit_logs_empty": "📁 <b>{name}</b>: Audit log is empty.",
+    "audit_logs_title": "📋 <b>Recent actions on panel: {name}</b>\n━━━━━━━━━━━━━━━━━━━━━━━━\n",
+    "audit_logs_failed": "❌ <b>Failed to get audit logs from {name}:</b>\n<code>{error}</code>",
+
+    # Client search and actions keys
+    "my_subscription_title": "🔑 <b>Client Subscription Lookup:</b>\nUse command: <code>/my &lt;email or UUID&gt;</code>",
+    "lookup_in_progress": "🔍 Searching for client across all panels database...",
+    "client_not_found_everywhere": "❌ <b>Client with this email or UUID was not found on any panel.</b>",
+    "no_traffic_limit": "No limit",
+    "limit_gb": "{limit:.2f} GB",
+    "status_active": "🟢 Active",
+    "reason_limit_exceeded": "Limits exceeded",
+    "status_blocked_with_reason": "🔴 Blocked ({reason})",
+    "expires_never": "Never",
+    "client_card_sub_title": (
+        "🔑 <b>Subscription: {email}</b>\n"
+        "📡 Panel/Server: <b>{panel_name}</b>\n"
+        "━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        "📌 Inbound: <b>{remark} (:{port})</b>\n"
+        "📡 Protocol: <b>{protocol}</b>\n"
+        "🚦 Downloaded (DL): <b>{download_gb:.3f} GB</b>\n"
+        "📤 Uploaded (UL): <b>{upload_gb:.3f} GB</b>\n"
+        "💾 Traffic Limit: <b>{total_gb_str}</b>\n"
+        "⏱ Expires: <b>{expiry_str}</b>\n"
+        "⚡ Status: <b>{status_str}</b>\n"
+        "━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        "🔗 <b>Connection links:</b>\n"
+    ),
+    "copy_link_hint": "\n<i>Click on link to copy it.</i>",
+    "btn_conn_history_and_ip": "📊 Connection History & IPs",
+    "qr_code_caption": "QR Code {protocol} ({index})",
+    "lookup_error": "❌ Search error occurred: {error}",
+    "unbanning_tunnel_hint": "👇 You can unblock tunnel manually in one click:",
+    "unbanning_tunnel_progress": "⏳ Unblocking tunnel...",
+    "manual_unban_success_details": (
+        "{original_text}\n\n✅ <b>Tunnel successfully unblocked manually!</b>\n"
+        "📋 <b>Unblock Details:</b>\n{details}\n"
+        "🕒 Time: <code>{timestamp}</code>"
+    ),
+    "manual_unban_failed_details": (
+        "{original_text}\n\n⚠️ <b>Tunnel unblocked with errors:</b>\n"
+        "📋 <b>Unblock Details:</b>\n{details}\n"
+        "🕒 Time: <code>{timestamp}</code>"
+    ),
+    "manual_unban_error": "{original_text}\n\n❌ <b>Unblocking error:</b> <code>{error}</code>",
+    "ban_help": "🛑 <b>Block Client:</b>\nUse command: <code>/ban &lt;email&gt;</code>",
+    "ban_progress": "⏳ Blocking client <code>{email}</code> on all panels...",
+    "ban_status_success": "🟢 Blocked",
+    "ban_status_error": "🔴 Error",
+    "ban_success_results": "✅ <b>Results of blocking client <code>{email}</code>:</b>\n{details}",
+    "ban_failed_results": "❌ <b>Failed to block client <code>{email}</code>:</b>\n{details}",
+    "ban_error": "❌ Error occurred while blocking: {error}",
+    "unban_help": "🟢 <b>Unblock Client:</b>\nUse command: <code>/unban &lt;email&gt;</code>",
+    "unban_progress": "⏳ Unblocking client <code>{email}</code> on all panels...",
+    "unban_status_success": "🟢 Unblocked",
+    "unban_status_error": "🔴 Error",
+    "unban_success_results": "✅ <b>Results of unblocking client <code>{email}</code>:</b>\n{details}",
+    "unban_failed_results": "❌ <b>Failed to unblock client <code>{email}</code>:</b>\n{details}",
+    "unban_error": "❌ Error occurred while unblocking: {error}",
+    "tg_2fa_approved": "✅ <b>Access successfully allowed.</b>",
+    "tg_2fa_blocked": "🛑 <b>IP address blocked.</b>",
+    "tg_2fa_error": "❌ Error: {error}",
+    "tg_2fa_unblock_failed": "Failed to block on any panel",
+    "tg_2fa_approve_failed": "Failed to approve on any panel",
+    "tg_2fa_block_confirm_btn": "🔥 Yes, block IP",
+    "tg_2fa_block_cancel_btn": "🔙 Cancel",
+    "tg_2fa_block_confirm_text": "{original_text}\n\n⚠️ <b>Are you sure? Blocking your IP will restrict your access to the server!</b>",
+    "tg_2fa_approve_btn": "✅ Yes, allow",
+    "tg_2fa_block_btn": "❌ Block IP",
+    "tg_2fa_block_cancelled_alert": "IP blocking cancelled"
 }

@@ -218,5 +218,90 @@ translation = {
     "act_unbanned_success": "Успешно разблокирован",
     "act_panel_error": "Ошибка на стороне панели",
     "act_success_alert": "✅ {success_msg}!",
-    "act_failed_alert": "❌ Ошибка: {desc}"
+    "act_failed_alert": "❌ Ошибка: {desc}",
+
+    # System and Backup handler keys
+    "no_panels_err": "❌ <b>Панели Spectre Panel не обнаружены.</b>",
+    "select_panel_backup": "📥 <b>Выберите панель для создания бэкапа:</b>",
+    "backup_in_progress": "⏳ Создание резервной копии для <b>{name}</b>...",
+    "backup_success": "✅ <b>Резервная копия успешно создана!</b>\nСервер: <code>{name}</code>",
+    "backup_send_err": "❌ Ошибка отправки бэкапа: {error}",
+    "backup_failed": "❌ <b>Не удалось создать бэкап для {name}:</b>\n<code>{error}</code>",
+    "unknown_error": "Неизвестная ошибка",
+    "select_panel_status": "📊 <b>Выберите панель для проверки статуса:</b>",
+    "status_fetching": "⏳ Получение статуса от <b>{name}</b>...",
+    "status_failed": "❌ <b>Ошибка получения статуса {name}:</b>\n<code>{error}</code>",
+    "traffic_stats_fetching": "📊 Получение статистики по трафику со всех панелей...",
+    "select_panel_audit": "📋 <b>Выберите панель для просмотра лога аудита:</b>",
+    "audit_logs_fetching": "⏳ Получение логов аудита от <b>{name}</b>...",
+    "audit_logs_empty": "📁 <b>{name}</b>: Лог аудита пуст.",
+    "audit_logs_title": "📋 <b>Последние действия в панели: {name}</b>\n━━━━━━━━━━━━━━━━━━━━━━━━\n",
+    "audit_logs_failed": "❌ <b>Ошибка получения логов {name}:</b>\n<code>{error}</code>",
+
+    # Client search and actions keys
+    "my_subscription_title": "🔑 <b>Поиск подписки клиента:</b>\nИспользуйте команду: <code>/my &lt;email или UUID&gt;</code>",
+    "lookup_in_progress": "🔍 Поиск клиента по всем базам данных панелей...",
+    "client_not_found_everywhere": "❌ <b>Клиент с таким email или UUID не найден ни на одной панели.</b>",
+    "no_traffic_limit": "Без лимита",
+    "limit_gb": "{limit:.2f} ГБ",
+    "status_active": "🟢 Активен",
+    "reason_limit_exceeded": "Превышены лимиты",
+    "status_blocked_with_reason": "🔴 Заблокирован ({reason})",
+    "expires_never": "Никогда",
+    "client_card_sub_title": (
+        "🔑 <b>Подписка: {email}</b>\n"
+        "📡 Панель/Сервер: <b>{panel_name}</b>\n"
+        "━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        "📌 Подключение: <b>{remark} (:{port})</b>\n"
+        "📡 Протокол: <b>{protocol}</b>\n"
+        "🚦 Скачано (DL): <b>{download_gb:.3f} ГБ</b>\n"
+        "📤 Загружено (UL): <b>{upload_gb:.3f} ГБ</b>\n"
+        "💾 Лимит трафика: <b>{total_gb_str}</b>\n"
+        "⏱ Истекает: <b>{expiry_str}</b>\n"
+        "⚡ Статус: <b>{status_str}</b>\n"
+        "━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        "🔗 <b>Ссылки для подключения:</b>\n"
+    ),
+    "copy_link_hint": "\n<i>Нажмите на ссылку, чтобы скопировать её.</i>",
+    "btn_conn_history_and_ip": "📊 История подключений и IP",
+    "qr_code_caption": "QR-код {protocol} ({index})",
+    "lookup_error": "❌ Произошла ошибка при поиске: {error}",
+    "unbanning_tunnel_hint": "👇 Вы можете разблокировать туннель вручную в один клик:",
+    "unbanning_tunnel_progress": "⏳ Выполняется разблокировка туннеля...",
+    "manual_unban_success_details": (
+        "{original_text}\n\n✅ <b>Туннель успешно разблокирован вручную!</b>\n"
+        "📋 <b>Детали разблокировки:</b>\n{details}\n"
+        "🕒 Время: <code>{timestamp}</code>"
+    ),
+    "manual_unban_failed_details": (
+        "{original_text}\n\n⚠️ <b>Туннель разблокирован с ошибками:</b>\n"
+        "📋 <b>Детали разблокировки:</b>\n{details}\n"
+        "🕒 Время: <code>{timestamp}</code>"
+    ),
+    "manual_unban_error": "{original_text}\n\n❌ <b>Ошибка при разблокировке:</b> <code>{error}</code>",
+    "ban_help": "🛑 <b>Блокировка клиента:</b>\nИспользуйте команду: <code>/ban &lt;email&gt;</code>",
+    "ban_progress": "⏳ Блокировка клиента <code>{email}</code> на всех панелях...",
+    "ban_status_success": "🟢 Заблокирован",
+    "ban_status_error": "🔴 Ошибка",
+    "ban_success_results": "✅ <b>Результаты блокировки клиента <code>{email}</code>:</b>\n{details}",
+    "ban_failed_results": "❌ <b>Не удалось заблокировать клиента <code>{email}</code>:</b>\n{details}",
+    "ban_error": "❌ Произошла ошибка при блокировке: {error}",
+    "unban_help": "🟢 <b>Разблокировка клиента:</b>\nИспользуйте команду: <code>/unban &lt;email&gt;</code>",
+    "unban_progress": "⏳ Разблокировка клиента <code>{email}</code> на всех исполняемых панелях...",
+    "unban_status_success": "🟢 Разблокирован",
+    "unban_status_error": "🔴 Ошибка",
+    "unban_success_results": "✅ <b>Результаты разблокировки клиента <code>{email}</code>:</b>\n{details}",
+    "unban_failed_results": "❌ <b>Не удалось разблокировать клиента <code>{email}</code>:</b>\n{details}",
+    "unban_error": "❌ Произошла ошибка при разблокировке: {error}",
+    "tg_2fa_approved": "✅ <b>Вход успешно разрешен.</b>",
+    "tg_2fa_blocked": "🛑 <b>IP-адрес заблокирован.</b>",
+    "tg_2fa_error": "❌ Ошибка: {error}",
+    "tg_2fa_unblock_failed": "Не удалось заблокировать ни на одной панели",
+    "tg_2fa_approve_failed": "Не удалось подтвердить ни на одной панели",
+    "tg_2fa_block_confirm_btn": "🔥 Да, заблокировать IP",
+    "tg_2fa_block_cancel_btn": "🔙 Отмена",
+    "tg_2fa_block_confirm_text": "{original_text}\n\n⚠️ <b>Вы уверены? Блокировка вашего IP лишит вас доступа к серверу!</b>",
+    "tg_2fa_approve_btn": "✅ Да, разрешить",
+    "tg_2fa_block_btn": "❌ Заблокировать IP",
+    "tg_2fa_block_cancelled_alert": "Блокировка IP отменена"
 }

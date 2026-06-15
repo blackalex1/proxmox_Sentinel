@@ -7,6 +7,7 @@ from aiogram.filters.command import Command
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery, BufferedInputFile
 
 from core.spectre_client import spectre_manager
+from core.messages.i18n import _
 
 router = Router(name="spectre_system_router")
 
@@ -17,7 +18,7 @@ async def cmd_backup(message: types.Message):
     """
     panels = spectre_manager.panels
     if not panels:
-        await message.reply("❌ <b>Панели Spectre Panel не обнаружены.</b>")
+        await message.reply(_("spectre", "no_panels_err"))
         return
         
     if len(panels) == 1:
@@ -28,7 +29,7 @@ async def cmd_backup(message: types.Message):
         for p_key, p in panels.items():
             buttons.append([InlineKeyboardButton(text=p.name, callback_data=f"spectre_backup:{p_key}")])
         kb = InlineKeyboardMarkup(inline_keyboard=buttons)
-        await message.reply("📥 <b>Выберите панель для создания бэкапа:</b>", reply_markup=kb, parse_mode="HTML")
+        await message.reply(_("spectre", "select_panel_backup"), reply_markup=kb, parse_mode="HTML")
 
 @router.callback_query(F.data.startswith("spectre_backup:"))
 async def cb_backup(callback: CallbackQuery):
@@ -40,10 +41,10 @@ async def cb_backup(callback: CallbackQuery):
 async def run_backup_for_panel(message: types.Message, panel_key: str):
     panel = spectre_manager.panels.get(panel_key)
     if not panel:
-        await message.answer("❌ Панель не найдена.")
+        await message.answer(_("spectre", "panel_not_found"))
         return
         
-    status_msg = await message.answer(f"⏳ Создание резервной копии для <b>{panel.name}</b>...")
+    status_msg = await message.answer(_("spectre", "backup_in_progress", name=panel.name))
     success, res = await panel.request("GET", "/api/security/backup")
     
     if success and res.get("success") and "dump" in res:
@@ -56,13 +57,13 @@ async def run_backup_for_panel(message: types.Message, panel_key: str):
             await status_msg.delete()
             await message.answer_document(
                 document,
-                caption=f"✅ <b>Резервная копия успешно создана!</b>\nСервер: <code>{panel.name}</code>"
+                caption=_("spectre", "backup_success", name=panel.name)
             )
         except Exception as e:
-            await status_msg.edit_text(f"❌ Ошибка отправки бэкапа: {e}")
+            await status_msg.edit_text(_("spectre", "backup_send_err", error=e))
     else:
-        error_info = res.get("msg") or res.get("error") or "Неизвестная ошибка"
-        await status_msg.edit_text(f"❌ <b>Не удалось создать бэкап для {panel.name}:</b>\n<code>{error_info}</code>")
+        error_info = res.get("msg") or res.get("error") or _("spectre", "unknown_error")
+        await status_msg.edit_text(_("spectre", "backup_failed", name=panel.name, error=error_info))
 
 @router.message(Command("status"))
 async def cmd_status_spectre(message: types.Message):
@@ -82,7 +83,7 @@ async def cmd_status_spectre(message: types.Message):
         for p_key, p in panels.items():
             buttons.append([InlineKeyboardButton(text=p.name, callback_data=f"spectre_status:{p_key}")])
         kb = InlineKeyboardMarkup(inline_keyboard=buttons)
-        await message.reply("📊 <b>Выберите панель для проверки статуса:</b>", reply_markup=kb, parse_mode="HTML")
+        await message.reply(_("spectre", "select_panel_status"), reply_markup=kb, parse_mode="HTML")
 
 @router.callback_query(F.data.startswith("spectre_status:"))
 async def cb_status(callback: CallbackQuery):
@@ -96,10 +97,10 @@ from core.messages.spectre import get_panel_status_message
 async def run_status_for_panel(message: types.Message, panel_key: str):
     panel = spectre_manager.panels.get(panel_key)
     if not panel:
-        await message.answer("❌ Панель не найдена.")
+        await message.answer(_("spectre", "panel_not_found"))
         return
         
-    status_msg = await message.answer(f"⏳ Получение статуса от <b>{panel.name}</b>...")
+    status_msg = await message.answer(_("spectre", "status_fetching", name=panel.name))
     success, res = await panel.request("GET", "/api/security/system-status")
     
     if success and res.get("success"):
@@ -134,8 +135,8 @@ async def run_status_for_panel(message: types.Message, panel_key: str):
             parse_mode="markdown"
         )
     else:
-        error_info = res.get("msg") or res.get("error") or "Неизвестная ошибка"
-        await status_msg.edit_text(f"❌ <b>Ошибка получения статуса {panel.name}:</b>\n<code>{error_info}</code>")
+        error_info = res.get("msg") or res.get("error") or _("spectre", "unknown_error")
+        await status_msg.edit_text(_("spectre", "status_failed", name=panel.name, error=error_info))
 
 @router.message(Command("top"))
 async def cmd_top_spectre(message: types.Message):
@@ -149,10 +150,10 @@ async def cmd_top_spectre(message: types.Message):
         
     panels = spectre_manager.panels
     if not panels:
-        await message.reply("❌ <b>Панели Spectre Panel не обнаружены.</b>")
+        await message.reply(_("spectre", "no_panels_err"))
         return
         
-    status_msg = await message.reply("📊 Получение статистики по трафику со всех панелей...")
+    status_msg = await message.reply(_("spectre", "traffic_stats_fetching"))
     
     async def fetch_top(panel):
         success, res = await panel.request("GET", "/api/security/top-traffic", params={"period": period})
@@ -180,7 +181,7 @@ async def cmd_audit(message: types.Message):
     """
     panels = spectre_manager.panels
     if not panels:
-        await message.reply("❌ <b>Панели Spectre Panel не обнаружены.</b>")
+        await message.reply(_("spectre", "no_panels_err"))
         return
         
     if len(panels) == 1:
@@ -191,7 +192,7 @@ async def cmd_audit(message: types.Message):
         for p_key, p in panels.items():
             buttons.append([InlineKeyboardButton(text=p.name, callback_data=f"spectre_audit:{p_key}")])
         kb = InlineKeyboardMarkup(inline_keyboard=buttons)
-        await message.reply("📋 <b>Выберите панель для просмотра лога аудита:</b>", reply_markup=kb, parse_mode="HTML")
+        await message.reply(_("spectre", "select_panel_audit"), reply_markup=kb, parse_mode="HTML")
 
 @router.callback_query(F.data.startswith("spectre_audit:"))
 async def cb_audit(callback: CallbackQuery):
@@ -203,20 +204,19 @@ async def cb_audit(callback: CallbackQuery):
 async def run_audit_for_panel(message: types.Message, panel_key: str):
     panel = spectre_manager.panels.get(panel_key)
     if not panel:
-        await message.answer("❌ Панель не найдена.")
+        await message.answer(_("spectre", "panel_not_found"))
         return
         
-    status_msg = await message.answer(f"⏳ Получение логов аудита от <b>{panel.name}</b>...")
+    status_msg = await message.answer(_("spectre", "audit_logs_fetching", name=panel.name))
     success, res = await panel.get_audit_logs(limit=10)
     
     if success and res.get("success"):
         logs = res.get("logs", [])
         if not logs:
-            await status_msg.edit_text(f"📁 <b>{panel.name}</b>: Лог аудита пуст.")
+            await status_msg.edit_text(_("spectre", "audit_logs_empty", name=panel.name))
             return
             
-        msg = f"📋 <b>Последние действия в панели: {panel.name}</b>\n"
-        msg += "━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        msg = _("spectre", "audit_logs_title", name=panel.name)
         
         for log in logs:
             dt = datetime.datetime.fromtimestamp(log["timestamp"])
@@ -231,5 +231,5 @@ async def run_audit_for_panel(message: types.Message, panel_key: str):
         await status_msg.delete()
         await message.answer(msg, parse_mode="HTML")
     else:
-        error_info = res.get("msg") or res.get("error") or "Неизвестная ошибка"
-        await status_msg.edit_text(f"❌ <b>Ошибка получения логов {panel.name}:</b>\n<code>{error_info}</code>")
+        error_info = res.get("msg") or res.get("error") or _("spectre", "unknown_error")
+        await status_msg.edit_text(_("spectre", "audit_logs_failed", name=panel.name, error=error_info))
