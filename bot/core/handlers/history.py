@@ -3,6 +3,7 @@ import logging
 from aiogram import Router, F
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 from core.db import execute_read_all, execute_read_one
+from core.messages.i18n import _
 
 router = Router(name="core_history_router")
 
@@ -15,11 +16,11 @@ async def callback_vpn_history_select(callback: CallbackQuery):
     
     if not users_rows:
         kb = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="🔙 В главное меню", callback_data="main_menu")]
+            [InlineKeyboardButton(text=_("keyboards", "btn_back_to_menu"), callback_data="main_menu")]
         ])
         await callback.message.edit_text(
-            "📋 <b>История VPN-подключений</b>\n\n"
-            "❌ <i>История подключений пуста. События появятся после первых подключений клиентов.</i>",
+            f"{_('history', 'title_main')}\n\n"
+            f"{_('history', 'empty_history')}",
             parse_mode="HTML",
             reply_markup=kb
         )
@@ -31,17 +32,17 @@ async def callback_vpn_history_select(callback: CallbackQuery):
         username = row['username']
         total_sessions = row['cnt']
         buttons.append([InlineKeyboardButton(
-            text=f"👤 {username} ({total_sessions} сесс.)", 
+            text=_("history", "user_btn_label", username=username, total_sessions=total_sessions),
             callback_data=f"vpn_hist:{username}:0"
         )])
         
-    buttons.append([InlineKeyboardButton(text="🔙 В главное меню", callback_data="main_menu")])
+    buttons.append([InlineKeyboardButton(text=_("keyboards", "btn_back_to_menu"), callback_data="main_menu")])
     kb = InlineKeyboardMarkup(inline_keyboard=buttons)
     
     await callback.message.edit_text(
-        "📋 <b>История VPN-подключений</b>\n"
-        "━━━━━━━━━━━━━━━━━━━━━━━━\n"
-        "Выберите пользователя для просмотра детальной истории сессий:",
+        f"{_('history', 'title_main')}\n"
+        f"━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        f"{_('history', 'select_user_desc')}",
         parse_mode="HTML",
         reply_markup=kb
     )
@@ -67,12 +68,12 @@ async def callback_vpn_history_view(callback: CallbackQuery):
     
     if total_sessions == 0:
         kb = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="🔙 К выбору пользователя", callback_data="vpn_history_select")],
-            [InlineKeyboardButton(text="🔙 В главное меню", callback_data="main_menu")]
+            [InlineKeyboardButton(text=_("history", "btn_back_to_select"), callback_data="vpn_history_select")],
+            [InlineKeyboardButton(text=_("keyboards", "btn_back_to_menu"), callback_data="main_menu")]
         ])
         await callback.message.edit_text(
-            f"👤 <b>Пользователь {username}</b>\n\n"
-            f"❌ <i>История сессий для этого пользователя пуста.</i>",
+            f"{_('history', 'user_title', username=username)}\n\n"
+            f"{_('history', 'empty_user_history')}",
             parse_mode="HTML",
             reply_markup=kb
         )
@@ -99,20 +100,20 @@ async def callback_vpn_history_view(callback: CallbackQuery):
         (username,)
     )
     
-    ip_summary_lines = ["🌐 <b>Используемые IP-адреса:</b>"]
+    ip_summary_lines = [_("history", "used_ips_header")]
     for idx, row in enumerate(ip_rows):
         char = "└─" if idx == len(ip_rows) - 1 else "├─"
-        ip_summary_lines.append(f"   {char} <code>{row['ip']}</code> ({row['cnt']} сесс.)")
+        ip_summary_lines.append(_("history", "used_ips_line", char=char, ip=row['ip'], count=row['cnt']))
         
     # Формируем тело сообщения
     lines = [
-        f"📋 <b>История сессий: {username}</b>",
-        f"━━━━━━━━━━━━━━━━━━━━━━━━",
-        f"👤 <b>Пользователь:</b> <code>{username}</code>",
+        _("history", "session_history_title", username=username),
+        "━━━━━━━━━━━━━━━━━━━━━━━━",
+        _("history", "label_user", username=username),
         "\n".join(ip_summary_lines),
-        f"📄 <b>Страница:</b> <code>{page + 1} / {total_pages}</code>",
-        f"📊 <b>Всего сессий:</b> <code>{total_sessions}</code>",
-        f"━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        _("history", "label_page", page=page + 1, total=total_pages),
+        _("history", "label_total_sessions", total=total_sessions),
+        "━━━━━━━━━━━━━━━━━━━━━━━━\n"
     ]
     
     for idx, s in enumerate(page_sessions):
@@ -125,7 +126,7 @@ async def callback_vpn_history_view(callback: CallbackQuery):
         except Exception:
             conn_str = s['connect_time']
             
-        disc_str = "активна"
+        disc_str = _("history", "status_active")
         if s.get('disconnect_time'):
             try:
                 disc_dt = datetime.datetime.strptime(s['disconnect_time'], "%Y-%m-%d %H:%M:%S")
@@ -133,10 +134,13 @@ async def callback_vpn_history_view(callback: CallbackQuery):
             except Exception:
                 disc_str = s['disconnect_time']
                 
-        duration = s.get('duration') or "активна"
+        duration = s.get('duration') or _("history", "status_active")
+        if duration == "активна" or duration == "active":
+            duration = _("history", "status_active")
+            
         status_emoji = "🟢" if s.get('disconnect_time') is None else "⚪"
         
-        ip_warning = " ⚠️ <b>[НОВЫЙ IP]</b>" if s.get('is_new_ip') else ""
+        ip_warning = _("history", "ip_warning_new") if s.get('is_new_ip') else ""
         
         # Форматируем объем трафика
         def format_bytes(b):
@@ -155,12 +159,12 @@ async def callback_vpn_history_view(callback: CallbackQuery):
         upload = format_bytes(s.get('upload_bytes', 0))
         
         lines.append(
-            f"{status_emoji} <b>Сессия #{session_num}</b>\n"
-            f"   ├─ <b>IP:</b> <code>{s['ip']}</code>{ip_warning}\n"
-            f"   ├─ <b>Вход:</b> <code>{conn_str}</code>\n"
-            f"   ├─ <b>Выход:</b> <code>{disc_str}</code>\n"
-            f"   ├─ <b>Трафик:</b> 📥 <code>{download}</code> | 📤 <code>{upload}</code>\n"
-            f"   └─ <b>Длительность:</b> <code>{duration}</code>\n"
+            f"{status_emoji} {_('history', 'session_header', session_num=session_num)}\n"
+            f"   ├─ <b>{_('history', 'session_ip')}</b> <code>{s['ip']}</code>{ip_warning}\n"
+            f"   ├─ <b>{_('history', 'session_login')}</b> <code>{conn_str}</code>\n"
+            f"   ├─ <b>{_('history', 'session_logout')}</b> <code>{disc_str}</code>\n"
+            f"   ├─ <b>{_('history', 'session_traffic')}</b> 📥 <code>{download}</code> | 📤 <code>{upload}</code>\n"
+            f"   └─ <b>{_('history', 'session_duration')}</b> <code>{duration}</code>\n"
         )
         
     msg_text = "\n".join(lines)
@@ -171,22 +175,22 @@ async def callback_vpn_history_view(callback: CallbackQuery):
     # Кнопки "Назад" и "Вперед"
     nav_row = []
     if page > 0:
-        nav_row.append(InlineKeyboardButton(text="◀️ Назад", callback_data=f"vpn_hist:{username}:{page - 1}"))
+        nav_row.append(InlineKeyboardButton(text=_("history", "btn_prev"), callback_data=f"vpn_hist:{username}:{page - 1}"))
     else:
-        nav_row.append(InlineKeyboardButton(text="⏹️ Начало", callback_data="noop"))
+        nav_row.append(InlineKeyboardButton(text=_("history", "btn_start"), callback_data="noop"))
         
-    nav_row.append(InlineKeyboardButton(text=f"Стр. {page + 1}/{total_pages}", callback_data="noop"))
+    nav_row.append(InlineKeyboardButton(text=_("history", "btn_page_info", current=page + 1, total=total_pages), callback_data="noop"))
     
     if page < total_pages - 1:
-        nav_row.append(InlineKeyboardButton(text="Вперед ▶️", callback_data=f"vpn_hist:{username}:{page + 1}"))
+        nav_row.append(InlineKeyboardButton(text=_("history", "btn_next"), callback_data=f"vpn_hist:{username}:{page + 1}"))
     else:
-        nav_row.append(InlineKeyboardButton(text="⏹️ Конец", callback_data="noop"))
+        nav_row.append(InlineKeyboardButton(text=_("history", "btn_end"), callback_data="noop"))
         
     nav_buttons.append(nav_row)
     
     # Кнопка возврата в меню выбора и главное меню
-    nav_buttons.append([InlineKeyboardButton(text="🔙 К выбору пользователя", callback_data="vpn_history_select")])
-    nav_buttons.append([InlineKeyboardButton(text="🔙 В главное меню", callback_data="main_menu")])
+    nav_buttons.append([InlineKeyboardButton(text=_("history", "btn_back_to_select"), callback_data="vpn_history_select")])
+    nav_buttons.append([InlineKeyboardButton(text=_("keyboards", "btn_back_to_menu"), callback_data="main_menu")])
     
     kb = InlineKeyboardMarkup(inline_keyboard=nav_buttons)
     

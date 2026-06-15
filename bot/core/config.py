@@ -49,6 +49,7 @@ class Settings(BaseSettings):
 
     bot_token: str = Field(validation_alias='BOT_TOKEN')
     admin_ids: List[int] | str = Field(default_factory=list, validation_alias='ADMIN_IDS')
+    bot_language: str = Field(default='ru', validation_alias='BOT_LANGUAGE')
 
     # Proxmox настройки
     proxmox_host: str = Field(default='', validation_alias='PROXMOX_HOST')
