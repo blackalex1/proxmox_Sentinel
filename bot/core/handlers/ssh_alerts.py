@@ -191,7 +191,7 @@ async def process_terminate_ssh(callback: CallbackQuery):
             await callback.answer("Сессия уже закрыта или не найдена.", show_alert=True)
             status_text = "🔒 Сессия уже была закрыта или не найдена"
         else:
-            logging.info("ssh_drop_ssh-sessiya_na_uspeshno_zavershena_sbroshena", pid, target)
+            logging.info("ssh_drop_session_successfully_terminated_dropped", pid, target)
             await callback.answer("SSH-сессия успешно сброшена!", show_alert=True)
             status_text = "❌ SSH-сессия сброшена пользователем через Telegram"
         

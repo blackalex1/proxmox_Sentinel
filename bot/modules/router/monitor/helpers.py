@@ -13,7 +13,7 @@ async def is_local_bot_process(sport, dst_ip=None):
     try:
         from modules.proxmox.monitor.state import recent_bot_ports
         if sport in recent_bot_ports:
-            logging.debug("is_local_bot_process_sport_nayden_v_recent_bot_ports_vykhodim_true", sport)
+            logging.debug("is_local_bot_process_sport_found_recent_bot_ports_exiting_true", sport)
             return True
     except Exception as e:
         logging.error("is_local_bot_process_error_checking_recent_bot_ports", e)

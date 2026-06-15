@@ -28,17 +28,17 @@ class SocksProxyRotator:
         """
         now = time.monotonic()
         if self.cached_proxies and (now - self.last_scrape_time < self.scrape_cooldown):
-            logger.info("ispolzuem_keshirovannyy_spisok_proksi_kuldaun_skrapinga_aktiven")
+            logger.info("using_cached_proxy_list_scraping_cooldown")
             return self.cached_proxies
             
-        logger.info("nachinaem_skraping_svezhikh_spiskov_besplatnykh_socks5_proksi")
+        logger.info("starting_scraping_fresh_free_socks5_proxy")
         unique_proxies = set()
         
         loop = asyncio.get_running_loop()
         
         for url in PROXY_SOURCES:
             try:
-                logger.info("zagruzka_proksi_iz_istochnika", url)
+                logger.info("loading_proxies_source", url)
                 req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'})
                 
                 # Запускаем блокирующее скачивание urllib в пуле потоков
@@ -52,13 +52,13 @@ class SocksProxyRotator:
                 for p in found:
                     unique_proxies.add(p.strip().replace(" ", ""))
                     
-                logger.info("uspeshno_zagruzheno_proksi_iz", len(found), url)
+                logger.info("successfully_loaded_proxies", len(found), url)
             except Exception as e:
-                logger.warning("ne_udalos_zagruzit_spisok_proksi_iz", url, e)
+                logger.warning("failed_load_proxy_list", url, e)
                 
         self.cached_proxies = list(unique_proxies)
         self.last_scrape_time = now
-        logger.info("skraping_zavershen_vsego_unikalnykh_proksi_naydeno", len(self.cached_proxies))
+        logger.info("scraping_completed_total_unique_proxies_found", len(self.cached_proxies))
         return self.cached_proxies
 
     async def test_proxy_alive(self, proxy_url, timeout=3.0, verbose=False):
@@ -108,7 +108,7 @@ class SocksProxyRotator:
                             logger.warning("proxy_monitor_neozhidannyy_status-kod_pri_proverke", response.status, proxy_url)
         except Exception as e:
             if verbose:
-                logger.warning("proxy_monitor_sboy_proverki_proksi", proxy_url, e)
+                logger.warning("proxy_monitor_check_failed", proxy_url, e)
         finally:
             if proxy_key:
                 try:
@@ -127,17 +127,17 @@ class SocksProxyRotator:
         """
         proxies = await self.scrape_proxies()
         if not proxies:
-            logger.error("spiski_proksi_pusty_nevozmozhno_zapustit_rotator")
+            logger.error("proxy_lists_empty_cannot_start_rotation")
             return None
 
         # Перемешиваем или берем первые max_to_check
         proxies_to_check = proxies[:max_to_check]
-        logger.info("nachinaem_proverku_pervykh_proksi", len(proxies_to_check))
+        logger.info("starting_check_first_proxies", len(proxies_to_check))
 
         async with aiohttp.ClientSession() as session:
             for i in range(0, len(proxies_to_check), batch_size):
                 batch = proxies_to_check[i:i+batch_size]
-                logger.info("proverka_batcha_proksi_sht", i // batch_size + 1, len(batch))
+                logger.info("checking_proxy_batch_items", i // batch_size + 1, len(batch))
                 
                 tasks = []
                 for p in batch:
@@ -156,10 +156,10 @@ class SocksProxyRotator:
                     # Сортируем рабочие прокси по пингу
                     working_batch.sort(key=lambda x: x[1])
                     best_proxy, best_ping = working_batch[0]
-                    logger.info("nayden_rabochiy_proksi_ping_ms", best_proxy, best_ping)
+                    logger.info("found_working_proxy_ping_ms", best_proxy, best_ping)
                     return best_proxy
                     
-        logger.error("vse_proverennye_besplatnye_proksi_okazalis_nerabochimi")
+        logger.error("all_checked_free_proxies_non_working")
         return None
 
 # Глобальный экземпляр ротатора
@@ -233,7 +233,7 @@ async def proxy_monitor_loop(bot, primary_proxy, session_kwargs, start_active_pr
             if active_proxy:
                 is_alive, _ = await proxy_rotator.test_proxy_alive(active_proxy, timeout=4.0, verbose=False)
                 if not is_alive:
-                    logging.warning("proxy_monitor_sboy_pervoy_proverki_proksi_vypolnyaem", active_proxy)
+                    logging.warning("proxy_monitor_first_check_proxy_failed_performing_retries", active_proxy)
                     
                     # Пробуем еще 2 раза быстро с паузой 2 секунды
                     retry_success = False
@@ -241,12 +241,12 @@ async def proxy_monitor_loop(bot, primary_proxy, session_kwargs, start_active_pr
                         await asyncio.sleep(2.0)
                         is_alive_retry, _ = await proxy_rotator.test_proxy_alive(active_proxy, timeout=4.0, verbose=False)
                         if is_alive_retry:
-                            logging.info("proxy_monitor_proksi_vosstanovilsya_na_popytke", active_proxy, attempt + 1)
+                            logging.info("proxy_monitor_recovered_attempt", active_proxy, attempt + 1)
                             retry_success = True
                             break
                             
                     if not retry_success:
-                        logging.warning("proxy_monitor_tekuschiy_aktivnyy_proksi_okonchatelno_perestal", active_proxy)
+                        logging.warning("proxy_monitor_current_active_proxy_has_completely_stopped", active_proxy)
                         
                         # Перед началом поиска резервных прокси пробуем подождать еще 2 секунды и проверить основной —
                         # вдруг это был очень короткий сбой
@@ -282,7 +282,7 @@ async def proxy_monitor_loop(bot, primary_proxy, session_kwargs, start_active_pr
                 now = time.monotonic()
                 if now - last_primary_check >= 15:
                     last_primary_check = now
-                    logging.info("proxy_monitor_proveryaem_dostupnost_osnovnogo_proksi", primary_proxy)
+                    logging.info("proxy_monitor_checking_availability_main_proxy", primary_proxy)
                     primary_alive, _ = await proxy_rotator.test_proxy_alive(primary_proxy, timeout=4.0, verbose=False)
                     if not primary_alive:
                         # Пробуем еще 2 раза быстро с паузой 2 секунды
