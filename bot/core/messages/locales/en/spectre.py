@@ -303,5 +303,12 @@ translation = {
     "tg_2fa_block_confirm_text": "{original_text}\n\n⚠️ <b>Are you sure? Blocking your IP will restrict your access to the server!</b>",
     "tg_2fa_approve_btn": "✅ Yes, allow",
     "tg_2fa_block_btn": "❌ Block IP",
-    "tg_2fa_block_cancelled_alert": "IP blocking cancelled"
+    "tg_2fa_block_cancelled_alert": "IP blocking cancelled",
+
+    # Timeline and Duration strings
+    "timeline_connect": "🟢 <code>[{timestamp}]</code> Connected from <code>{ip}</code>",
+    "timeline_disconnect": "🔴 <code>[{timestamp}]</code> Disconnected <code>{ip}</code> — {duration}",
+    "duration_sec": "{val} sec",
+    "duration_min_sec": "{min} min {sec} sec",
+    "duration_hour_min": "{hour} h {min} min"
 }
