@@ -63,7 +63,7 @@ async def run_remote_ssh_cmd(server, command_args):
         result = await conn.run(cmd_str, check=False)
         return result.exit_status == 0, result.stdout.strip(), result.stderr.strip()
     except (asyncssh.Error, OSError, ConnectionError, asyncio.TimeoutError) as e:
-        logging.warning("remote_ssh_oshibka_soedineniya_povtornaya_popytka_perepodklyucheniya", ip, e)
+        logging.warning("remote_ssh_connection_error_retrying_reconnection", ip, e)
         # При возникновении ошибки связи удаляем сломанное соединение из кэша и пробуем заново
         async with _conn_lock:
             if ip in _ssh_connections:

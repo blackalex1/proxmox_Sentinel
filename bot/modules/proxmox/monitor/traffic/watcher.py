@@ -154,13 +154,13 @@ async def handle_traffic_log_line(line):
                     try:
                         inventory_ips = get_ansible_inventory_ips(ANSIBLE_PLAYBOOKS_DIR)
                         if target_ip in inventory_ips:
-                            logging.info("traffic_monitor_ignoriruem_legitimnoe_ssh-soedinenie_ansible_pve", proxmox_ip, target_ip)
+                            logging.info("traffic_monitor_ignoring_legitimate_ssh_connection_ansible_pve", proxmox_ip, target_ip)
                             return
                     except Exception as e:
                         logging.error("traffic_monitor_error_during_automatic_ansible_inventory", e)
                 
             if whitelisted:
-                logging.info("traffic_monitor_soedinenie_-_nakhoditsya_v_belom", src, dst, dpt, node)
+                logging.info("traffic_monitor_connection_whitelisted_node_or_globally_ignoring", src, dst, dpt, node)
                 return
 
             is_transit_vpn = (vmid == settings.vpn_vmid and not is_local)
@@ -277,7 +277,7 @@ async def monitor_lxc_traffic():
     asyncio.create_task(cleanup_local_blocks_on_startup())
     
     if not setup_iptables():
-        logging.warning("monitoring_setevykh_soedineniy_ne_zapuschen_nedostatochno_prav")
+        logging.warning("network_connections_monitoring_not_started_insufficient")
         return
         
     log_path = find_kernel_log_path()
@@ -293,7 +293,7 @@ async def monitor_lxc_traffic():
         tailer = LogTailer(cmd, handle_traffic_log_line)
         state.traffic_tailer = tailer
         await tailer.start()
-        logging.info("sistemnyy_log_var_log_messages_ne_nayden")
+        logging.info("system_log_var_log_messages_not")
         
     if tailer and tailer.task:
         await tailer.task

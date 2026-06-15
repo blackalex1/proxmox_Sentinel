@@ -44,7 +44,7 @@ async def start_all_lxc_monitors():
     # 6. Запускаем мониторинг роутера (SSH conntrack/syslog), если включен в конфиге
     if settings.router_monitor_enable:
         asyncio.create_task(monitor_router_connections(), name="monitor_router_connections")
-        logging.info("monitoring_routera_zapuschen_rezhim", settings.router_monitor_mode)
+        logging.info("router_monitoring_started_mode", settings.router_monitor_mode)
         
     # 7. Запускаем фоновый планировщик автоматических бэкапов
     asyncio.create_task(start_auto_backup_scheduler(), name="auto_backup_scheduler")
@@ -246,7 +246,7 @@ async def monitor_panel_audit_logs():
                 except Exception as panel_err:
                     logging.debug("audit_monitor_error_polling_panel", panel.name, panel_err)
         except Exception as e:
-            logging.error("audit_monitor_error_in_audit_logs_monitoring", e)
+            logging.error("audit_monitor_error_audit_logs_monitoring", e)
             
         traffic_update_counter += 1
         if traffic_update_counter >= 3:
@@ -362,7 +362,7 @@ async def monitor_panel_2fa_logs():
                     await tailer.stop()
                     
         except Exception as e:
-            logging.error("2fa_monitor_error_in_2fa_log_monitoring", e)
+            logging.error("2fa_monitor_error_2fa_log_monitoring", e)
             
         await asyncio.sleep(15)
 

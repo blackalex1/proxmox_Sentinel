@@ -52,7 +52,7 @@ class LogTailer:
                         if self.running:
                             stderr_bytes = await proc.stderr.read()
                             stderr_text = stderr_bytes.decode('utf-8', errors='ignore').strip()
-                            logging.error("logtailer_process_terminated_with_code_error", self.source, proc.returncode, stderr_text)
+                            logging.error("logtailer_process_terminated_code_error", self.source, proc.returncode, stderr_text)
                         break
                     await asyncio.sleep(1)
                     continue
@@ -212,9 +212,9 @@ async def send_rich_message(chat_id, text, parse_mode="HTML", reply_markup=None)
             if res.get("ok"):
                 sent_msg = Message.model_validate(res["result"])
             else:
-                logging.warning("rich_message_ne_udalos_otpravit_rich_message", chat_id, res.get('description'))
+                logging.warning("rich_message_failed_send_rich_message_code", chat_id, res.get('description'))
     except Exception as e:
-        logging.warning("rich_message_exception_sending_rich_message_for", chat_id, e)
+        logging.warning("rich_message_exception_sending_rich_message", chat_id, e)
         
     if not sent_msg:
         try:
@@ -276,9 +276,9 @@ async def edit_rich_message(chat_id, message_id, text, parse_mode="HTML", reply_
                 if "message is not modified" in desc.lower():
                     logging.debug("rich_message_edit_message_not_modified", desc)
                 else:
-                    logging.warning("rich_message_edit_failed_to_edit_rich", desc)
+                    logging.warning("rich_message_edit_failed_edit_rich_message_code", desc)
     except Exception as e:
-        logging.warning("rich_message_edit_exception_while_editing_rich", e)
+        logging.warning("rich_message_edit_exception_while_editing_rich_message", e)
         
     if not edited_msg:
         try:

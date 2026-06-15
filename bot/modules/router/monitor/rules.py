@@ -12,7 +12,7 @@ async def setup_router_logging_rules():
     if not ports_str:
         return False
         
-    logging.info("router_ips_configuring_logging_rules_on_router", ports_str)
+    logging.info("router_ips_configuring_logging_rules_router_ports", ports_str)
     
     # Сначала удалим старые правила, чтобы не дублировать их
     await remove_router_logging_rules()
@@ -28,7 +28,7 @@ async def setup_router_logging_rules():
         )
         success, stdout, stderr = await run_router_ssh_cmd(nft_cmd)
         if success:
-            logging.info("router_ips_uspeshno_dobavleny_pravila_logirovaniya_v")
+            logging.info("router_ips_logging_rules_successfully_added_nftables_openwrt")
             return True
         else:
             logging.warning("router_ips_failed_to_configure_nftables_trying", stderr)
@@ -40,7 +40,7 @@ async def setup_router_logging_rules():
         )
         success, stdout, stderr = await run_router_ssh_cmd(ipt_cmd)
         if success:
-            logging.info("router_ips_uspeshno_dobavleny_pravila_logirovaniya_v_1")
+            logging.info("router_ips_logging_rules_successfully_added_nftables_openwrt_1")
             return True
         else:
             logging.warning("router_ips_failed_to_configure_iptables_with", stderr)
@@ -55,13 +55,13 @@ async def setup_router_logging_rules():
         success, stdout, stderr = await run_router_ssh_cmd(ipt_single_cmd)
         if not success:
             success_all = False
-            logging.error("router_ips_failed_to_configure_logging_for", port, stderr)
+            logging.error("router_ips_failed_configure_logging_port", port, stderr)
             
     if success_all:
-        logging.info("router_ips_successfully_added_individual_logging_rules")
+        logging.info("router_ips_successfully_added_individual_logging_rules_iptables")
         return True
         
-    logging.error("router_ips_failed_to_configure_logging_rules")
+    logging.error("router_ips_failed_configure_logging_rules_router_any")
     return False
 
 async def remove_router_logging_rules():

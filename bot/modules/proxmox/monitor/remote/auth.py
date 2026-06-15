@@ -142,7 +142,7 @@ async def handle_remote_ssh_auth_line(line, server=None):
                     ignore_by_ip = True
 
                 if (ignore_by_key or ignore_by_ip) and not security_warning_str:
-                    logging.info("remote_ssh_auth_ignoriruem_uspeshnyy_vkhod_dlya", server['ip'], username, client_ip, key_name or fingerprint, client_ip in ignore_ips or ip_is_trusted)
+                    logging.info("remote_ssh_auth_ignoring_successful_login_ip_key_ip", server['ip'], username, client_ip, key_name or fingerprint, client_ip in ignore_ips or ip_is_trusted)
                     return
 
                 from modules.proxmox.monitor.utils import get_geoip_info
@@ -203,4 +203,4 @@ async def handle_remote_ssh_auth_line(line, server=None):
                 logging.warning(f"[Remote SSH Auth {server['ip']}] Failed login attempt for {username} from {client_ip}")
 
     except Exception as e:
-        logging.error("error_parsing_ssh_auth_log_line_on", server['ip'], e)
+        logging.error("error_parsing_ssh_auth_log_line", server['ip'], e)

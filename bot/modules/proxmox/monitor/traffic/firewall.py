@@ -26,7 +26,7 @@ async def block_local_ip(dst_ip, delay=3600, reason="Вручную"):
             )
             await proc.wait()
             
-        logging.info("local_ips_vremenno_zablokirovan_tselevoy_ip_na", dst_ip, delay)
+        logging.info("local_ips_temporarily_blocked_target_ip_proxmox_host", dst_ip, delay)
         
         # Сохраняем информацию о блокировке в SQLite
         import datetime
