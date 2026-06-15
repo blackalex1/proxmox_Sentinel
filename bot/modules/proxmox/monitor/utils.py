@@ -221,6 +221,9 @@ async def send_rich_message(chat_id, text, parse_mode="HTML", reply_markup=None)
             fallback_text = text
             if actual_parse_mode and actual_parse_mode.lower() == "html":
                 fallback_text = convert_rich_html_to_standard(text)
+            elif actual_parse_mode and actual_parse_mode.lower() in ("markdown", "markdownv2"):
+                from core.outbox import clean_mixed_html_to_markdown
+                fallback_text = clean_mixed_html_to_markdown(text)
             sent_msg = await bot.send_message(chat_id, fallback_text, parse_mode=actual_parse_mode, reply_markup=reply_markup)
         except Exception as e:
             logging.error("failed_to_send_standard_message_for", chat_id, e)
