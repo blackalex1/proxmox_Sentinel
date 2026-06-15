@@ -21,11 +21,11 @@ async def cleanup_remote_blocks_on_startup(server):
             # Очищаем также записи в БД для этого сервера
             from core.db import execute_write
             await execute_write("DELETE FROM temp_bans WHERE server_ip = ?", (server['ip'],))
-            logging.info(f"[Remote IPS {server['ip']}] Успешно очищены старые временные блокировки iptables на старте.")
+            logging.info("remote_ips_successfully_cleared_old_temporary_iptables", server['ip'])
         else:
-            logging.error(f"[Remote IPS {server['ip']}] Ошибка при очистке старых блокировок: {stderr}")
+            logging.error("remote_ips_error_clearing_old_blocks", server['ip'], stderr)
     except Exception as e:
-        logging.error(f"[Remote IPS {server['ip']}] Ошибка при попытке очистить блокировки на старте: {e}")
+        logging.error("remote_ips_error_trying_to_clear_blocks", server['ip'], e)
 
 
 async def block_remote_ip(server, dst_ip, delay=3600, reason="Вручную"):
@@ -43,7 +43,7 @@ async def block_remote_ip(server, dst_ip, delay=3600, reason="Вручную"):
     
     success, stdout, stderr = await run_remote_ssh_cmd(server, ["; ".join(cmd)])
     if success:
-        logging.info(f"[Remote IPS {server['ip']}] Временно заблокирован целевой IP {dst_ip} на {delay} секунд.")
+        logging.info("remote_ips_temporarily_blocked_target_ip_for", server['ip'], dst_ip, delay)
         
         # Сохраняем информацию о блокировке в SQLite
         import datetime
@@ -60,9 +60,9 @@ async def block_remote_ip(server, dst_ip, delay=3600, reason="Вручную"):
                 unblock_cmd = [f"iptables -D OUTPUT -d {dst_ip} -m comment --comment \"AEGIS-TEMP-BLOCK\" -j DROP"]
                 unblock_success, _, unblock_err = await run_remote_ssh_cmd(server, unblock_cmd)
                 if unblock_success:
-                    logging.info(f"[Remote IPS {server['ip']}] Временная блокировка {dst_ip} успешно снята.")
+                    logging.info("remote_ips_temporary_block_of_successfully_removed", server['ip'], dst_ip)
                 else:
-                    logging.error(f"[Remote IPS {server['ip']}] Не удалось снять блокировку с {dst_ip}: {unblock_err}")
+                    logging.error("remote_ips_failed_to_remove_block_from", server['ip'], dst_ip, unblock_err)
                 
                 # Удаляем информацию о блокировке из SQLite
                 await execute_write(
@@ -78,7 +78,7 @@ async def block_remote_ip(server, dst_ip, delay=3600, reason="Вручную"):
         active_remote_blocks[key] = task
         return True
     else:
-        logging.error(f"[Remote IPS {server['ip']}] Ошибка при блокировке {dst_ip} через iptables: {stderr}")
+        logging.error("remote_ips_error_blocking_via_iptables", server['ip'], dst_ip, stderr)
         return False
 
 
@@ -101,12 +101,12 @@ async def unban_remote_ip(server, dst_ip):
             (server['ip'], dst_ip)
         )
         if success:
-            logging.info(f"[Remote IPS {server['ip']}] Временная блокировка {dst_ip} успешно снята вручную.")
+            logging.info("remote_ips_temporary_block_of_successfully_removed_1", server['ip'], dst_ip)
             return True, f"Блокировка на VPS {server['ip']} снята"
         else:
-            logging.error(f"[Remote IPS {server['ip']}] Ошибка при снятии блокировки с {dst_ip}: {stderr}")
+            logging.error("remote_ips_error_unblocking", server['ip'], dst_ip, stderr)
             return False, stderr
     except Exception as e:
-        logging.error(f"[Remote IPS {server['ip']}] Исключение при снятии блокировки {dst_ip}: {e}")
+        logging.error("remote_ips_exception_while_unblocking", server['ip'], dst_ip, e)
         return False, str(e)
 

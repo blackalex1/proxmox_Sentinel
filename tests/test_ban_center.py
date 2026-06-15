@@ -29,7 +29,7 @@ async def test_verify_env_configuration():
         assert mock_warn.called
         # Проверяем, что логгер предупредил о нехватке параметров
         warnings = [call[0][0] for call in mock_warn.call_args_list]
-        assert any("В конфигурации .env не хватает следующих параметров" in w for w in warnings)
+        assert any("env_verifier_the_following_parameters_are_missing" in w for w in warnings)
 
 @pytest.mark.asyncio
 async def test_unban_local_ip():

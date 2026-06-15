@@ -18,7 +18,7 @@ lxc_high_load_start = {}
 
 async def monitor_lxc_resources():
     """Периодический опрос Proxmox для контроля статусов и ресурсов контейнеров."""
-    logging.info("Запущен мониторинг ресурсов LXC...")
+    logging.info("lxc_resource_monitoring_started")
     while True:
         try:
             # Получаем все ноды
@@ -117,9 +117,9 @@ async def monitor_lxc_resources():
                                 lxc_alert_throttle.pop((vmid, 'disk'), None)
                                 
                         except Exception as ex:
-                            logging.error(f"Не удалось получить метрики LXC {vmid}: {ex}")
+                            logging.error("failed_to_get_lxc_metrics", vmid, ex)
                             
         except Exception as e:
-            logging.error(f"Ошибка в цикле мониторинга ресурсов LXC: {e}")
+            logging.error("error_in_lxc_resources_monitoring_loop", e)
             
         await asyncio.sleep(30)

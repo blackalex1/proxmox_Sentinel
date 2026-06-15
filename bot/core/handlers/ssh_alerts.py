@@ -116,11 +116,11 @@ async def process_terminate_ssh(callback: CallbackQuery):
         _, target = term_part.split(":", 1)
         pid = int(pid_str)
     except Exception as e:
-        logging.error(f"Ошибка парсинга callback.data '{callback.data}': {e}")
+        logging.error("error_parsing_callback_data", callback.data, e)
         await callback.answer("Ошибка при обработке запроса.", show_alert=True)
         return
 
-    logging.info(f"Запрос на сброс SSH-сессии: target={target}, pid={pid}")
+    logging.info("ssh_session_drop_request_target_pid", target, pid)
 
     success = False
     error_msg = ""
@@ -182,16 +182,16 @@ async def process_terminate_ssh(callback: CallbackQuery):
                     error_msg = stderr_str.strip() or "Ошибка выполнения команды по SSH"
 
     except Exception as e:
-        logging.error(f"Критическая ошибка при сбросе SSH-сессии: {e}")
+        logging.error("critical_error_dropping_ssh_session", e)
         error_msg = str(e)
 
     if success:
         if is_dead:
-            logging.info(f"[SSH Drop] SSH-сессия {pid} на {target} уже была закрыта или не найдена.")
+            logging.info("ssh_drop_ssh_session_on_was_already", pid, target)
             await callback.answer("Сессия уже закрыта или не найдена.", show_alert=True)
             status_text = "🔒 Сессия уже была закрыта или не найдена"
         else:
-            logging.info(f"[SSH Drop] SSH-сессия {pid} на {target} успешно завершена (сброшена).")
+            logging.info("ssh_drop_ssh-sessiya_na_uspeshno_zavershena_sbroshena", pid, target)
             await callback.answer("SSH-сессия успешно сброшена!", show_alert=True)
             status_text = "❌ SSH-сессия сброшена пользователем через Telegram"
         
@@ -202,9 +202,9 @@ async def process_terminate_ssh(callback: CallbackQuery):
         try:
             await callback.message.edit_text(text=new_text, parse_mode="HTML", reply_markup=None)
         except Exception as e:
-            logging.error(f"Ошибка при обновлении сообщения SSH алерты: {e}")
+            logging.error("error_updating_ssh_alert_message", e)
     else:
-        logging.warning(f"Не удалось сбросить SSH-сессию {pid} на {target}: {error_msg}")
+        logging.warning("failed_to_drop_ssh_session_on", pid, target, error_msg)
         await callback.answer(f"Не удалось сбросить сессию: {error_msg}", show_alert=True)
 
 
@@ -229,11 +229,11 @@ async def process_ban_ssh_key(callback: CallbackQuery):
         _, target = term_part.split(":", 1)
         pid = int(pid_str)
     except Exception as e:
-        logging.error(f"Ошибка парсинга callback.data '{callback.data}': {e}")
+        logging.error("error_parsing_callback_data", callback.data, e)
         await callback.answer("Ошибка при обработке запроса.", show_alert=True)
         return
 
-    logging.info(f"Запрос на блокировку SSH-ключа: target={target}, pid={pid}")
+    logging.info("ssh_key_block_request_target_pid", target, pid)
 
     # Получаем fingerprint и username из кэша в БД
     from core.db import get_state, set_state
@@ -251,20 +251,20 @@ async def process_ban_ssh_key(callback: CallbackQuery):
         if target == "local":
             proc = await asyncio.create_subprocess_exec("sh", "-c", cmd)
             await proc.wait()
-            logging.info(f"[SSH Drop] SSH-сессия {pid} на {target} перед баном сброшена. Exit code: {proc.returncode}")
+            logging.info("ssh_drop_ssh_session_on_terminated_before", pid, target, proc.returncode)
         elif target.startswith("lxc_"):
             vmid = int(target.split("_")[1])
             proc = await asyncio.create_subprocess_exec("pct", "exec", str(vmid), "--", "sh", "-c", cmd)
             await proc.wait()
-            logging.info(f"[SSH Drop] SSH-сессия {pid} в LXC {vmid} перед баном сброшена. Exit code: {proc.returncode}")
+            logging.info("ssh_drop_ssh_session_in_lxc_terminated", pid, vmid, proc.returncode)
         else:
             server = next((s for s in settings.remote_servers if s['ip'] == target), None)
             if server:
                 from modules.proxmox.monitor.remote.ssh import run_remote_ssh_cmd
                 run_success, stdout, stderr = await run_remote_ssh_cmd(server, [cmd])
-                logging.info(f"[SSH Drop] SSH-сессия {pid} на VPS {target} перед баном сброшена. Успешно: {run_success}")
+                logging.info("ssh_drop_ssh_session_on_vps_terminated", pid, target, run_success)
     except Exception as e:
-        logging.error(f"Ошибка при сбросе сессии перед баном ключа: {e}")
+        logging.error("error_dropping_session_before_key_ban", e)
 
     success_ban = False
     error_msg = ""
@@ -328,7 +328,7 @@ async def process_ban_ssh_key(callback: CallbackQuery):
                 else:
                     error_msg = stderr_str or stdout_str or "Ошибка выполнения скрипта блокировки"
     except Exception as e:
-        logging.error(f"Ошибка при блокировке SSH-ключа: {e}")
+        logging.error("error_blocking_ssh_key", e)
         error_msg = str(e)
 
     if success_ban:
@@ -371,11 +371,11 @@ async def process_ban_ssh_key(callback: CallbackQuery):
                         "keys_path": path,
                         "banned_at": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                     })
-                    logging.info(f"Забаненный ключ {fingerprint} для {entry_username} на {target} сохранен в БД. ID: {key_id}, путь: {path}")
+                    logging.info("banned_key_for_on_saved_in_db", fingerprint, entry_username, target, key_id, path)
                     
                 await set_state("banned_ssh_keys", banned_keys)
             except Exception as e:
-                logging.error(f"Ошибка сохранения забаненного ключа в БД: {e}")
+                logging.error("error_saving_banned_key_in_db", e)
 
         await callback.answer("SSH-ключ успешно заблокирован и удален!", show_alert=True)
         # Показываем только последние 12 символов отпечатка для наглядности
@@ -388,7 +388,7 @@ async def process_ban_ssh_key(callback: CallbackQuery):
         try:
             await callback.message.edit_text(text=new_text, parse_mode="HTML", reply_markup=None)
         except Exception as e:
-            logging.error(f"Ошибка при обновлении сообщения после блокировки ключа: {e}")
+            logging.error("error_updating_message_after_key_blocking", e)
     else:
-        logging.warning(f"Не удалось заблокировать SSH-ключ {fingerprint} на {target}: {error_msg}")
+        logging.warning("failed_to_block_ssh_key_on", fingerprint, target, error_msg)
         await callback.answer(f"Не удалось заблокировать ключ: {error_msg}", show_alert=True)

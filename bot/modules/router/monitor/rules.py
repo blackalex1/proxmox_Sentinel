@@ -5,14 +5,14 @@ from modules.router.router import run_router_ssh_cmd
 async def setup_router_logging_rules():
     """Настраивает правила логирования чувствительных портов на роутере через SSH."""
     if not settings.router_monitor_enable:
-        logging.warning("[Router IPS] Мониторинг роутера отключен в настройках, не удается настроить правила логирования.")
+        logging.warning("router_ips_router_monitoring_is_disabled_in")
         return False
         
     ports_str = ",".join(str(p) for p in settings.monitor_lxc_ports_sensitive)
     if not ports_str:
         return False
         
-    logging.info(f"[Router IPS] Настройка правил логирования на роутере для портов: {ports_str}")
+    logging.info("router_ips_configuring_logging_rules_on_router", ports_str)
     
     # Сначала удалим старые правила, чтобы не дублировать их
     await remove_router_logging_rules()
@@ -28,10 +28,10 @@ async def setup_router_logging_rules():
         )
         success, stdout, stderr = await run_router_ssh_cmd(nft_cmd)
         if success:
-            logging.info("[Router IPS] Успешно добавлены правила логирования в nftables (OpenWrt)")
+            logging.info("router_ips_uspeshno_dobavleny_pravila_logirovaniya_v")
             return True
         else:
-            logging.warning(f"[Router IPS] Не удалось настроить nftables: {stderr}. Пробуем iptables...")
+            logging.warning("router_ips_failed_to_configure_nftables_trying", stderr)
             
         # 2. Пробуем iptables с multiport
         ipt_cmd = (
@@ -40,10 +40,10 @@ async def setup_router_logging_rules():
         )
         success, stdout, stderr = await run_router_ssh_cmd(ipt_cmd)
         if success:
-            logging.info("[Router IPS] Успешно добавлены правила логирования в iptables с multiport (OpenWrt)")
+            logging.info("router_ips_uspeshno_dobavleny_pravila_logirovaniya_v_1")
             return True
         else:
-            logging.warning(f"[Router IPS] Не удалось настроить iptables с multiport: {stderr}. Пробуем индивидуальные порты...")
+            logging.warning("router_ips_failed_to_configure_iptables_with", stderr)
 
     # 3. Резервный вариант: добавляем правила индивидуально для каждого порта (без multiport)
     success_all = True
@@ -55,13 +55,13 @@ async def setup_router_logging_rules():
         success, stdout, stderr = await run_router_ssh_cmd(ipt_single_cmd)
         if not success:
             success_all = False
-            logging.error(f"[Router IPS] Не удалось настроить логирование для порта {port}: {stderr}")
+            logging.error("router_ips_failed_to_configure_logging_for", port, stderr)
             
     if success_all:
-        logging.info("[Router IPS] Успешно добавлены индивидуальные правила логирования в iptables")
+        logging.info("router_ips_successfully_added_individual_logging_rules")
         return True
         
-    logging.error("[Router IPS] Не удалось настроить правила логирования на роутере ни одним из способов.")
+    logging.error("router_ips_failed_to_configure_logging_rules")
     return False
 
 async def remove_router_logging_rules():

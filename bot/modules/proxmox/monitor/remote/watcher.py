@@ -28,7 +28,7 @@ _status_lock = asyncio.Lock()
 
 async def monitor_remote_task(server, service_name, command_args, callback):
     """Фоновый воркер с автоматическим переподключением для отслеживания логов по SSH на конкретном сервере."""
-    logging.info(f"[Remote Monitor] Запуск стриминга {service_name} для VPS {server['ip']}...")
+    logging.info("remote_monitor_starting_streaming_of_for_vps", service_name, server['ip'])
     is_reconnect = False
     while True:
         try:
@@ -63,7 +63,7 @@ async def monitor_remote_task(server, service_name, command_args, callback):
                         from modules.proxmox.monitor.utils import send_alert_to_admins
                         await send_alert_to_admins(get_vps_online_alert(server['ip']), parse_mode="markdown")
                 
-                logging.info(f"[Remote Monitor {server['ip']}] SSH порт ({port}) открылся. Возобновляем подключение для {service_name}...")
+                logging.info("remote_monitor_ssh_port_otkrylsya_vozobnovlyaem_podklyuchenie", server['ip'], port, service_name)
 
             ssh_base = get_ssh_base_cmd(server)
             
@@ -85,9 +85,9 @@ async def monitor_remote_task(server, service_name, command_args, callback):
                 await tailer.task
                 
         except Exception as e:
-            logging.error(f"[Remote Monitor {server['ip']}] Ошибка в стриминге службы {service_name}: {e}")
+            logging.error("remote_monitor_error_in_streaming_service", server['ip'], service_name, e)
             
-        logging.warning(f"[Remote Monitor {server['ip']}] Подключение SSH для {service_name} прервано. Повторная попытка через 10 секунд...")
+        logging.warning("remote_monitor_ssh_connection_for_interrupted_reconnecting", server['ip'], service_name)
         is_reconnect = True
         await asyncio.sleep(10)
 
@@ -97,14 +97,14 @@ async def monitor_remote_task(server, service_name, command_args, callback):
 async def monitor_remote_server():
     """Запуск всех задач отслеживания для всех удаленных VPS в фоновом режиме."""
     if not settings.remote_servers:
-        logging.warning("[Remote Monitor] Список удаленных серверов REMOTE_SERVERS пуст.")
+        logging.warning("remote_monitor_remote_servers_remote_servers_list_is")
         return
         
-    logging.info(f"[Remote Monitor] Инициализация мониторинга для {len(settings.remote_servers)} удаленных серверов...")
+    logging.info("remote_monitor_initsializatsiya_monitoringa_dlya_udalennykh_serverov", len(settings.remote_servers))
     
     tasks = []
     for server in settings.remote_servers:
-        logging.info(f"[Remote Monitor] Запуск фоновых задач для VPS {server['ip']}...")
+        logging.info("remote_monitor_starting_background_tasks_for_vps", server['ip'])
         
         # Очищаем временные блокировки iptables от прошлых запусков бота
         asyncio.create_task(cleanup_remote_blocks_on_startup(server))
@@ -117,7 +117,7 @@ async def monitor_remote_server():
         traffic_args = ["journalctl", "-k", "-f", "-n", "0"]
         tasks.append(asyncio.create_task(monitor_remote_task(server, "Kernel Traffic", traffic_args, handle_remote_traffic_line)))
         
-    logging.info("[Remote Monitor] Все фоновые задачи удаленного мониторинга для всех VPS успешно запущены!")
+    logging.info("remote_monitor_all_background_remote_monitoring_tasks")
     if tasks:
         await asyncio.gather(*tasks, return_exceptions=True)
 

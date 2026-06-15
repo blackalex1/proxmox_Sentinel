@@ -31,7 +31,7 @@ async def start_all_lxc_monitors():
     try:
         await spectre_manager.discover_panels()
     except Exception as e:
-        logging.error(f"Ошибка стартового автообнаружения Spectre Panel: {e}")
+        logging.error("error_starting_spectre_panel_autodiscovery", e)
     asyncio.create_task(spectre_manager.start_discovery_loop(), name="spectre_discovery_loop")
     
     # 5. Запускаем мониторинг удаленного сервера, если включен в конфиге
@@ -39,12 +39,12 @@ async def start_all_lxc_monitors():
         asyncio.create_task(monitor_remote_server(), name="monitor_remote_server")
         from .remote.resources import monitor_remote_resources
         asyncio.create_task(monitor_remote_resources(), name="monitor_remote_resources")
-        logging.info("Мониторинг удаленного сервера запущен!")
+        logging.info("remote_server_monitoring_started")
         
     # 6. Запускаем мониторинг роутера (SSH conntrack/syslog), если включен в конфиге
     if settings.router_monitor_enable:
         asyncio.create_task(monitor_router_connections(), name="monitor_router_connections")
-        logging.info(f"Мониторинг роутера запущен (режим: {settings.router_monitor_mode})!")
+        logging.info("monitoring_routera_zapuschen_rezhim", settings.router_monitor_mode)
         
     # 7. Запускаем фоновый планировщик автоматических бэкапов
     asyncio.create_task(start_auto_backup_scheduler(), name="auto_backup_scheduler")
@@ -55,7 +55,7 @@ async def start_all_lxc_monitors():
     # 9. Запускаем фоновый мониторинг файлов 2fa.log панелей для мгновенного подтверждения 2FA
     asyncio.create_task(monitor_panel_2fa_logs(), name="monitor_panel_2fa_logs")
     
-    logging.info("Все службы LXC мониторинга успешно запущены в фоне!")
+    logging.info("all_lxc_monitoring_services_successfully_started_in")
 
 
 async def start_auto_backup_scheduler():
@@ -67,7 +67,7 @@ async def start_auto_backup_scheduler():
     from aiogram.types import BufferedInputFile
     from core.bot import bot
     
-    logging.info("[Backup Scheduler] Запущен фоновый планировщик бэкапов.")
+    logging.info("backup_scheduler_background_backup_scheduler_started")
     last_backup_date = None
     
     while True:
@@ -77,15 +77,15 @@ async def start_auto_backup_scheduler():
             if now.hour == 3 and now.minute == 0:
                 current_date = now.date()
                 if last_backup_date != current_date:
-                    logging.info("[Backup Scheduler] Время 3:00 AM, запуск автоматического резервного копирования...")
+                    logging.info("backup_scheduler_time_is_3_00_am")
                     
                     panels = list(spectre_manager.panels.values())
                     if not panels:
-                        logging.warning("[Backup Scheduler] Нет обнаруженных панелей для создания бэкапа.")
+                        logging.warning("backup_scheduler_no_panels_detected_for_backup")
                     else:
                         for panel in panels:
                             try:
-                                logging.info(f"[Backup Scheduler] Создание бэкапа для панели {panel.name}...")
+                                logging.info("backup_scheduler_creating_backup_for_panel", panel.name)
                                 success, res = await panel.request("GET", "/api/security/backup")
                                 if success and res.get("success") and "dump" in res:
                                     dump_data = res["dump"]
@@ -106,16 +106,16 @@ async def start_auto_backup_scheduler():
                                                 parse_mode="HTML"
                                             )
                                         except Exception as e:
-                                            logging.error(f"Не удалось отправить бэкап админу {admin_id}: {e}")
+                                            logging.error("failed_to_send_backup_to_admin", admin_id, e)
                                 else:
                                     error_info = res.get("msg") or res.get("error") or "Неизвестная ошибка"
-                                    logging.error(f"[Backup Scheduler] Не удалось создать авто-бэкап для {panel.name}: {error_info}")
+                                    logging.error("backup_scheduler_failed_to_create_auto-backup_for", panel.name, error_info)
                             except Exception as panel_err:
-                                logging.error(f"[Backup Scheduler] Ошибка при бэкапе панели {panel.name}: {panel_err}")
+                                logging.error("backup_scheduler_error_backing_up_panel", panel.name, panel_err)
                                 
                     last_backup_date = current_date
         except Exception as e:
-            logging.error(f"[Backup Scheduler] Исключение в планировщике бэкапов: {e}")
+            logging.error("backup_scheduler_exception_in_backup_scheduler", e)
             
         await asyncio.sleep(60)
 
@@ -130,7 +130,7 @@ async def monitor_panel_audit_logs():
     from core.bot import bot
     
     last_log_ids = {}
-    logging.info("[Audit Monitor] Запущен фоновый мониторинг логов аудита панелей.")
+    logging.info("audit_monitor_background_monitoring_of_panels_audit")
     traffic_update_counter = 0
     
     while True:
@@ -199,7 +199,7 @@ async def monitor_panel_audit_logs():
                             try:
                                 await send_alert_to_admins(msg, parse_mode="markdown", reply_markup=keyboard)
                             except Exception as e:
-                                logging.error(f"[Audit Monitor] Не удалось отправить алерт: {e}")
+                                logging.error("audit_monitor_failed_to_send_alert", e)
                                     
                         elif is_login_success:
                             username = log.get("username") or "unknown"
@@ -227,7 +227,7 @@ async def monitor_panel_audit_logs():
                             try:
                                 await send_alert_to_admins(msg, parse_mode="markdown", reply_markup=kb)
                             except Exception as e:
-                                logging.error(f"[Audit Monitor] Не удалось отправить алерт: {e}")
+                                logging.error("audit_monitor_failed_to_send_alert", e)
                         
                         elif is_client_event:
                             try:
@@ -240,13 +240,13 @@ async def monitor_panel_audit_logs():
                                     details_str=log.get("details")
                                 )
                             except Exception as ex:
-                                logging.error(f"[Audit Monitor] Ошибка обработки события клиента: {ex}")
+                                logging.error("audit_monitor_error_processing_client_event", ex)
                                     
                     last_log_ids[p_key] = new_max_id
                 except Exception as panel_err:
-                    logging.debug(f"[Audit Monitor] Ошибка опроса панели {panel.name}: {panel_err}")
+                    logging.debug("audit_monitor_error_polling_panel", panel.name, panel_err)
         except Exception as e:
-            logging.error(f"[Audit Monitor] Ошибка в цикле мониторинга аудит-логов: {e}")
+            logging.error("audit_monitor_error_in_audit_logs_monitoring", e)
             
         traffic_update_counter += 1
         if traffic_update_counter >= 3:
@@ -255,7 +255,7 @@ async def monitor_panel_audit_logs():
                 from .hysteria_alerts import update_controller_active_cards_traffic
                 await update_controller_active_cards_traffic()
             except Exception as ex:
-                logging.error(f"[Audit Monitor] Ошибка при обновлении трафика активных карточек: {ex}")
+                logging.error("audit_monitor_error_updating_traffic_of_active", ex)
                 
         await asyncio.sleep(10)
 
@@ -274,7 +274,7 @@ async def monitor_panel_2fa_logs():
     
     active_tailers = {}
     
-    logging.info("[2FA Monitor] Запущен фоновый мониторинг 2fa.log панелей.")
+    logging.info("2fa_monitor_background_monitoring_of_panels_2fa")
     
     async def handle_2fa_line(line, panel=None):
         if not panel:
@@ -315,7 +315,7 @@ async def monitor_panel_2fa_logs():
         try:
             await send_alert_to_admins(msg_text, parse_mode="markdown", reply_markup=kb)
         except Exception as e:
-            logging.error(f"[2FA Monitor] Не удалось отправить 2FA алерт: {e}")
+            logging.error("2fa_monitor_failed_to_send_2fa_alert", e)
 
     while True:
         try:
@@ -362,7 +362,7 @@ async def monitor_panel_2fa_logs():
                     await tailer.stop()
                     
         except Exception as e:
-            logging.error(f"[2FA Monitor] Ошибка в цикле мониторинга 2fa.log: {e}")
+            logging.error("2fa_monitor_error_in_2fa_log_monitoring", e)
             
         await asyncio.sleep(15)
 

@@ -26,7 +26,7 @@ async def block_local_ip(dst_ip, delay=3600, reason="Вручную"):
             )
             await proc.wait()
             
-        logging.info(f"[Local IPS] Временно заблокирован целевой IP {dst_ip} на хосте Proxmox (OUTPUT + FORWARD) на {delay} секунд.")
+        logging.info("local_ips_vremenno_zablokirovan_tselevoy_ip_na", dst_ip, delay)
         
         # Сохраняем информацию о блокировке в SQLite
         import datetime
@@ -56,7 +56,7 @@ async def block_local_ip(dst_ip, delay=3600, reason="Вручную"):
                     "DELETE FROM temp_bans WHERE server_ip = ? AND dst_ip = ?",
                     ("local", dst_ip)
                 )
-                logging.info(f"[Local IPS] Временная блокировка {dst_ip} на хосте Proxmox успешно снята.")
+                logging.info("local_ips_temporary_block_of_on_proxmox", dst_ip)
             except asyncio.CancelledError:
                 pass
             finally:
@@ -66,7 +66,7 @@ async def block_local_ip(dst_ip, delay=3600, reason="Вручную"):
         active_local_blocks[key] = task
         return True
     except Exception as e:
-        logging.error(f"[Local IPS] Ошибка при блокировке {dst_ip} на хосте Proxmox: {e}")
+        logging.error("local_ips_error_blocking_on_proxmox_host", dst_ip, e)
         return False
 
 async def cleanup_local_blocks_on_startup():
@@ -91,9 +91,9 @@ async def cleanup_local_blocks_on_startup():
         from core.db import execute_write
         await execute_write("DELETE FROM temp_bans WHERE server_ip = 'local'")
         
-        logging.info("[Local IPS] Успешно очищены старые временные блокировки iptables на хосте Proxmox.")
+        logging.info("local_ips_successfully_cleared_old_temporary_iptables")
     except Exception as e:
-        logging.error(f"[Local IPS] Ошибка при очистке локальных блокировок на старте: {e}")
+        logging.error("local_ips_error_clearing_local_blocks_at", e)
 
 
 async def unban_local_ip(dst_ip):
@@ -122,8 +122,8 @@ async def unban_local_ip(dst_ip):
             "DELETE FROM temp_bans WHERE server_ip = ? AND dst_ip = ?",
             ("local", dst_ip)
         )
-        logging.info(f"[Local IPS] Временная блокировка {dst_ip} на хосте Proxmox успешно снята вручную.")
+        logging.info("local_ips_temporary_block_of_on_proxmox_1", dst_ip)
         return True, "Блокировка на хосте Proxmox снята"
     except Exception as e:
-        logging.error(f"[Local IPS] Ошибка при снятии блокировки {dst_ip} на хосте Proxmox: {e}")
+        logging.error("local_ips_error_unblocking_on_proxmox_host", dst_ip, e)
         return False, str(e)

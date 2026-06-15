@@ -8,6 +8,6 @@ class AdminFilter(BaseFilter):
     async def __call__(self, event: types.Message | types.CallbackQuery) -> bool:
         user_id = event.from_user.id
         if not settings.admin_ids:
-            logging.warning(f"🚨 Попытка доступа от {user_id}, но ADMIN_IDS не настроен в .env! Доступ запрещен.")
+            logging.warning("access_attempt_from_but_admin_ids_is_not", user_id)
             return False
         return user_id in settings.admin_ids

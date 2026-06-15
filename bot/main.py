@@ -63,14 +63,14 @@ from core.proxy_rotator import safe_swap_bot_session, proxy_monitor_loop
 
 
 async def main():
-    logging.info("Бот запускается...")
+    logging.info("bot_is_starting")
 
     # Верификация .env конфигурации
     try:
         from core.env_verifier import verify_env_configuration
         verify_env_configuration()
     except Exception as e:
-        logging.error(f"Ошибка при верификации .env: {e}")
+        logging.error("error_verifying_env", e)
 
     # Автоматическая проверка и генерация SSH-ключей ED25519 для Ansible
     try:
@@ -79,7 +79,7 @@ async def main():
         check_and_generate_ansible_keys(ANSIBLE_PLAYBOOKS_DIR)
 
     except Exception as e:
-        logging.error(f"Не удалось проверить/сгенерировать SSH ключи Ansible при старте: {e}")
+        logging.error("failed_to_verify_generate_ansible_ssh_keys", e)
 
 
 
@@ -95,7 +95,7 @@ async def main():
             custom_api = None
             if settings.telegram_api_server:
                 custom_api = TelegramAPIServer.from_base(settings.telegram_api_server)
-                logging.info(f"Используется альтернативный Bot API сервер: {settings.telegram_api_server}")
+                logging.info("using_alternative_bot_api_server", settings.telegram_api_server)
             
             if custom_api:
                 session_kwargs['api'] = custom_api
@@ -138,25 +138,25 @@ async def main():
                     server = pproxy.Server('socks5://127.0.0.1:10808')
                     remote = pproxy.Connection(cleaned_ss_url)
                     await server.start_server({'rserver': [remote], 'verbose': logging.debug})
-                    logging.info("Запущен встроенный Shadowsocks-туннель (pproxy) на 127.0.0.1:10808")
+                    logging.info("zapuschen_vstroennyy_shadowsocks-tunnel_pproxy_na_127_0")
                     
                     primary_proxy_endpoint = local_socks_url
                     session = AiohttpSession(proxy=local_socks_url, **session_kwargs)
-                    logging.info(f"Используется Shadowsocks прокси для Telegram через встроенный туннель: {safe_url}")
+                    logging.info("using_shadowsocks_proxy_for_telegram_via_built-in", safe_url)
                 else:
                     primary_proxy_endpoint = settings.proxy_url
                     session = AiohttpSession(proxy=settings.proxy_url, **session_kwargs)
                     if settings.proxy_url.startswith(('socks5://', 'socks4://')):
-                        logging.info(f"Используется SOCKS прокси для Telegram: {safe_url}")
+                        logging.info("using_socks_proxy_for_telegram", safe_url)
                     else:
-                        logging.info(f"Используется HTTP прокси для Telegram: {safe_url}")
+                        logging.info("using_http_proxy_for_telegram", safe_url)
             else:
                 session = AiohttpSession(**session_kwargs)
                 
             if session:
                 bot.session = session
         except Exception as e:
-            logging.error(f"Ошибка настройки прокси или альтернативного Bot API: {e}")
+            logging.error("error_configuring_proxy_or_alternative_bot_api", e)
 
     # Регистрируем глобальные фильтры
     dp.message.filter(AdminFilter())
@@ -177,29 +177,29 @@ async def main():
             from modules.proxmox.monitor import start_all_lxc_monitors
             await start_all_lxc_monitors()
         except Exception as e:
-            logging.error(f"Не удалось запустить службы мониторинга LXC: {e}")
+            logging.error("failed_to_start_lxc_monitoring_services", e)
     else:
-        logging.warning("ВНИМАНИЕ: ADMIN_IDS не заданы! Бот ни на кого реагировать не будет.")
+        logging.warning("warning_admin_ids_not_set_the_bot_will")
         
     # Запуск фонового мониторинга и авто-ротации прокси
     active_proxy = primary_proxy_endpoint
     using_fallback = False
 
     if settings.enable_free_proxy_rotation:
-        logging.info("[Proxy Monitor] Проверяем работоспособность основного прокси на старте...")
+        logging.info("proxy_monitor_checking_functionality_of_the_main")
         from core.proxy_rotator import proxy_rotator
         from aiogram.client.session.aiohttp import AiohttpSession
         
         if primary_proxy_endpoint:
             is_alive, _ = await proxy_rotator.test_proxy_alive(primary_proxy_endpoint, timeout=4.0, verbose=True)
             if not is_alive:
-                logging.warning("[Proxy Monitor] Потерял соединение с моим прокси и пошел искать доступные бесплатные SOCKS5...")
+                logging.warning("proxy_monitor_lost_connection_to_my_proxy")
                 new_proxy = await proxy_rotator.get_working_proxy()
                 if new_proxy:
                     safe_swap_bot_session(bot, AiohttpSession(proxy=new_proxy, **session_kwargs))
                     active_proxy = new_proxy
                     using_fallback = True
-                    logging.info(f"[Proxy Monitor] Успешно переключено на бесплатный прокси: {new_proxy}")
+                    logging.info("proxy_monitor_successfully_switched_to_free_proxy", new_proxy)
                     # Отправляем алерт в фоне, чтобы не задерживать запуск бота
                     from modules.proxmox.monitor.utils import send_alert_to_admins
                     from core.messages import get_proxy_switch_alert
@@ -207,11 +207,11 @@ async def main():
                         get_proxy_switch_alert(primary_proxy_endpoint, new_proxy)
                     ))
                 else:
-                    logging.error("[Proxy Monitor] Не удалось найти живой бесплатный прокси. Остаемся на основном в надежде на чудо...")
+                    logging.error("proxy_monitor_failed_to_find_a_live")
             else:
-                logging.info("[Proxy Monitor] Основной прокси успешно прошел стартовую проверку.")
+                logging.info("proxy_monitor_main_proxy_successfully_passed_the")
                 
-        logging.info("[Proxy Monitor] Запуск фоновой службы отслеживания авто-ротации прокси...")
+        logging.info("proxy_monitor_starting_background_proxy_auto-rotation_tracking")
         asyncio.create_task(proxy_monitor_loop(bot, primary_proxy_endpoint, session_kwargs, active_proxy, using_fallback), name="proxy_monitor_loop")
         
     # Запуск фоновой службы отложенной отправки сообщений (Outbox)
@@ -223,7 +223,7 @@ async def main():
         await bot.delete_webhook(drop_pending_updates=True)
         await dp.start_polling(bot)
     finally:
-        logging.info("Остановка всех фоновых служб...")
+        logging.info("stopping_all_background_services")
         current_task = asyncio.current_task()
         active_tasks = [t for t in asyncio.all_tasks() if t is not current_task]
         for task in active_tasks:
@@ -232,23 +232,23 @@ async def main():
         if active_tasks:
             try:
                 await asyncio.wait_for(asyncio.gather(*active_tasks, return_exceptions=True), timeout=2.0)
-                logging.info("Все фоновые службы успешно завершены.")
+                logging.info("all_background_services_successfully_terminated")
             except asyncio.TimeoutError:
-                logging.warning("Таймаут ожидания остановки фоновых служб.")
+                logging.warning("timeout_waiting_for_background_services_to_stop")
             except Exception as e:
-                logging.error(f"Ошибка при остановке фоновых служб: {e}")
+                logging.error("error_stopping_background_services", e)
 
         try:
             from modules.proxmox.monitor import cleanup_iptables
             cleanup_iptables()
         except Exception as e:
-            logging.error(f"Ошибка при очистке iptables: {e}")
+            logging.error("error_clearing_iptables", e)
         try:
             await asyncio.wait_for(bot.session.close(), timeout=2.0)
         except asyncio.TimeoutError:
-            logging.warning("Превышен таймаут закрытия сессии бота, принудительное завершение...")
+            logging.warning("bot_session_closing_timeout_exceeded_forcing_termination")
         except Exception as e:
-            logging.error(f"Ошибка при закрытии сессии бота: {e}")
+            logging.error("error_closing_bot_session", e)
 
 
 if __name__ == "__main__":

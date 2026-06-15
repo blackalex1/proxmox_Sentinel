@@ -13,7 +13,7 @@ async def get_and_kill_local_or_lxc_process(vmid, spt):
     try:
         if vmid == 0:
             cmd = ["ss", "-atnup"]
-            logging.info(f"[Local IPS] Запуск команды: {' '.join(cmd)}")
+            logging.info("local_ips_zapusk_komandy", ' '.join(cmd))
             proc = await asyncio.create_subprocess_exec(
                 *cmd,
                 stdout=asyncio.subprocess.PIPE,
@@ -22,14 +22,14 @@ async def get_and_kill_local_or_lxc_process(vmid, spt):
             stdout_bytes, _ = await proc.communicate()
             stdout = stdout_bytes.decode('utf-8', errors='ignore')
             
-            logging.info(f"[Local IPS] Вывод ss (первых 500 символов): {stdout[:500]}...")
+            logging.info("local_ips_vyvod_ss_pervykh_500_simvolov", stdout[:500])
             
             matched = False
             for line in stdout.splitlines():
                 parts = line.strip().split()
                 if len(parts) >= 5 and parts[4].endswith(f":{spt}"):
                     matched = True
-                    logging.info(f"[Local IPS] Найдена строка совпадения для порта {spt}: {line.strip()}")
+                    logging.info("local_ips_naydena_stroka_sovpadeniya_dlya_porta", spt, line.strip())
                     match = re.search(r'users:\(\("([^"]+)",(?:pid=)?(\d+)', line)
                     if match:
                         proc_name, pid = match.groups()
@@ -69,13 +69,13 @@ async def get_and_kill_local_or_lxc_process(vmid, spt):
                             pass
                             
                         if is_self_or_child:
-                            logging.info(f"[Local IPS] Процесс {proc_name} (PID: {pid}) является самим ботом или его дочерним процессом. Завершение отменено.")
+                            logging.info("local_ips_protsess_pid_yavlyaetsya_samim_botom", proc_name, pid)
                             return proc_name, "WHITELISTED"
                             
                         node = "local"
                         from core.db import is_whitelisted
                         if proc_name.lower().strip() in settings.ips_process_whitelist or await is_whitelisted(node, process=proc_name):
-                            logging.info(f"[Local IPS] Процесс {proc_name} (PID: {pid}) на Хосте в белом списке. Завершение отменено.")
+                            logging.info("local_ips_protsess_pid_na_khoste_v", proc_name, pid)
                             return proc_name, "WHITELISTED"
                         
                         kill_proc = await asyncio.create_subprocess_exec(
@@ -84,13 +84,13 @@ async def get_and_kill_local_or_lxc_process(vmid, spt):
                             stderr=asyncio.subprocess.DEVNULL
                         )
                         await kill_proc.wait()
-                        logging.info(f"[Local IPS] Успешно завершен процесс {proc_name} (PID: {pid}) на Хосте по порту {spt}.")
+                        logging.info("local_ips_uspeshno_zavershen_protsess_pid_na", proc_name, pid, spt)
                         return proc_name, pid
             if not matched:
-                logging.warning(f"[Local IPS] Не найдено соединение с портом {spt} в выводе ss.")
+                logging.warning("local_ips_no_connection_to_port_found", spt)
         else:
             cmd = ["pct", "exec", str(vmid), "--", "ss", "-atnup"]
-            logging.info(f"[LXC IPS] Запуск команды: {' '.join(cmd)}")
+            logging.info("lxc_ips_zapusk_komandy", ' '.join(cmd))
             proc = await asyncio.create_subprocess_exec(
                 *cmd,
                 stdout=asyncio.subprocess.PIPE,
@@ -99,21 +99,21 @@ async def get_and_kill_local_or_lxc_process(vmid, spt):
             stdout_bytes, _ = await proc.communicate()
             stdout = stdout_bytes.decode('utf-8', errors='ignore')
             
-            logging.info(f"[LXC IPS] Вывод ss в LXC {vmid} (первых 500 символов): {stdout[:500]}...")
+            logging.info("lxc_ips_vyvod_ss_v_lxc_pervykh", vmid, stdout[:500])
             
             matched = False
             for line in stdout.splitlines():
                 parts = line.strip().split()
                 if len(parts) >= 5 and parts[4].endswith(f":{spt}"):
                     matched = True
-                    logging.info(f"[LXC IPS] Найдена строка совпадения для LXC {vmid} порт {spt}: {line.strip()}")
+                    logging.info("lxc_ips_naydena_stroka_sovpadeniya_dlya_lxc", vmid, spt, line.strip())
                     match = re.search(r'users:\(\("([^"]+)",(?:pid=)?(\d+)', line)
                     if match:
                         proc_name, pid = match.groups()
                         node = f"lxc_{vmid}"
                         from core.db import is_whitelisted
                         if proc_name.lower().strip() in settings.ips_process_whitelist or await is_whitelisted(node, process=proc_name):
-                            logging.info(f"[LXC IPS] Процесс {proc_name} (PID: {pid}) в LXC {vmid} в белом списке. Завершение отменено.")
+                            logging.info("lxc_ips_protsess_pid_v_lxc_v", proc_name, pid, vmid)
                             return proc_name, "WHITELISTED"
                         
                         kill_cmd = ["pct", "exec", str(vmid), "--", "kill", "-9", pid]
@@ -123,10 +123,10 @@ async def get_and_kill_local_or_lxc_process(vmid, spt):
                             stderr=asyncio.subprocess.DEVNULL
                         )
                         await kill_proc.wait()
-                        logging.info(f"[LXC IPS] Успешно завершен процесс {proc_name} (PID: {pid}) внутри LXC {vmid} по порту {spt}.")
+                        logging.info("lxc_ips_uspeshno_zavershen_protsess_pid_vnutri", proc_name, pid, vmid, spt)
                         return proc_name, pid
             if not matched:
-                logging.warning(f"[LXC IPS] Не найдено соединение с портом {spt} внутри LXC {vmid} в выводе ss.")
+                logging.warning("lxc_ips_no_connection_to_port_inside", spt, vmid)
     except Exception as e:
-        logging.error(f"[LXC/Local IPS] Ошибка при поиске и убийстве процесса: {e}")
+        logging.error("lxc_local_ips_error_searching_and_killing", e)
     return None, None

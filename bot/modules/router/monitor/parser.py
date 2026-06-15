@@ -27,7 +27,7 @@ def parse_router_conntrack_line(line):
             'dst_port': int(dpt_match.group(1))
         }
     except Exception as e:
-        logging.error(f"Ошибка парсинга строки conntrack роутера: {e}")
+        logging.error("error_parsing_router_conntrack_line", e)
         return None
 
 def parse_router_iptables_line(line):
@@ -56,5 +56,5 @@ def parse_router_iptables_line(line):
             'dst_port': int(dpt_match.group(1))
         }
     except Exception as e:
-        logging.error(f"Ошибка парсинга строки лога роутера: {e}")
+        logging.error("error_parsing_router_log_line", e)
         return None

@@ -197,4 +197,4 @@ async def callback_vpn_history_view(callback: CallbackQuery):
     try:
         await callback.message.edit_text(msg_text, parse_mode="HTML", reply_markup=kb)
     except Exception as e:
-        logging.error(f"Ошибка при просмотре истории сессий: {e}")
+        logging.error("error_viewing_session_history", e)

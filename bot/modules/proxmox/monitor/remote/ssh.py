@@ -24,7 +24,7 @@ async def get_ssh_connection(server) -> asyncssh.SSHClientConnection:
     async with _conn_lock:
         conn = _ssh_connections.get(ip)
         if conn is None or conn.is_closed():
-            logging.info(f"[Remote SSH {ip}] Установка нового асинхронного соединения asyncssh...")
+            logging.info("remote_ssh_establishing_new_asyncssh_connection", ip)
             try:
                 # Отключаем проверку known hosts аналогично StrictHostKeyChecking=no
                 conn = await asyncssh.connect(
@@ -48,9 +48,9 @@ async def get_ssh_connection(server) -> asyncssh.SSHClientConnection:
                     pass
 
                 _ssh_connections[ip] = conn
-                logging.info(f"[Remote SSH {ip}] Асинхронное соединение успешно установлено и закэшировано.")
+                logging.info("remote_ssh_async_connection_successfully_established_and", ip)
             except Exception as e:
-                logging.error(f"[Remote SSH {ip}] Ошибка подключения: {e}")
+                logging.error("remote_ssh_connection_error", ip, e)
                 raise e
         return conn
 
@@ -63,7 +63,7 @@ async def run_remote_ssh_cmd(server, command_args):
         result = await conn.run(cmd_str, check=False)
         return result.exit_status == 0, result.stdout.strip(), result.stderr.strip()
     except (asyncssh.Error, OSError, ConnectionError, asyncio.TimeoutError) as e:
-        logging.warning(f"[Remote SSH {ip}] Ошибка соединения ({e}). Повторная попытка переподключения...")
+        logging.warning("remote_ssh_oshibka_soedineniya_povtornaya_popytka_perepodklyucheniya", ip, e)
         # При возникновении ошибки связи удаляем сломанное соединение из кэша и пробуем заново
         async with _conn_lock:
             if ip in _ssh_connections:
@@ -77,8 +77,8 @@ async def run_remote_ssh_cmd(server, command_args):
             result = await conn.run(cmd_str, check=False)
             return result.exit_status == 0, result.stdout.strip(), result.stderr.strip()
         except Exception as e_retry:
-            logging.error(f"[Remote SSH {ip}] Повторная попытка завершилась ошибкой: {e_retry}")
+            logging.error("remote_ssh_retry_failed_with_error", ip, e_retry)
             return False, "", str(e_retry)
     except Exception as e:
-        logging.error(f"[Remote SSH {ip}] Критическая ошибка выполнения команды: {e}")
+        logging.error("remote_ssh_critical_error_executing_command", ip, e)
         return False, "", str(e)

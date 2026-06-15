@@ -52,7 +52,7 @@ def parse_remote_iptables_line(line):
             'dpt': int(data.get('DPT', 0)) if data.get('DPT', '').isdigit() else 0
         }
     except Exception as e:
-        logging.error(f"Ошибка парсинга REMOTE_CONN line: {e}")
+        logging.error("error_parsing_remote_conn_line", e)
         return None
 
 async def get_and_kill_remote_process(server, spt):
@@ -63,7 +63,7 @@ async def get_and_kill_remote_process(server, spt):
     try:
         success, stdout, stderr = await run_remote_ssh_cmd(server, ["ss -atnup"])
         if not success:
-            logging.error(f"[Remote IPS {server['ip']}] Не удалось выполнить ss -atnup на VPS: {stderr}")
+            logging.error("remote_ips_failed_to_execute_ss_-atnup", server['ip'], stderr)
             return None, None
             
         for line in stdout.splitlines():
@@ -74,18 +74,18 @@ async def get_and_kill_remote_process(server, spt):
                     node_name = f"vps_{server['ip']}"
                     from core.db import is_whitelisted
                     if proc_name.lower().strip() in settings.ips_process_whitelist or await is_whitelisted(node_name, process=proc_name):
-                        logging.info(f"[Remote IPS {server['ip']}] Процесс {proc_name} (PID: {pid}) в белом списке. Завершение отменено.")
+                        logging.info("remote_ips_protsess_pid_v_belom_spiske", server['ip'], proc_name, pid)
                         return proc_name, "WHITELISTED"
                     
                     kill_success, _, kill_err = await run_remote_ssh_cmd(server, [f"kill -9 {pid}"])
                     if kill_success:
-                        logging.info(f"[Remote IPS {server['ip']}] Успешно завершен процесс {proc_name} (PID: {pid}) по порту {spt} на VPS.")
+                        logging.info("remote_ips_uspeshno_zavershen_protsess_pid_po", server['ip'], proc_name, pid, spt)
                         return proc_name, pid
                     else:
-                        logging.error(f"[Remote IPS {server['ip']}] Не удалось завершить процесс {proc_name} (PID: {pid}) на VPS: {kill_err}")
+                        logging.error("remote_ips_ne_udalos_zavershit_protsess_pid", server['ip'], proc_name, pid, kill_err)
                         return proc_name, None
     except Exception as e:
-        logging.error(f"[Remote IPS {server['ip']}] Ошибка при поиске и убийстве процесса: {e}")
+        logging.error("remote_ips_error_searching_and_killing_process", server['ip'], e)
     return None, None
 
 async def investigate_and_resolve_remote_attack(server, dst_ip, dpt, tunnel_email, proto, src_ip, spt):
@@ -222,7 +222,7 @@ async def handle_remote_traffic_line(line, server=None):
                 node_name = f"vps_{server['ip']}"
                 from core.db import is_whitelisted
                 if await is_whitelisted(node_name, ip=src, port=dpt):
-                    logging.info(f"[Remote IPS {server['ip']}] Входящее соединение с {src} на {dpt} в белом списке. Игнорируем.")
+                    logging.info("remote_ips_incoming_connection_from_to_is", server['ip'], src, dpt)
                     return
                     
                 last_alert = recent_remote_traffic_alerts.get(throttle_key, 0)
@@ -239,7 +239,7 @@ async def handle_remote_traffic_line(line, server=None):
             node_name = f"vps_{server['ip']}"
             from core.db import is_whitelisted
             if await is_whitelisted(node_name, ip=dst, port=dpt):
-                logging.info(f"[Remote IPS {server['ip']}] Исходящее соединение на {dst}:{dpt} в белом списке. Игнорируем.")
+                logging.info("remote_ips_outgoing_connection_to_is_whitelisted", server['ip'], dst, dpt)
                 return
                 
             last_alert = recent_remote_traffic_alerts.get(throttle_key, 0)
@@ -341,4 +341,4 @@ async def handle_remote_traffic_line(line, server=None):
                 )
             await send_alert_to_admins(msg, parse_mode="markdown")
     except Exception as e:
-        logging.error(f"Ошибка в обработчике логов трафика удаленного сервера {server['ip']}: {e}")
+        logging.error("error_in_traffic_logs_handler_for_remote", server['ip'], e)

@@ -57,7 +57,7 @@ async def handle_router_iptables_log_line(line):
                     ])
                     
                     await send_alert_to_admins(msg, parse_mode="markdown", reply_markup=kb)
-                    logging.warning(f"[Router IPS] Устройство {src_ip} автоматически забанено на роутере!")
+                    logging.warning("router_ips_device_automatically_banned_on_router", src_ip)
                     return
             
         # 3. Троттлинг предупреждений
@@ -79,10 +79,10 @@ async def handle_router_iptables_log_line(line):
         msg = get_router_port_alert("IPTables", proto, src_ip, src_port, dst_host, dst_port, timestamp)
                 
         await send_alert_to_admins(msg, parse_mode="markdown", reply_markup=kb)
-        logging.warning(f"[Router IPS] Устройство {src_ip} обратилось к чувствительному порту {dst_host}:{dst_port}")
+        logging.warning("router_ips_device_accessed_sensitive_port", src_ip, dst_host, dst_port)
         
     except Exception as e:
-        logging.error(f"Ошибка при обработке лога iptables роутера: {e}")
+        logging.error("error_processing_router_iptables_log", e)
 
 async def handle_router_conntrack_log_line(line):
     """Обрабатывает распарсенную строку conntrack от роутера."""
@@ -131,7 +131,7 @@ async def handle_router_conntrack_log_line(line):
                     ])
                     
                     await send_alert_to_admins(msg, parse_mode="markdown", reply_markup=kb)
-                    logging.warning(f"[Router IPS] Устройство {src_ip} автоматически забанено на роутере!")
+                    logging.warning("router_ips_device_automatically_banned_on_router", src_ip)
                     return
             
         # 3. Троттлинг предупреждений
@@ -153,7 +153,7 @@ async def handle_router_conntrack_log_line(line):
         msg = get_router_port_alert("Conntrack", proto, src_ip, src_port, dst_host, dst_port, timestamp)
                 
         await send_alert_to_admins(msg, parse_mode="markdown", reply_markup=kb)
-        logging.warning(f"[Router IPS: Conntrack] Устройство {src_ip} обратилось к чувствительному порту {dst_host}:{dst_port}")
+        logging.warning("router_ips_conntrack_device_accessed_sensitive_port", src_ip, dst_host, dst_port)
         
     except Exception as e:
-        logging.error(f"Ошибка при обработке лога conntrack роутера: {e}")
+        logging.error("error_processing_router_conntrack_log", e)
