@@ -1,9 +1,11 @@
 import logging
 import html
+import asyncio
 from aiogram import Router, types, F
 from aiogram.filters.command import Command
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 from core.config import settings
+from core.messages.i18n import _
 
 router = Router(name="core_status_router")
 
@@ -16,8 +18,6 @@ def is_task_running(task_name: str) -> bool:
         if t.get_name() == task_name and not t.done():
             return True
     return False
-
-import asyncio
 
 async def get_system_status_text() -> str:
     from core.messages import get_system_status_table
@@ -52,11 +52,11 @@ async def get_system_status_text() -> str:
 async def cmd_status(message: types.Message):
     from modules.proxmox.monitor.utils import edit_rich_message
     
-    status_msg = await message.answer("⏳ <i>Сбор информации о состоянии систем...</i>", parse_mode="HTML")
+    status_msg = await message.answer(_("keyboards", "status_loading"), parse_mode="HTML")
     response_text = await get_system_status_text()
     kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🔄 Обновить статус", callback_data="status_check")],
-        [InlineKeyboardButton(text="🔙 В главное меню", callback_data="main_menu")]
+        [InlineKeyboardButton(text=_("keyboards", "btn_refresh_status"), callback_data="status_check")],
+        [InlineKeyboardButton(text=_("keyboards", "btn_back_to_menu"), callback_data="main_menu")]
     ])
     await edit_rich_message(
         chat_id=message.chat.id,
@@ -74,7 +74,7 @@ async def callback_status_check(callback: CallbackQuery):
         await edit_rich_message(
             chat_id=callback.message.chat.id,
             message_id=callback.message.message_id,
-            text="⏳ <i>Сбор информации о состоянии систем...</i>",
+            text=_("keyboards", "status_loading"),
             parse_mode="HTML"
         )
     except Exception:
@@ -83,8 +83,8 @@ async def callback_status_check(callback: CallbackQuery):
     response_text = await get_system_status_text()
     
     kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🔄 Обновить статус", callback_data="status_check")],
-        [InlineKeyboardButton(text="🔙 В главное меню", callback_data="main_menu")]
+        [InlineKeyboardButton(text=_("keyboards", "btn_refresh_status"), callback_data="status_check")],
+        [InlineKeyboardButton(text=_("keyboards", "btn_back_to_menu"), callback_data="main_menu")]
     ])
     
     try:
