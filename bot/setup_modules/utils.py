@@ -10,6 +10,16 @@ BLUE = '\033[0;34m'
 CYAN = '\033[0;36m'
 NC = '\033[0m' # No Color
 
+def get_lang():
+    try:
+        from core.config import settings
+        return settings.bot_language
+    except Exception:
+        return 'en'
+
+def echo_lang(ru, en):
+    return ru if get_lang() == 'ru' else en
+
 def print_header(text):
     print(f"\n{BLUE}=== {text} ==={NC}")
 
@@ -58,7 +68,7 @@ def ensure_utf8_env(path):
 
 def modify_env_value(env_path, key, value, remove=False):
     if not os.path.exists(env_path):
-        print_error(f"Файл конфигурации не найден по пути: {env_path}")
+        print_error(echo_lang(f"Файл конфигурации не найден по пути: {env_path}", f"Configuration file not found at path: {env_path}"))
         return False
 
     ensure_utf8_env(env_path)
@@ -83,39 +93,39 @@ def modify_env_value(env_path, key, value, remove=False):
                                 items.remove(value)
                             if items:
                                 new_lines.append(f"{key}={','.join(items)}\n")
-                                print_info(f"Удаляем {value} из {key} в .env")
+                                print_info(echo_lang(f"Удаляем {value} из {key} в .env", f"Removing {value} from {key} in .env"))
                             else:
                                 new_lines.append(f"{key}=\n")
-                                print_info(f"Очищаем {key} в .env")
+                                print_info(echo_lang(f"Очищаем {key} в .env", f"Clearing {key} in .env"))
                         else:
                             new_lines.append(f"{key}=\n")
-                            print_info(f"Очищаем {key} в .env")
+                            print_info(echo_lang(f"Очищаем {key} в .env", f"Clearing {key} in .env"))
                     else:
                         if ',' in val or key == "TRUSTED_ADMIN_IPS":
                             items = [x.strip() for x in val.split(',') if x.strip()]
                             if value not in items:
                                 items.append(value)
                             new_lines.append(f"{key}={','.join(items)}\n")
-                            print_info(f"Добавляем {value} в {key} в .env")
+                            print_info(echo_lang(f"Добавляем {value} в {key} в .env", f"Adding {value} to {key} in .env"))
                         else:
                             new_lines.append(f"{key}={value}\n")
-                            print_info(f"Устанавливаем {key}={value} в .env")
+                            print_info(echo_lang(f"Устанавливаем {key}={value} в .env", f"Setting {key}={value} in .env"))
                     continue
             new_lines.append(line)
 
         if not found and not remove:
-            print_info(f"Добавляем {key}={value} в конец .env")
+            print_info(echo_lang(f"Добавляем {key}={value} в конец .env", f"Adding {key}={value} to the end of .env"))
             new_lines.append(f"\n{key}={value}\n")
 
         with open(env_path, 'w', encoding='utf-8') as f:
             f.writelines(new_lines)
         return True
     except Exception as e:
-        print_error(f"Ошибка при изменении .env ({key}): {e}")
+        print_error(echo_lang(f"Ошибка при изменении .env ({key}): {e}", f"Error modifying .env ({key}): {e}"))
         return False
 
 async def restart_bot_service():
-    print_info("Перезапуск службы proxmox-lxc-bot.service для применения изменений...")
+    print_info(echo_lang("Перезапуск службы proxmox-lxc-bot.service для применения изменений...", "Restarting proxmox-lxc-bot.service to apply changes..."))
     try:
         proc = await asyncio.create_subprocess_exec(
             "systemctl", "restart", "proxmox-lxc-bot.service",
@@ -125,8 +135,8 @@ async def restart_bot_service():
         await proc.communicate()
         # Дополнительная пауза на запуск и инициализацию
         await asyncio.sleep(3)
-        print_success("Служба бота перезапущена.")
+        print_success(echo_lang("Служба бота перезапущена.", "Bot service restarted successfully."))
         return True
     except Exception as e:
-        print_error(f"Не удалось перезапустить службу бота: {e}")
+        print_error(echo_lang(f"Не удалось перезапустить службу бота: {e}", f"Failed to restart bot service: {e}"))
         return False
