@@ -4,6 +4,7 @@ from aiogram.types import CallbackQuery
 from aiogram.exceptions import TelegramBadRequest
 from modules.proxmox.api import proxmox
 from modules.proxmox.keyboards import get_vm_control_keyboard
+from core.messages.i18n import _
 
 router = Router(name="proxmox_vms_router")
 
@@ -31,17 +32,18 @@ async def process_vm_select(callback: CallbackQuery):
             uptime = status_data.get('uptime', 0)
             hours, remainder = divmod(uptime, 3600)
             minutes, seconds = divmod(remainder, 60)
-            uptime_str = f"{hours}ч {minutes}м {seconds}с"
+            uptime_str = _("proxmox", "uptime_format", hours=hours, minutes=minutes, seconds=seconds)
             
             pve_version = status_data.get('pveversion', 'Unknown')
+            status_online = _("proxmox", "status_online_host")
             
-            text = (f"💻 <b>Хост Proxmox VE ({node_name})</b>\n\n"
-                    f"Статус: 🟢 Включен\n"
-                    f"Версия PVE: <code>{pve_version}</code>\n"
-                    f"Ядер CPU: {cpu_count}\n"
-                    f"Нагрузка CPU: {cpu:.1f}%\n"
-                    f"Потребление RAM: {mem:.1f} / {maxmem:.1f} GB\n"
-                    f"Uptime: {uptime_str}")
+            text = (f"{_('proxmox', 'status_host_title', node_name=node_name)}"
+                    f"{_('proxmox', 'status_label')}: {status_online}\n"
+                    f"{_('proxmox', 'version_label')}: <code>{pve_version}</code>\n"
+                    f"{_('proxmox', 'cpu_cores_label')}: {cpu_count}\n"
+                    f"{_('proxmox', 'cpu_load_label')}: {cpu:.1f}%\n"
+                    f"{_('proxmox', 'ram_usage_label')}: {mem:.1f} / {maxmem:.1f} GB\n"
+                    f"{_('proxmox', 'uptime_label')}: {uptime_str}")
             
             try:
                 await callback.message.edit_text(
@@ -51,7 +53,7 @@ async def process_vm_select(callback: CallbackQuery):
                 )
             except TelegramBadRequest as e:
                 if "message is not modified" in str(e):
-                    await callback.answer("Данные хоста актуальны")
+                    await callback.answer(_("proxmox", "host_data_actual"))
                 else:
                     raise
             return
@@ -59,7 +61,7 @@ async def process_vm_select(callback: CallbackQuery):
         status_data = proxmox.get_vm_status(node_name, vmid, is_lxc=(vm_type=='lxc'))
         
         is_running = status_data.get('status') == 'running'
-        status_text = "🟢 Включена" if is_running else "🔴 Выключена"
+        status_text = _("proxmox", "status_online_vm") if is_running else _("proxmox", "status_offline_vm")
         
         cpu = status_data.get('cpu', 0) * 100
         mem = status_data.get('mem', 0) / (1024**3)
@@ -68,14 +70,18 @@ async def process_vm_select(callback: CallbackQuery):
         
         hours, remainder = divmod(uptime, 3600)
         minutes, seconds = divmod(remainder, 60)
-        uptime_str = f"{hours}ч {minutes}м {seconds}с" if is_running else "0ч 0м 0с"
         
-        text = (f"🖥 <b>ВМ {vmid} ({status_data.get('name', 'Unknown')})</b>\n\n"
-                f"Статус: {status_text}\n"
-                f"Тип: {vm_type.upper()}\n"
+        if is_running:
+            uptime_str = _("proxmox", "uptime_format", hours=hours, minutes=minutes, seconds=seconds)
+        else:
+            uptime_str = _("proxmox", "uptime_format", hours=0, minutes=0, seconds=0)
+        
+        text = (f"{_('proxmox', 'status_vm_title', vmid=vmid, name=status_data.get('name', 'Unknown'))}"
+                f"{_('proxmox', 'status_label')}: {status_text}\n"
+                f"{_('proxmox', 'type_label')}: {vm_type.upper()}\n"
                 f"CPU: {cpu:.1f}%\n"
                 f"RAM: {mem:.1f} / {maxmem:.1f} GB\n"
-                f"Uptime: {uptime_str}")
+                f"{_('proxmox', 'uptime_label')}: {uptime_str}")
         
         try:
             await callback.message.edit_text(
@@ -85,13 +91,13 @@ async def process_vm_select(callback: CallbackQuery):
             )
         except TelegramBadRequest as e:
             if "message is not modified" in str(e):
-                await callback.answer("Данные ВМ актуальны")
+                await callback.answer(_("proxmox", "vm_data_actual"))
             else:
                 raise
     except Exception as e:
         err_msg = str(e)[:120]
         try:
-            await callback.answer(f"Ошибка загрузки ВМ: {err_msg}", show_alert=True)
+            await callback.answer(_("proxmox", "error_vm_load", err_msg=err_msg), show_alert=True)
         except Exception:
             pass
 
@@ -111,7 +117,7 @@ async def process_vm_control(callback: CallbackQuery):
         
         is_lxc = (vm_type == 'lxc')
         
-        await callback.answer(f"⏳ Выполняю команду {action}...", show_alert=False)
+        await callback.answer(_("proxmox", "exec_cmd", action=action), show_alert=False)
         
         if action == "start": proxmox.start_vm(node_name, vmid, is_lxc)
         elif action == "stop": proxmox.stop_vm(node_name, vmid, is_lxc)
@@ -126,6 +132,6 @@ async def process_vm_control(callback: CallbackQuery):
     except Exception as e:
         err_msg = str(e)[:120]
         try:
-            await callback.answer(f"❌ Ошибка команды:\n{err_msg}", show_alert=True)
+            await callback.answer(_("proxmox", "error_cmd", err_msg=err_msg), show_alert=True)
         except Exception:
             pass

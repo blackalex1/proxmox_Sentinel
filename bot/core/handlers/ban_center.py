@@ -9,23 +9,24 @@ from core.config import settings
 from modules.router.router import unban_router_ip
 from modules.proxmox.monitor.traffic.firewall import unban_local_ip
 from modules.proxmox.monitor.remote.traffic.firewall import unban_remote_ip
+from core.messages.i18n import _
 
 router = Router(name="core_ban_center_router")
 
 def get_target_label(server_ip: str) -> str:
     if server_ip == 'router':
-        return "🔌 Роутер"
+        return _("whitelist", "router_node")
     elif server_ip == 'local':
-        return "🖥️ Proxmox Host"
+        return _("whitelist", "pve_node")
     else:
-        return f"🌐 VPS {server_ip}"
+        return _("whitelist", "vps_node", ip=server_ip)
 
 async def render_ban_center(message_or_query) -> tuple[str, InlineKeyboardMarkup]:
     """Генерирует HTML-текст и клавиатуру для Центра блокировок."""
     # Получаем все временные блокировки из БД
     bans = await execute_read_all("SELECT * FROM temp_bans")
     
-    # Фильтруем устаревшие баны и форматируем активные
+    # Фильтруем устаревшие баны и форматируют активные
     active_bans = []
     now = datetime.datetime.now()
     
@@ -47,14 +48,14 @@ async def render_ban_center(message_or_query) -> tuple[str, InlineKeyboardMarkup
             secs = seconds % 60
             
             if hours > 0:
-                remaining = f"{hours}ч {minutes}м"
+                remaining = _("ban_center", "remaining_hours", hours=hours, minutes=minutes)
             else:
-                remaining = f"{minutes}м {secs}с"
+                remaining = _("ban_center", "remaining_minutes", minutes=minutes, seconds=secs)
                 
-            reason = "Вручную"
+            reason = _("ban_center", "reason_manual")
             try:
                 if 'reason' in row.keys():
-                    reason = row['reason'] or "Вручную"
+                    reason = row['reason'] or _("ban_center", "reason_manual")
             except Exception:
                 pass
                 
@@ -70,9 +71,9 @@ async def render_ban_center(message_or_query) -> tuple[str, InlineKeyboardMarkup
             active_bans.append({
                 'server_ip': row['server_ip'],
                 'dst_ip': row['dst_ip'],
-                'remaining': "Неизвестно",
+                'remaining': _("ban_center", "remaining_unknown"),
                 'label': get_target_label(row['server_ip']),
-                'reason': "Вручную"
+                'reason': _("ban_center", "reason_manual")
             })
 
     # Получаем заблокированные ключи из БД
@@ -89,7 +90,7 @@ async def render_ban_center(message_or_query) -> tuple[str, InlineKeyboardMarkup
             # Кнопка разблокировки для каждого IP
             kb_buttons.append([
                 InlineKeyboardButton(
-                    text=f"🔓 Разблокировать {ban['dst_ip']}",
+                    text=_("ban_center", "btn_unban_ip", ip=ban['dst_ip']),
                     callback_data=f"ban_center_unban:{ban['server_ip']}:{ban['dst_ip']}"
                 )
             ])
@@ -100,14 +101,14 @@ async def render_ban_center(message_or_query) -> tuple[str, InlineKeyboardMarkup
             # Кнопка разблокировки ключа
             kb_buttons.append([
                 InlineKeyboardButton(
-                    text=f"🔓 Восстановить ключ (...{short_fp})",
+                    text=_("ban_center", "btn_unban_key", fp=short_fp),
                     callback_data=f"ban_center_unbankey:{key['id']}"
                 )
             ])
             
     # Добавляем кнопку возврата в главное меню
     kb_buttons.append([
-        InlineKeyboardButton(text="🔙 В главное меню", callback_data="main_menu")
+        InlineKeyboardButton(text=_("keyboards", "btn_back_to_menu"), callback_data="main_menu")
     ])
     
     reply_markup = InlineKeyboardMarkup(inline_keyboard=kb_buttons)
@@ -122,7 +123,7 @@ async def cmd_bans(message: types.Message):
         await send_rich_message(chat_id=message.chat.id, text=text, parse_mode="HTML", reply_markup=reply_markup)
     except Exception as e:
         logging.error(f"[Ban Center] Ошибка в хэндлере /bans: {e}")
-        await message.answer("❌ Ошибка при загрузке Центра блокировок.")
+        await message.answer(_("ban_center", "load_err"))
 
 @router.callback_query(F.data == "ban_center_main")
 async def process_ban_center_main(callback: CallbackQuery):
@@ -139,7 +140,7 @@ async def process_ban_center_main(callback: CallbackQuery):
         )
     except Exception as e:
         logging.error(f"[Ban Center] Ошибка при переходе в Центр блокировок: {e}")
-        await callback.answer("❌ Ошибка при открытии Центра блокировок.", show_alert=True)
+        await callback.answer(_("ban_center", "open_err"), show_alert=True)
 
 @router.callback_query(F.data.startswith("ban_center_unban:"))
 async def process_ban_center_unban(callback: CallbackQuery):
@@ -147,7 +148,7 @@ async def process_ban_center_unban(callback: CallbackQuery):
     try:
         parts = callback.data.split(":")
         if len(parts) < 3:
-            await callback.answer("❌ Ошибка: Неверный формат callback.", show_alert=True)
+            await callback.answer(_("ban_center", "invalid_callback_err"), show_alert=True)
             return
             
         server_ip = parts[1]
@@ -156,7 +157,7 @@ async def process_ban_center_unban(callback: CallbackQuery):
         success = False
         desc = ""
         
-        await callback.answer("⏳ Снятие блокировки...", show_alert=False)
+        await callback.answer(_("ban_center", "unban_in_progress"), show_alert=False)
         
         if server_ip == 'router':
             success, desc = await unban_router_ip(dst_ip)
@@ -169,12 +170,12 @@ async def process_ban_center_unban(callback: CallbackQuery):
                 success, desc = await unban_remote_ip(server, dst_ip)
             else:
                 success = False
-                desc = f"VPS с IP {server_ip} не найден в настройках"
+                desc = _("ban_center", "vps_not_found_err", ip=server_ip)
                 
         if success:
-            await callback.answer(f"🟢 Блокировка с IP {dst_ip} успешно снята!", show_alert=True)
+            await callback.answer(_("ban_center", "unban_success_alert", ip=dst_ip), show_alert=True)
         else:
-            await callback.answer(f"❌ Ошибка снятия блокировки: {desc}", show_alert=True)
+            await callback.answer(_("ban_center", "unban_failed_alert", desc=desc), show_alert=True)
             
         # Обновляем сообщение Центра блокировок
         text, reply_markup = await render_ban_center(callback)
@@ -192,7 +193,7 @@ async def process_ban_center_unban(callback: CallbackQuery):
             
     except Exception as e:
         logging.error(f"[Ban Center] Исключение при ручном разбане: {e}")
-        await callback.answer(f"❌ Ошибка при снятии блокировки: {e}", show_alert=True)
+        await callback.answer(_("ban_center", "unban_failed_alert", desc=str(e)), show_alert=True)
 
 def get_unban_key_cmd(keys_path: str, key_body: str) -> str:
     import shlex
@@ -216,7 +217,7 @@ async def process_ban_center_unbankey(callback: CallbackQuery):
     try:
         parts = callback.data.split(":")
         if len(parts) < 2:
-            await callback.answer("❌ Ошибка: Неверный формат callback.", show_alert=True)
+            await callback.answer(_("ban_center", "invalid_callback_err"), show_alert=True)
             return
             
         key_id = parts[1]
@@ -227,10 +228,10 @@ async def process_ban_center_unbankey(callback: CallbackQuery):
         # Находим запись ключа
         key = next((k for k in banned_keys if k['id'] == key_id), None)
         if not key:
-            await callback.answer("❌ Ошибка: Ключ не найден в БД или уже разблокирован.", show_alert=True)
+            await callback.answer(_("ban_center", "key_not_found_err"), show_alert=True)
             return
             
-        await callback.answer("⏳ Восстановление ключа...", show_alert=False)
+        await callback.answer(_("ban_center", "restore_key_in_progress"), show_alert=False)
         
         success = False
         desc = ""
@@ -259,7 +260,7 @@ async def process_ban_center_unbankey(callback: CallbackQuery):
             try:
                 vmid = int(target.split("_")[1])
             except Exception:
-                await callback.answer("Неверный ID LXC.", show_alert=True)
+                await callback.answer(_("ban_center", "invalid_lxc_id_err"), show_alert=True)
                 return
             # Восстанавливаем прямо в пространстве имен контейнера через pct exec
             proc = await asyncio.create_subprocess_exec(
@@ -277,7 +278,7 @@ async def process_ban_center_unbankey(callback: CallbackQuery):
             server = next((s for s in settings.remote_servers if s['ip'] == target), None)
             if not server:
                 success = False
-                desc = f"VPS {target} не найден в настройках"
+                desc = _("ban_center", "vps_not_found_err", ip=target)
             else:
                 from modules.proxmox.monitor.remote.ssh import run_remote_ssh_cmd
                 success, stdout, stderr = await run_remote_ssh_cmd(
@@ -291,9 +292,9 @@ async def process_ban_center_unbankey(callback: CallbackQuery):
             # Удаляем запись из БД
             new_banned_keys = [k for k in banned_keys if k['id'] != key_id]
             await set_state("banned_ssh_keys", new_banned_keys)
-            await callback.answer("🟢 SSH-ключ успешно восстановлен!", show_alert=True)
+            await callback.answer(_("ban_center", "restore_key_success_alert"), show_alert=True)
         else:
-            await callback.answer(f"❌ Ошибка восстановления: {desc}", show_alert=True)
+            await callback.answer(_("ban_center", "restore_key_failed_alert", desc=desc), show_alert=True)
             
         # Обновляем сообщение Центра блокировок
         text, reply_markup = await render_ban_center(callback)
@@ -311,7 +312,7 @@ async def process_ban_center_unbankey(callback: CallbackQuery):
             
     except Exception as e:
         logging.error(f"[Ban Center] Исключение при ручном разбане ключа: {e}")
-        await callback.answer(f"❌ Ошибка при восстановлении: {e}", show_alert=True)
+        await callback.answer(_("ban_center", "restore_key_failed_alert", desc=str(e)), show_alert=True)
 
 
 @router.message(Command("unban_login_ip"))
@@ -322,14 +323,13 @@ async def cmd_unban_login_ip(message: types.Message):
     args = message.text.split(maxsplit=1)
     if len(args) < 2:
         await message.reply(
-            "🟢 <b>Разблокировка IP входа:</b>\n"
-            "Используйте команду: <code>/unban_login_ip &lt;ip&gt;</code>",
+            _("ban_center", "unban_login_ip_help"),
             parse_mode="HTML"
         )
         return
         
     ip_to_unban = args[1].strip()
-    status_msg = await message.reply(f"⏳ Разблокировка IP <code>{ip_to_unban}</code> на всех панелях...")
+    status_msg = await message.reply(_("ban_center", "unban_login_ip_in_progress", ip=ip_to_unban))
     
     from core.spectre_client import spectre_manager
     
@@ -341,21 +341,21 @@ async def cmd_unban_login_ip(message: types.Message):
             success, res = await panel.request("POST", "api/security/unban-ip", data={"ip": ip_to_unban})
             if success and res.get("success"):
                 any_success = True
-                results.append(f"  • {panel.name}: 🟢 Разблокирован")
+                results.append(_("ban_center", "unban_login_ip_success_item", name=panel.name))
             else:
-                msg = res.get("msg") or "Неизвестная ошибка"
-                results.append(f"  • {panel.name}: 🔴 Ошибка ({msg})")
+                msg = res.get("msg") or "Unknown error"
+                results.append(_("ban_center", "unban_login_ip_failed_item", name=panel.name, error=msg))
         except Exception as e:
-            results.append(f"  • {panel.name}: 🔴 Ошибка ({e})")
+            results.append(_("ban_center", "unban_login_ip_failed_item", name=panel.name, error=str(e)))
             
     details_str = "\n".join(results)
     if any_success:
         await status_msg.edit_text(
-            f"✅ <b>Результаты разблокировки IP <code>{ip_to_unban}</code>:</b>\n{details_str}",
+            _("ban_center", "unban_login_ip_success", ip=ip_to_unban, details=details_str),
             parse_mode="HTML"
         )
     else:
         await status_msg.edit_text(
-            f"❌ <b>Не удалось разблокировать IP <code>{ip_to_unban}</code>:</b>\n{details_str}",
+            _("ban_center", "unban_login_ip_failed", ip=ip_to_unban, details=details_str),
             parse_mode="HTML"
         )

@@ -26,8 +26,8 @@ def get_ban_center_table(active_bans, banned_keys):
             rows.append('  </tr>')
             
             for ban in active_bans:
-                reason = ban.get("reason", "Вручную")
-                if reason == "Вручную" or reason == "Manual":
+                reason = ban.get("reason", _("ban_center", "reason_manual"))
+                if reason in ("Вручную", "Manual", _("ban_center", "reason_manual")):
                     reason = _("ban_center", "reason_manual")
                 rows.append('  <tr>')
                 rows.append(f'    <td style="padding: 8px;"><code>{html.escape(ban["dst_ip"])}</code></td>')

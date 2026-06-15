@@ -8,6 +8,7 @@ from aiogram.fsm.state import State, StatesGroup
 
 from core.db import get_node_whitelists, save_node_whitelists
 from core.spectre_client import spectre_manager
+from core.messages.i18n import _
 
 router = Router(name="core_whitelist_router")
 
@@ -40,25 +41,25 @@ class WhitelistState(StatesGroup):
 
 def get_node_label(node: str) -> str:
     if node == 'global':
-        return "🌍 Глобально (Везде)"
+        return _("whitelist", "global_node")
     elif node == 'router':
-        return "🔌 Роутер"
+        return _("whitelist", "router_node")
     elif node == 'local':
-        return "🖥️ Proxmox Host"
+        return _("whitelist", "pve_node")
     elif node.startswith("lxc_"):
         vmid = node.split("_")[1]
         panel = spectre_manager.get_panel_by_vmid(int(vmid))
-        return f"📦 LXC {vmid} ({panel.name if panel else 'VPN'})"
+        return _("whitelist", "lxc_node", vmid=vmid, name=panel.name if panel else 'VPN')
     elif node.startswith("vps_"):
         ip = node.split("_")[1]
-        return f"🌐 VPS {ip}"
+        return _("whitelist", "vps_node", ip=ip)
     return node
 
 async def get_node_selection_keyboard() -> InlineKeyboardMarkup:
     buttons = [
-        [InlineKeyboardButton(text="🌍 Глобально (Везде)", callback_data="wl_view:global")],
-        [InlineKeyboardButton(text="🔌 Роутер", callback_data="wl_view:router")],
-        [InlineKeyboardButton(text="🖥️ Proxmox Host", callback_data="wl_view:local")]
+        [InlineKeyboardButton(text=_("whitelist", "global_node"), callback_data="wl_view:global")],
+        [InlineKeyboardButton(text=_("whitelist", "router_node"), callback_data="wl_view:router")],
+        [InlineKeyboardButton(text=_("whitelist", "pve_node"), callback_data="wl_view:local")]
     ]
     
     # Получаем все правила из БД, чтобы отобразить даже выключенные/офлайн ноды
@@ -75,11 +76,11 @@ async def get_node_selection_keyboard() -> InlineKeyboardMarkup:
         if p.source_type == 'lxc':
             node_key = f"lxc_{p.identifier}"
             active_nodes.add(node_key)
-            buttons.append([InlineKeyboardButton(text=f"📦 LXC {p.identifier} ({p.name})", callback_data=f"wl_view:{node_key}")])
+            buttons.append([InlineKeyboardButton(text=_("whitelist", "lxc_node", vmid=p.identifier, name=p.name), callback_data=f"wl_view:{node_key}")])
         elif p.source_type == 'vps':
             node_key = f"vps_{p.identifier}"
             active_nodes.add(node_key)
-            buttons.append([InlineKeyboardButton(text=f"🌐 VPS {p.identifier}", callback_data=f"wl_view:{node_key}")])
+            buttons.append([InlineKeyboardButton(text=_("whitelist", "vps_node", ip=p.identifier), callback_data=f"wl_view:{node_key}")])
             
     # Добавляем неактивные ноды, у которых есть правила в БД
     for node in sorted(nodes_with_rules):
@@ -90,25 +91,25 @@ async def get_node_selection_keyboard() -> InlineKeyboardMarkup:
             
         # Узел не в сети/неактивен, но имеет сохраненные правила в БД
         label = get_node_label(node)
-        buttons.append([InlineKeyboardButton(text=f"{label} (офлайн)", callback_data=f"wl_view:{node}")])
+        buttons.append([InlineKeyboardButton(text=_("whitelist", "offline_label", label=label), callback_data=f"wl_view:{node}")])
             
     # Добавляем кнопку просмотра всех правил
-    buttons.append([InlineKeyboardButton(text="📋 Показать все правила", callback_data="wl_view_all")])
-    buttons.append([InlineKeyboardButton(text="🔙 В главное меню", callback_data="main_menu")])
+    buttons.append([InlineKeyboardButton(text=_("whitelist", "btn_show_all"), callback_data="wl_view_all")])
+    buttons.append([InlineKeyboardButton(text=_("keyboards", "btn_back_to_menu"), callback_data="main_menu")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 @router.message(Command("whitelist"))
 async def cmd_whitelist(message: types.Message, state: FSMContext):
     await state.clear()
     kb = await get_node_selection_keyboard()
-    await message.answer("⚙️ <b>Управление белыми списками Aegis IPS</b>\n\nВыберите узел (ноду) для просмотра и настройки правил безопасности:", parse_mode="HTML", reply_markup=kb)
+    await message.answer(_("whitelist", "manage_title"), parse_mode="HTML", reply_markup=kb)
 
 @router.callback_query(F.data == "whitelist_main")
 async def cb_whitelist_main(callback: CallbackQuery, state: FSMContext):
     await state.clear()
     kb = await get_node_selection_keyboard()
     try:
-        await callback.message.edit_text("⚙️ <b>Управление белыми списками Aegis IPS</b>\n\nВыберите узел (ноду) для просмотра и настройки правил безопасности:", parse_mode="HTML", reply_markup=kb)
+        await callback.message.edit_text(_("whitelist", "manage_title"), parse_mode="HTML", reply_markup=kb)
     except Exception:
         pass
     await callback.answer()
@@ -122,8 +123,8 @@ async def cb_whitelist_view_all(callback: CallbackQuery):
     msg_text = get_whitelist_view_all_table(whitelists, get_node_label)
     
     kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🔙 К выбору узла", callback_data="whitelist_main")],
-        [InlineKeyboardButton(text="🔙 В главное меню", callback_data="main_menu")]
+        [InlineKeyboardButton(text=_("whitelist", "btn_back_to_nodes"), callback_data="whitelist_main")],
+        [InlineKeyboardButton(text=_("keyboards", "btn_back_to_menu"), callback_data="main_menu")]
     ])
     
     await edit_rich_message(
@@ -153,11 +154,11 @@ async def cb_whitelist_view(callback: CallbackQuery, state: FSMContext):
     
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [
-            InlineKeyboardButton(text="➕ Добавить IP/Порт", callback_data=f"wl_add_ip_port:{node}"),
-            InlineKeyboardButton(text="➕ Добавить Процесс", callback_data=f"wl_add_proc:{node}")
+            InlineKeyboardButton(text=_("whitelist", "btn_add_ip_port"), callback_data=f"wl_add_ip_port:{node}"),
+            InlineKeyboardButton(text=_("whitelist", "btn_add_proc"), callback_data=f"wl_add_proc:{node}")
         ],
-        [InlineKeyboardButton(text="🗑️ Удалить правило", callback_data=f"wl_del_select:{node}")],
-        [InlineKeyboardButton(text="🔙 Назад к списку узлов", callback_data="whitelist_main")]
+        [InlineKeyboardButton(text=_("whitelist", "btn_delete_rule"), callback_data=f"wl_del_select:{node}")],
+        [InlineKeyboardButton(text=_("whitelist", "btn_back_to_nodes_list"), callback_data="whitelist_main")]
     ])
     
     try:
@@ -179,11 +180,10 @@ async def cb_whitelist_add_ip_port(callback: CallbackQuery, state: FSMContext):
     await state.set_state(WhitelistState.waiting_for_ip_port)
     
     await callback.message.edit_text(
-        f"➕ <b>Добавление IP/Порта в белый список</b>\nУзел: {get_node_label(node)}\n\n"
-        f"Отправьте сообщением IP-адрес или связку IP:Порт (например: <code>1.2.3.4</code> или <code>1.2.3.4:22</code>, или <code>1.2.3.4:*</code> для любого порта):",
+        _("whitelist", "add_ip_port_title", node_label=get_node_label(node)),
         parse_mode="HTML",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="❌ Отмена", callback_data=f"wl_view:{node}")]
+            [InlineKeyboardButton(text=_("whitelist", "btn_cancel"), callback_data=f"wl_view:{node}")]
         ])
     )
     await callback.answer()
@@ -195,14 +195,14 @@ async def process_ip_port_input(message: types.Message, state: FSMContext):
     node = data.get("node")
     
     if not val:
-        await message.reply("Неверный ввод. Попробуйте еще раз или нажмите Отмена.")
+        await message.reply(_("whitelist", "invalid_input"))
         return
         
     # Базовая валидация IP / IP:Port
     # Разрешаем IPv4, IPv4:Port, IPv4:*
-    match = re.match(r'^^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}(?::(?:\d+|\*))?$$', val)
+    match = re.match(r'^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}(?::(?:\d+|\*))?$', val)
     if not match:
-        await message.reply("❌ Неверный формат IP/Порта. Примеры: <code>192.168.1.100</code> или <code>192.168.1.100:22</code> или <code>192.168.1.100:*</code>.", parse_mode="HTML")
+        await message.reply(_("whitelist", "invalid_ip_port_format"), parse_mode="HTML")
         return
         
     whitelists = await get_node_whitelists()
@@ -218,25 +218,24 @@ async def process_ip_port_input(message: types.Message, state: FSMContext):
     
     # Возвращаемся к просмотру ноды
     wl = whitelists[node]
-    text = f"🟢 <b>Правило успешно добавлено!</b>\n\n📁 <b>Белый список для узла: {get_node_label(node)}</b>\n"
-    text += "━━━━━━━━━━━━━━━━━━━━━━━━\n"
+    text = _("whitelist", "rule_added_success", node_label=get_node_label(node))
     if wl["ip_ports"]:
-        text += "<b>Разрешенные IP / IP:Порты:</b>\n"
+        text += _("whitelist", "allowed_ip_ports")
         for item in wl["ip_ports"]:
             text += f"  • <code>{item}</code>\n"
         text += "\n"
     if wl["processes"]:
-        text += "<b>Разрешенные процессы:</b>\n"
+        text += _("whitelist", "allowed_processes")
         for item in wl["processes"]:
             text += f"  • <code>{item}</code>\n"
             
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [
-            InlineKeyboardButton(text="➕ Добавить IP/Порт", callback_data=f"wl_add_ip_port:{node}"),
-            InlineKeyboardButton(text="➕ Добавить Процесс", callback_data=f"wl_add_proc:{node}")
+            InlineKeyboardButton(text=_("whitelist", "btn_add_ip_port"), callback_data=f"wl_add_ip_port:{node}"),
+            InlineKeyboardButton(text=_("whitelist", "btn_add_proc"), callback_data=f"wl_add_proc:{node}")
         ],
-        [InlineKeyboardButton(text="🗑️ Удалить правило", callback_data=f"wl_del_select:{node}")],
-        [InlineKeyboardButton(text="🔙 Назад к списку узлов", callback_data="whitelist_main")]
+        [InlineKeyboardButton(text=_("whitelist", "btn_delete_rule"), callback_data=f"wl_del_select:{node}")],
+        [InlineKeyboardButton(text=_("whitelist", "btn_back_to_nodes_list"), callback_data="whitelist_main")]
     ])
     await message.answer(text, parse_mode="HTML", reply_markup=kb)
 
@@ -247,11 +246,10 @@ async def cb_whitelist_add_proc(callback: CallbackQuery, state: FSMContext):
     await state.set_state(WhitelistState.waiting_for_process)
     
     await callback.message.edit_text(
-        f"➕ <b>Добавление процесса в белый список</b>\nУзел: {get_node_label(node)}\n\n"
-        f"Отправьте сообщением имя процесса (например: <code>caddy</code>, <code>nginx</code> или <code>sshd</code>):",
+        _("whitelist", "add_proc_title", node_label=get_node_label(node)),
         parse_mode="HTML",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="❌ Отмена", callback_data=f"wl_view:{node}")]
+            [InlineKeyboardButton(text=_("whitelist", "btn_cancel"), callback_data=f"wl_view:{node}")]
         ])
     )
     await callback.answer()
@@ -263,7 +261,7 @@ async def process_process_input(message: types.Message, state: FSMContext):
     node = data.get("node")
     
     if not val or not val.isalnum():
-        await message.reply("❌ Неверное имя процесса (разрешены только латинские буквы и цифры). Попробуйте еще раз.")
+        await message.reply(_("whitelist", "invalid_proc_name"))
         return
         
     whitelists = await get_node_whitelists()
@@ -278,25 +276,24 @@ async def process_process_input(message: types.Message, state: FSMContext):
     await state.clear()
     
     wl = whitelists[node]
-    text = f"🟢 <b>Процесс успешно добавлен!</b>\n\n📁 <b>Белый список для узла: {get_node_label(node)}</b>\n"
-    text += "━━━━━━━━━━━━━━━━━━━━━━━━\n"
+    text = _("whitelist", "proc_added_success", node_label=get_node_label(node))
     if wl["ip_ports"]:
-        text += "<b>Разрешенные IP / IP:Порты:</b>\n"
+        text += _("whitelist", "allowed_ip_ports")
         for item in wl["ip_ports"]:
             text += f"  • <code>{item}</code>\n"
         text += "\n"
     if wl["processes"]:
-        text += "<b>Разрешенные процессы:</b>\n"
+        text += _("whitelist", "allowed_processes")
         for item in wl["processes"]:
             text += f"  • <code>{item}</code>\n"
             
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [
-            InlineKeyboardButton(text="➕ Добавить IP/Порт", callback_data=f"wl_add_ip_port:{node}"),
-            InlineKeyboardButton(text="➕ Добавить Процесс", callback_data=f"wl_add_proc:{node}")
+            InlineKeyboardButton(text=_("whitelist", "btn_add_ip_port"), callback_data=f"wl_add_ip_port:{node}"),
+            InlineKeyboardButton(text=_("whitelist", "btn_add_proc"), callback_data=f"wl_add_proc:{node}")
         ],
-        [InlineKeyboardButton(text="🗑️ Удалить правило", callback_data=f"wl_del_select:{node}")],
-        [InlineKeyboardButton(text="🔙 Назад к списку узлов", callback_data="whitelist_main")]
+        [InlineKeyboardButton(text=_("whitelist", "btn_delete_rule"), callback_data=f"wl_del_select:{node}")],
+        [InlineKeyboardButton(text=_("whitelist", "btn_back_to_nodes_list"), callback_data="whitelist_main")]
     ])
     await message.answer(text, parse_mode="HTML", reply_markup=kb)
 
@@ -311,21 +308,21 @@ async def cb_whitelist_del_select(callback: CallbackQuery):
     processes = wl.get("processes", [])
     
     if not ip_ports and not processes:
-        await callback.answer("❌ Белый список этого узла пуст. Нечего удалять.", show_alert=True)
+        await callback.answer(_("whitelist", "empty_whitelist_err"), show_alert=True)
         return
         
     buttons = []
     
     for item in ip_ports:
-        buttons.append([InlineKeyboardButton(text=f"🗑️ IP: {item}", callback_data=f"wl_del_item:{node}:ip_ports:{item}")])
+        buttons.append([InlineKeyboardButton(text=_("whitelist", "btn_del_ip", item=item), callback_data=f"wl_del_item:{node}:ip_ports:{item}")])
     for item in processes:
-        buttons.append([InlineKeyboardButton(text=f"🗑️ Proc: {item}", callback_data=f"wl_del_item:{node}:processes:{item}")])
+        buttons.append([InlineKeyboardButton(text=_("whitelist", "btn_del_proc", item=item), callback_data=f"wl_del_item:{node}:processes:{item}")])
         
-    buttons.append([InlineKeyboardButton(text="🔙 Назад к просмотру", callback_data=f"wl_view:{node}")])
+    buttons.append([InlineKeyboardButton(text=_("whitelist", "btn_back_to_view"), callback_data=f"wl_view:{node}")])
     kb = InlineKeyboardMarkup(inline_keyboard=buttons)
     
     try:
-        await callback.message.edit_text(f"🗑️ <b>Удаление правил белого списка</b>\nУзел: {get_node_label(node)}\n\nВыберите правило, которое хотите удалить:", parse_mode="HTML", reply_markup=kb)
+        await callback.message.edit_text(_("whitelist", "del_rule_title", node_label=get_node_label(node)), parse_mode="HTML", reply_markup=kb)
     except Exception:
         pass
     await callback.answer()
@@ -343,7 +340,7 @@ async def cb_whitelist_del_item(callback: CallbackQuery):
             whitelists[node][item_type].remove(item)
             await save_node_whitelists(whitelists)
             await sync_whitelists_to_panels()
-            await callback.answer(f"🟢 Успешно удалено: {item}", show_alert=True)
+            await callback.answer(_("whitelist", "del_success_alert", item=item), show_alert=True)
             
     # Обновляем меню выбора удаления
     await cb_whitelist_del_select(callback)
@@ -355,15 +352,15 @@ async def cb_whitelist_del_item(callback: CallbackQuery):
 async def cmd_whitelist_add_cli(message: types.Message):
     args = message.text.split(maxsplit=2)
     if len(args) < 2:
-        await message.reply("❌ Использование: <code>/whitelist_add &lt;IP или IP:Port&gt; [node]</code>\nПример: <code>/whitelist_add 1.2.3.4:22 router</code>", parse_mode="HTML")
+        await message.reply(_("whitelist", "cli_add_help"), parse_mode="HTML")
         return
         
     val = args[1].strip()
     node = args[2].strip() if len(args) > 2 else "global"
     
-    match = re.match(r'^^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}(?::(?:\d+|\*))?$$', val)
+    match = re.match(r'^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}(?::(?:\d+|\*))?$', val)
     if not match:
-        await message.reply("❌ Неверный формат IP/Порта.")
+        await message.reply(_("whitelist", "cli_invalid_ip_port"))
         return
         
     whitelists = await get_node_whitelists()
@@ -374,22 +371,22 @@ async def cmd_whitelist_add_cli(message: types.Message):
         whitelists[node]["ip_ports"].append(val)
         await save_node_whitelists(whitelists)
         await sync_whitelists_to_panels()
-        await message.reply(f"🟢 Добавлено <code>{val}</code> в белый список узла <b>{get_node_label(node)}</b>.", parse_mode="HTML")
+        await message.reply(_("whitelist", "cli_added_ip_port", val=val, label=get_node_label(node)), parse_mode="HTML")
     else:
-        await message.reply(f"ℹ️ Правило <code>{val}</code> уже существует для узла <b>{get_node_label(node)}</b>.", parse_mode="HTML")
+        await message.reply(_("whitelist", "cli_rule_exists", val=val, label=get_node_label(node)), parse_mode="HTML")
 
 @router.message(Command("whitelist_process"))
 async def cmd_whitelist_process_cli(message: types.Message):
     args = message.text.split(maxsplit=2)
     if len(args) < 2:
-        await message.reply("❌ Использование: <code>/whitelist_process &lt;имя процесса&gt; [node]</code>\nПример: <code>/whitelist_process openvpn global</code>", parse_mode="HTML")
+        await message.reply(_("whitelist", "cli_proc_help"), parse_mode="HTML")
         return
         
     val = args[1].strip().lower()
     node = args[2].strip() if len(args) > 2 else "global"
     
     if not val or not val.isalnum():
-        await message.reply("❌ Неверное имя процесса.")
+        await message.reply(_("whitelist", "cli_invalid_proc"))
         return
         
     whitelists = await get_node_whitelists()
@@ -400,9 +397,9 @@ async def cmd_whitelist_process_cli(message: types.Message):
         whitelists[node]["processes"].append(val)
         await save_node_whitelists(whitelists)
         await sync_whitelists_to_panels()
-        await message.reply(f"🟢 Добавлен процесс <code>{val}</code> в белый список узла <b>{get_node_label(node)}</b>.", parse_mode="HTML")
+        await message.reply(_("whitelist", "cli_added_proc", val=val, label=get_node_label(node)), parse_mode="HTML")
     else:
-        await message.reply(f"ℹ️ Процесс <code>{val}</code> уже находится в белом списке узла <b>{get_node_label(node)}</b>.", parse_mode="HTML")
+        await message.reply(_("whitelist", "cli_proc_exists", val=val, label=get_node_label(node)), parse_mode="HTML")
 
 
 @router.callback_query(F.data.startswith("qwl:"))
@@ -410,7 +407,7 @@ async def cb_quick_whitelist(callback: CallbackQuery):
     try:
         parts = callback.data.split(":", 3)
         if len(parts) < 4:
-            await callback.answer("❌ Неверный формат callback-данных.", show_alert=True)
+            await callback.answer(_("whitelist", "qwl_invalid_callback"), show_alert=True)
             return
             
         node = parts[1]
@@ -427,20 +424,20 @@ async def cb_quick_whitelist(callback: CallbackQuery):
             await save_node_whitelists(whitelists)
             await sync_whitelists_to_panels()
             
-            await callback.answer(f"🟢 Успешно добавлено в белый список {get_node_label(node)}: {val}", show_alert=True)
+            await callback.answer(_("whitelist", "qwl_added_success", label=get_node_label(node), val=val), show_alert=True)
             
             orig_text = callback.message.html_text or callback.message.text or ""
-            new_text = f"{orig_text}\n\n✅ <b>Добавлено в белый список ({get_node_label(node)}):</b> <code>{val}</code>"
+            new_text = f"{orig_text}" + _("whitelist", "qwl_added_msg", label=get_node_label(node), val=val)
             try:
                 await callback.message.edit_text(text=new_text, parse_mode="HTML", reply_markup=None)
             except Exception:
                 pass
         else:
-            await callback.answer(f"ℹ️ Уже находится в белом списке {get_node_label(node)}.", show_alert=True)
+            await callback.answer(_("whitelist", "qwl_already_whitelisted", label=get_node_label(node)), show_alert=True)
             try:
                 await callback.message.edit_reply_markup(reply_markup=None)
             except Exception:
                 pass
     except Exception as e:
         logging.error(f"Ошибка при быстром добавлении в белый список: {e}")
-        await callback.answer("❌ Произошла ошибка при сохранении.", show_alert=True)
+        await callback.answer(_("whitelist", "qwl_save_error"), show_alert=True)
