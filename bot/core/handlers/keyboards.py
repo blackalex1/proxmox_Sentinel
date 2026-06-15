@@ -1,29 +1,31 @@
+# bot/core/handlers/keyboards.py
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup, KeyboardButton
 from core.config import settings
+from core.messages.i18n import _
 
 def get_main_menu_keyboard() -> InlineKeyboardMarkup:
     buttons = [
         [
-            InlineKeyboardButton(text="🖥️ Proxmox VE", callback_data="proxmox_main")
+            InlineKeyboardButton(text=_("keyboards", "btn_proxmox"), callback_data="proxmox_main")
         ],
         [
-            InlineKeyboardButton(text="🚀 Spectre VPN Panel", callback_data="spectre_list")
+            InlineKeyboardButton(text=_("keyboards", "btn_spectre"), callback_data="spectre_list")
         ],
         [
-            InlineKeyboardButton(text="🛠️ Ansible Playbooks", callback_data="ansible_main")
+            InlineKeyboardButton(text=_("keyboards", "btn_ansible"), callback_data="ansible_main")
         ],
         [
-            InlineKeyboardButton(text="📋 История VPN-подключений", callback_data="vpn_history_select")
+            InlineKeyboardButton(text=_("keyboards", "btn_vpn_history"), callback_data="vpn_history_select")
         ],
         [
-            InlineKeyboardButton(text="🛑 Центр блокировок", callback_data="ban_center_main")
+            InlineKeyboardButton(text=_("keyboards", "btn_ban_center"), callback_data="ban_center_main")
         ],
         [
-            InlineKeyboardButton(text="⚙️ Белые списки Aegis IPS", callback_data="whitelist_main")
+            InlineKeyboardButton(text=_("keyboards", "btn_whitelist"), callback_data="whitelist_main")
         ],
         [
-            InlineKeyboardButton(text="📊 Статус систем", callback_data="status_check"),
-            InlineKeyboardButton(text="ℹ️ Справка", callback_data="help_info")
+            InlineKeyboardButton(text=_("keyboards", "btn_status"), callback_data="status_check"),
+            InlineKeyboardButton(text=_("keyboards", "btn_help"), callback_data="help_info")
         ]
     ]
     return InlineKeyboardMarkup(inline_keyboard=buttons)
@@ -31,41 +33,23 @@ def get_main_menu_keyboard() -> InlineKeyboardMarkup:
 def get_persistent_reply_keyboard() -> ReplyKeyboardMarkup:
     buttons = [
         [
-            KeyboardButton(text="🛡️ Панель управления"),
-            KeyboardButton(text="📊 Статус систем")
+            KeyboardButton(text=_("keyboards", "reply_control_panel")),
+            KeyboardButton(text=_("keyboards", "reply_system_status"))
         ],
         [
-            KeyboardButton(text="ℹ️ Справка")
+            KeyboardButton(text=_("keyboards", "reply_help"))
         ]
     ]
     return ReplyKeyboardMarkup(keyboard=buttons, resize_keyboard=True, is_persistent=True)
 
 def get_main_menu_text() -> str:
-    pve_ip = settings.proxmox_host.split(":")[0] if settings.proxmox_host else "Не настроен"
-    vps_ip = settings.remote_server_ip if settings.remote_server_ip else "Не настроен"
+    pve_ip = settings.proxmox_host.split(":")[0] if settings.proxmox_host else "Не настроен" if settings.bot_language.lower() != "en" else "Not configured"
+    vps_ip = settings.remote_server_ip if settings.remote_server_ip else "Не настроен" if settings.bot_language.lower() != "en" else "Not configured"
     
-    text = (
-        "🛡️ <b>PVE Aegis IPS • Панель управления</b>\n"
-        "━━━━━━━━━━━━━━━━━━━━━━━━\n"
-        "⚡ <b>Система защиты:</b> <code>🟢 АКТИВНА</code>\n"
-        f"🖥️ <b>Proxmox Host:</b> <code>{pve_ip}</code>\n"
-        f"🌐 <b>Удаленный VPS:</b> <code>{vps_ip}</code>\n"
-        "━━━━━━━━━━━━━━━━━━━━━━━━\n"
-        "Выберите раздел для мониторинга и администрирования:"
+    return _(
+        "keyboards", "main_menu_text",
+        pve_ip=pve_ip, vps_ip=vps_ip
     )
-    return text
 
 def get_help_text() -> str:
-    return (
-        "ℹ️ <b>Справка по командам PVE Aegis:</b>\n\n"
-        "• /start — Показать интерактивную панель управления (Главное меню)\n"
-        "• /status — Быстрый аудит и статус всех систем (Proxmox, фоновые службы)\n"
-        "• /bans — Центр управления активными временными блокировками IP\n"
-        "• /whitelist — Управление белыми списками Aegis IPS (IP, порты, процессы)\n"
-        "• /whitelist_add &lt;IP или IP:Port&gt; [node] — Быстрое добавление IP в белый список\n"
-        "• /whitelist_process &lt;процесс&gt; [node] — Быстрое добавление процесса в белый список\n"
-        "• /help — Показать это справочное сообщение\n"
-        "• /id — Показать ваш Telegram ID / ID чата\n\n"
-        "🛡️ <i>Бот автоматически отслеживает попытки авторизации (SSH Auth Monitor) и несанкционированную сетевую активность (Active IPS Engine) в реальном времени. Все алерты приходят напрямую в этот чат.</i>"
-    )
-
+    return _("keyboards", "help_text")
