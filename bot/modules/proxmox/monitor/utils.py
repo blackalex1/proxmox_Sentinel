@@ -207,7 +207,11 @@ async def send_rich_message(chat_id, text, parse_mode="HTML", reply_markup=None)
                 payload["reply_markup"] = reply_markup
                 
         session = await bot.session.create_session()
-        async with session.post(url_rich, json=payload, timeout=5) as response:
+        proxy = getattr(bot.session, "proxy", None)
+        proxy_auth = getattr(bot.session, "proxy_auth", None)
+        if proxy and not proxy.startswith(("http://", "https://")):
+            proxy = None
+        async with session.post(url_rich, json=payload, timeout=5, proxy=proxy, proxy_auth=proxy_auth) as response:
             res = await response.json()
             if res.get("ok"):
                 sent_msg = Message.model_validate(res["result"])
@@ -270,7 +274,11 @@ async def edit_rich_message(chat_id, message_id, text, parse_mode="HTML", reply_
                 payload["reply_markup"] = reply_markup
                 
         session = await bot.session.create_session()
-        async with session.post(url_rich, json=payload, timeout=5) as response:
+        proxy = getattr(bot.session, "proxy", None)
+        proxy_auth = getattr(bot.session, "proxy_auth", None)
+        if proxy and not proxy.startswith(("http://", "https://")):
+            proxy = None
+        async with session.post(url_rich, json=payload, timeout=5, proxy=proxy, proxy_auth=proxy_auth) as response:
             res = await response.json()
             if res.get("ok"):
                 edited_msg = Message.model_validate(res["result"])
