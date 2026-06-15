@@ -373,7 +373,7 @@ translation = {
     "whitelist_sync_sinkhronizatsiya_ip_s_panelyu": "[Whitelist Sync] Synchronizing %s IP with panel %s...",
     "yadernyy_parametr_net_bridge_bridge-nf-call-iptables_uzhe_vklyuchen": "Kernel parameter net.bridge.bridge-nf-call-iptables is already enabled (1).",
     "zagruzka_proksi_iz_istochnika": "Loading proxies from source: %s",
-    "zapuschen_vstroennyy_shadowsocks-tunnel_pproxy_na_127_0": "Started built-in Shadowsocks tunnel (pproxy) on 127.0.0.1:10808",
+    "started_builtin_shadowsocks_tunnel_pproxy": "Started built-in Shadowsocks tunnel (pproxy) on 127.0.0.1:10808",
     "zapuscheno_faylovoe_otslezhivanie_logov_avtorizatsii_khosta": "Started file tracking of host auth logs (%s).",
     "env_verifier_admin_ids": "ADMIN_IDS (receiving alerts by administrators)",
     "env_verifier_bot_token": "BOT_TOKEN (Telegram bot token)",

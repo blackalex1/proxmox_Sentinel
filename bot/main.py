@@ -138,7 +138,7 @@ async def main():
                     server = pproxy.Server('socks5://127.0.0.1:10808')
                     remote = pproxy.Connection(cleaned_ss_url)
                     await server.start_server({'rserver': [remote], 'verbose': logging.debug})
-                    logging.info("zapuschen_vstroennyy_shadowsocks-tunnel_pproxy_na_127_0")
+                    logging.info("started_builtin_shadowsocks_tunnel_pproxy")
                     
                     primary_proxy_endpoint = local_socks_url
                     session = AiohttpSession(proxy=local_socks_url, **session_kwargs)

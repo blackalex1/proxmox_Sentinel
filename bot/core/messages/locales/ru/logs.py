@@ -373,7 +373,7 @@ translation = {
     "whitelist_sync_sinkhronizatsiya_ip_s_panelyu": "[Whitelist Sync] Синхронизация %s IP с панелью %s...",
     "yadernyy_parametr_net_bridge_bridge-nf-call-iptables_uzhe_vklyuchen": "Ядерный параметр net.bridge.bridge-nf-call-iptables уже включен (1).",
     "zagruzka_proksi_iz_istochnika": "Загрузка прокси из источника: %s",
-    "zapuschen_vstroennyy_shadowsocks-tunnel_pproxy_na_127_0": "Запущен встроенный Shadowsocks-туннель (pproxy) на 127.0.0.1:10808",
+    "started_builtin_shadowsocks_tunnel_pproxy": "Запущен встроенный Shadowsocks-туннель (pproxy) на 127.0.0.1:10808",
     "zapuscheno_faylovoe_otslezhivanie_logov_avtorizatsii_khosta": "Запущено файловое отслеживание логов авторизации хоста (%s).",
     "env_verifier_admin_ids": "ADMIN_IDS (получение алертов администраторами)",
     "env_verifier_bot_token": "BOT_TOKEN (токен Telegram бота)",
