@@ -66,7 +66,7 @@ def find_email_in_hysteria_log(lines: List[str], dst_ip: Optional[str], dst_port
         if log_time:
             diff_local = abs((now_local - log_time).total_seconds())
             diff_utc = abs((now_utc - log_time).total_seconds())
-            if diff_local > 300 and diff_utc > 300:
+            if diff_local > 12 and diff_utc > 12:
                 continue
             
         if dst_port_str not in line:
@@ -100,7 +100,7 @@ def find_email_in_hysteria_log(lines: List[str], dst_ip: Optional[str], dst_port
         if log_time:
             diff_local = abs((now_local - log_time).total_seconds())
             diff_utc = abs((now_utc - log_time).total_seconds())
-            if diff_local > 300 and diff_utc > 300:
+            if diff_local > 12 and diff_utc > 12:
                 continue
             
         if dst_port_str not in line:
@@ -181,7 +181,7 @@ def find_email_and_ip_in_xray_log(lines: List[str], client_ip: Optional[str], ds
         if log_time:
             diff_local = abs((now_local - log_time).total_seconds())
             diff_utc = abs((now_utc - log_time).total_seconds())
-            if diff_local > 300 and diff_utc > 300:
+            if diff_local > 12 and diff_utc > 12:
                 continue
             
         if "email:" not in line:
@@ -204,7 +204,7 @@ def find_email_and_ip_in_xray_log(lines: List[str], client_ip: Optional[str], ds
         if log_time:
             diff_local = abs((now_local - log_time).total_seconds())
             diff_utc = abs((now_utc - log_time).total_seconds())
-            if diff_local > 300 and diff_utc > 300:
+            if diff_local > 12 and diff_utc > 12:
                 continue
             
         if "email:" not in line:
