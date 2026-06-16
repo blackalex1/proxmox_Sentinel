@@ -220,7 +220,10 @@ async def main():
         
     # Запуск пулинга
     try:
-        await bot.delete_webhook(drop_pending_updates=True)
+        try:
+            await bot.delete_webhook(drop_pending_updates=True)
+        except Exception as e:
+            logging.error("error_deleting_webhook", e)
         await dp.start_polling(bot)
     finally:
         logging.info("stopping_all_background_services")
