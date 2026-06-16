@@ -74,7 +74,13 @@ async def get_and_kill_local_or_lxc_process(vmid, spt):
                             
                         node = "local"
                         from core.db import is_whitelisted
-                        if proc_name.lower().strip() in settings.ips_process_whitelist or await is_whitelisted(node, process=proc_name):
+                        proc_name_lower = proc_name.lower().strip()
+                        is_critical = (
+                            any(kw in proc_name_lower for kw in ["hysteria", "xray", "sing-box"]) or
+                            proc_name_lower in settings.ips_process_whitelist or
+                            await is_whitelisted(node, process=proc_name)
+                        )
+                        if is_critical:
                             logging.info("local_ips_protsess_pid_na_khoste_v", proc_name, pid)
                             return proc_name, "WHITELISTED"
                         
@@ -112,7 +118,13 @@ async def get_and_kill_local_or_lxc_process(vmid, spt):
                         proc_name, pid = match.groups()
                         node = f"lxc_{vmid}"
                         from core.db import is_whitelisted
-                        if proc_name.lower().strip() in settings.ips_process_whitelist or await is_whitelisted(node, process=proc_name):
+                        proc_name_lower = proc_name.lower().strip()
+                        is_critical = (
+                            any(kw in proc_name_lower for kw in ["hysteria", "xray", "sing-box"]) or
+                            proc_name_lower in settings.ips_process_whitelist or
+                            await is_whitelisted(node, process=proc_name)
+                        )
+                        if is_critical:
                             logging.info("lxc_ips_protsess_pid_v_lxc_v", proc_name, pid, vmid)
                             return proc_name, "WHITELISTED"
                         

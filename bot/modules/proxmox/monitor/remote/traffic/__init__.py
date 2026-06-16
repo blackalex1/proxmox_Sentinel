@@ -71,9 +71,13 @@ async def get_and_kill_remote_process(server, spt):
                 match = re.search(r'users:\(\("([^"]+)",(?:pid=)?(\d+)', line)
                 if match:
                     proc_name, pid = match.groups()
-                    node_name = f"vps_{server['ip']}"
-                    from core.db import is_whitelisted
-                    if proc_name.lower().strip() in settings.ips_process_whitelist or await is_whitelisted(node_name, process=proc_name):
+                    proc_name_lower = proc_name.lower().strip()
+                    is_critical = (
+                        any(kw in proc_name_lower for kw in ["hysteria", "xray", "sing-box"]) or
+                        proc_name_lower in settings.ips_process_whitelist or
+                        await is_whitelisted(node_name, process=proc_name)
+                    )
+                    if is_critical:
                         logging.info("remote_ips_process_pid_whitelisted_termination_cancelled", server['ip'], proc_name, pid)
                         return proc_name, "WHITELISTED"
                     
