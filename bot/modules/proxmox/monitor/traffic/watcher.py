@@ -212,11 +212,14 @@ async def handle_traffic_log_line(line):
                 # Авто-блокировка вредоносного клиента при критической угрозе
                 if risk_level == 'CRITICAL':
                     from core.spectre_client import spectre_manager
-                    block_res = await spectre_manager.disable_client_everywhere(xray_client_email)
-                    block_details = []
-                    for panel_name, success, msg in block_res:
-                        status_str = "🟢 Успешно" if success else "🔴 Ошибка"
-                        block_details.append(f"  • {panel_name}: {status_str} ({msg})")
+                    lxc_panel = spectre_manager.get_panel_by_vmid(int(vmid))
+                    if lxc_panel:
+                        success, res = await lxc_panel.request("POST", "/api/security/disable-client", data={"email": xray_client_email})
+                        block_res = [(lxc_panel.name, success and res.get("success", False), res.get("msg", "OK"))]
+                    else:
+                        block_res = await spectre_manager.disable_client_everywhere(xray_client_email)
+                        
+                    _, block_details = spectre_manager.parse_action_results(block_res, action="ban")
                     block_details_str = "\n".join(block_details)
                     client_info += f"\n🚨 <b>Статус авто-блокировки аккаунта:</b>\n{block_details_str}\n"
                     desc_with_client += " [АККАУНТ АВТОБЛОКИРОВАН И СЕССИЯ СБРОШЕНА]"
