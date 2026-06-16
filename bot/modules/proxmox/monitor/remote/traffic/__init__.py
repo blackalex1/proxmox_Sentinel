@@ -273,7 +273,8 @@ async def handle_remote_traffic_line(line, server=None):
             timestamp = datetime.datetime.now().strftime("%H:%M:%S")
 
             if res_connection:
-                email, panel, source = res_connection
+                email, panel, source, real_client_ip = res_connection
+                src_display = f"{src} ({real_client_ip})" if real_client_ip else src
                 
                 # Если атака идет из Hysteria-туннеля:
                 if source == "hysteria":
@@ -296,7 +297,7 @@ async def handle_remote_traffic_line(line, server=None):
                     
                     # Пишем админам о временном бане и начале расследования
                     msg = get_ips_hysteria_attack_alert(
-                        server['ip'], email, proto, src, spt, dst, dpt, block_details_str, timestamp
+                        server['ip'], email, proto, src_display, spt, dst, dpt, block_details_str, timestamp
                     )
                     await send_alert_to_admins(msg, parse_mode="markdown")
                     
@@ -326,7 +327,7 @@ async def handle_remote_traffic_line(line, server=None):
                     
                     proc_info = f"\n📁 Процесс: <code>{proc_name}</code> (PID: <code>{killed_pid}</code>)" if proc_name and killed_pid else ""
                     msg = get_ips_xray_attack_alert(
-                        server['ip'], email, proto, src, spt, dst, dpt, block_details_str, proc_info, timestamp
+                        server['ip'], email, proto, src_display, spt, dst, dpt, block_details_str, proc_info, timestamp
                     )
                     await send_alert_to_admins(msg, parse_mode="markdown")
                     return
