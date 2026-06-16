@@ -3,13 +3,15 @@
 
 from core.messages.i18n import _
 
-def get_ips_investigation_success_alert(xray_client, tunnel_email, target_panel_name, server_ip, dst_ip, dpt, block_details_str, unblock_details_str, timestamp):
+def get_ips_investigation_success_alert(xray_client, tunnel_email, target_panel_name, server_ip, dst_ip, dpt, block_details_str, unblock_details_str, timestamp, inbound_tag=None):
+    inbound_display = f", Inbound: {inbound_tag}" if inbound_tag else ""
     return _(
         "traffic", "ips_investigation_success_alert",
         xray_client=xray_client, tunnel_email=tunnel_email,
         target_panel_name=target_panel_name, server_ip=server_ip,
         dst_ip=dst_ip, dpt=dpt, block_details_str=block_details_str,
-        unblock_details_str=unblock_details_str, timestamp=timestamp
+        unblock_details_str=unblock_details_str, timestamp=timestamp,
+        inbound_display=inbound_display
     )
 
 def get_ips_investigation_failed_alert(tunnel_email, dst_ip, dpt, logs_text, timestamp):
@@ -34,13 +36,14 @@ def get_ips_hysteria_attack_alert(server_ip, email, proto, src, spt, dst, dpt, b
         block_details_str=block_details_str, timestamp=timestamp
     )
 
-def get_ips_xray_attack_alert(server_ip, email, proto, src, spt, dst, dpt, block_details_str, proc_info, timestamp):
+def get_ips_xray_attack_alert(server_ip, email, proto, src, spt, dst, dpt, block_details_str, proc_info, timestamp, inbound_tag=None):
+    inbound_display = f" (Inbound: {inbound_tag})" if inbound_tag else ""
     return _(
         "traffic", "ips_xray_attack_alert",
         server_ip=server_ip, email=email, proto=proto,
         src=src, spt=spt, dst=dst, dpt=dpt,
         block_details_str=block_details_str, proc_info=proc_info,
-        timestamp=timestamp
+        timestamp=timestamp, inbound_display=inbound_display
     )
 
 def get_ips_whitelisted_alert(server_ip, proc_name, proto, src, spt, dst, dpt, timestamp):
@@ -66,7 +69,7 @@ def get_ips_process_warning_alert(server_ip, proc_name, proto, src, spt, dst, dp
         dst=dst, dpt=dpt, proc_info=proc_info, timestamp=timestamp
     )
 
-def get_local_traffic_alert(title, desc_with_client, vmid, container_name, label, proto, direction, src, spt, dst, dpt, real_client_ip, xray_client_email, block_details_list, timestamp):
+def get_local_traffic_alert(title, desc_with_client, vmid, container_name, label, proto, direction, src, spt, dst, dpt, real_client_ip, xray_client_email, block_details_list, timestamp, inbound_tag=None):
     clean_h1 = _("traffic", "local_h1_default")
     if "Разрешенное соединение" in title or "Allowed Connection" in title or "Connection Allowed" in title:
         clean_h1 = _("traffic", "local_h1_allowed")
@@ -85,6 +88,10 @@ def get_local_traffic_alert(title, desc_with_client, vmid, container_name, label
     if xray_client_email:
         vpn_client_row = _("traffic", "local_vpn_client", xray_client_email=xray_client_email)
         
+    vpn_inbound_row = ""
+    if inbound_tag:
+        vpn_inbound_row = _("traffic", "local_vpn_inbound", inbound_tag=inbound_tag)
+        
     block_details_block = ""
     if block_details_list:
         block_details_str = "\n".join(block_details_list)
@@ -98,5 +105,6 @@ def get_local_traffic_alert(title, desc_with_client, vmid, container_name, label
         vmid=vmid, container_name=container_name, label=label,
         proto=proto, direction_text=direction_text, src=src, spt=spt,
         dst=dst, dpt=dpt, vpn_ip_row=vpn_ip_row, vpn_client_row=vpn_client_row,
+        vpn_inbound_row=vpn_inbound_row,
         block_details_block=block_details_block, timestamp=timestamp
     )
