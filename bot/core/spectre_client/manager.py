@@ -276,10 +276,10 @@ class SpectreClientManager:
 
     # --- Высокоуровневые API для взаимодействия с панелями ---
 
-    async def get_client_by_connection(self, client_ip: Optional[str], dst_ip: Optional[str], port: int, source_type: str, source_id: str) -> Optional[Tuple[str, SpectrePanelInstance, str]]:
+    async def get_client_by_connection(self, client_ip: Optional[str], dst_ip: Optional[str], port: int, source_type: str, source_id: str) -> Optional[Tuple[str, SpectrePanelInstance, str, Optional[str]]]:
         """
         Ищет email клиента, обращаясь к эндпоинту соответствующей панели.
-        Возвращает кортеж (email, panel, source) или None.
+        Возвращает кортеж (email, panel, source, real_client_ip) или None.
         """
         panel = None
         if source_type == 'lxc':
@@ -297,7 +297,7 @@ class SpectreClientManager:
         if panel:
             success, res = await panel.request("GET", "/api/security/client-by-connection", params=params)
             if success and res.get("success"):
-                return res["email"], panel, res.get("source", "xray")
+                return res["email"], panel, res.get("source", "xray"), res.get("client_ip")
                 
         # 2. Резервный поиск (Fallback): опрашиваем все остальные панели.
         for p in self.panels.values():
@@ -305,7 +305,7 @@ class SpectreClientManager:
                 continue
             success, res = await p.request("GET", "/api/security/client-by-connection", params=params)
             if success and res.get("success"):
-                return res["email"], p, res.get("source", "xray")
+                return res["email"], p, res.get("source", "xray"), res.get("client_ip")
                 
         return None
 
