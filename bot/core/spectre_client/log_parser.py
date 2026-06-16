@@ -6,7 +6,9 @@ from typing import Optional, List, Tuple
 def parse_xray_timestamp(line: str) -> Optional[datetime.datetime]:
     try:
         # Format: "2026/06/16 18:13:22"
-        match = re.match(r"^(\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2})", line)
+        # Используем re.search вместо re.match, чтобы находить таймштамп
+        # даже при наличии префиксов (syslog, journalctl или ANSI-кодов)
+        match = re.search(r"(\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2})", line)
         if match:
             return datetime.datetime.strptime(match.group(1), "%Y/%m/%d %H:%M:%S")
     except Exception:
