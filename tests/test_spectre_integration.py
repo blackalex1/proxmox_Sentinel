@@ -159,9 +159,9 @@ async def test_two_phase_ips_success(monkeypatch):
 
     async def mock_get_client_by_connection(client_ip, dst_ip, port, source_type, source_id):
         if source_type == 'vps':
-            return "tunnel@hysteria.com", vps_panel, "hysteria", "1.2.3.4"
+            return "tunnel@hysteria.com", vps_panel, "hysteria", "1.2.3.4", "Hysteria2"
         elif source_type == 'lxc':
-            return "attacker@xray.com", lxc_panel, "xray", "1.2.3.4"
+            return "attacker@xray.com", lxc_panel, "xray", "1.2.3.4", "VLESS-TCP"
         return None
     monkeypatch.setattr(spectre_manager, "get_client_by_connection", mock_get_client_by_connection)
     
@@ -247,7 +247,7 @@ async def test_two_phase_ips_failure(monkeypatch):
 
     async def mock_get_client_by_connection(client_ip, dst_ip, port, source_type, source_id):
         if source_type == 'vps':
-            return "tunnel@hysteria.com", vps_panel, "hysteria", "1.2.3.4"
+            return "tunnel@hysteria.com", vps_panel, "hysteria", "1.2.3.4", "Hysteria2"
         return None
     monkeypatch.setattr(spectre_manager, "get_client_by_connection", mock_get_client_by_connection)
     

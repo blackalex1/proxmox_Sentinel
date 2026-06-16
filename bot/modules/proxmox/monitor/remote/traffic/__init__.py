@@ -109,6 +109,7 @@ async def investigate_and_resolve_remote_attack(server, dst_ip, dpt, tunnel_emai
     target_panel = None
     
     # 2. Ищем виновника в Xray на всех панелях напрямую в их логах
+    inbound_tag = None
     for p in spectre_manager.panels.values():
         res_conn = await spectre_manager.get_client_by_connection(
             client_ip=None,
@@ -118,10 +119,11 @@ async def investigate_and_resolve_remote_attack(server, dst_ip, dpt, tunnel_emai
             source_id=str(p.identifier)
         )
         if res_conn:
-            email, panel, source, real_client_ip = res_conn
+            email, panel, source, real_client_ip, tag = res_conn
             if source == "xray":
                 xray_client = email
                 target_panel = panel
+                inbound_tag = tag
                 break
             
     timestamp = datetime.datetime.now().strftime("%H:%M:%S")
@@ -151,7 +153,8 @@ async def investigate_and_resolve_remote_attack(server, dst_ip, dpt, tunnel_emai
         
         msg = get_ips_investigation_success_alert(
             xray_client, tunnel_email, target_panel.name if target_panel else 'LXC',
-            server['ip'], dst_ip, dpt, block_details_str, unblock_details_str, timestamp
+            server['ip'], dst_ip, dpt, block_details_str, unblock_details_str, timestamp,
+            inbound_tag=inbound_tag
         )
         await send_alert_to_admins(msg, parse_mode="markdown")
         
@@ -282,7 +285,7 @@ async def handle_remote_traffic_line(line, server=None):
                 return
                 
             last_alert = recent_remote_traffic_alerts.get(throttle_key, 0)
-            if now - last_alert < 30:
+            if now - last_alert < 5:
                 return
             recent_remote_traffic_alerts[throttle_key] = now
             
@@ -303,7 +306,7 @@ async def handle_remote_traffic_line(line, server=None):
             timestamp = datetime.datetime.now().strftime("%H:%M:%S")
 
             if res_connection:
-                email, panel, source, real_client_ip = res_connection
+                email, panel, source, real_client_ip, inbound_tag = res_connection
                 src_display = f"{src} ({real_client_ip})" if real_client_ip else src
                 
                 # Если атака идет из Hysteria-туннеля:
@@ -313,9 +316,16 @@ async def handle_remote_traffic_line(line, server=None):
                     start_time = asyncio.get_event_loop().time()
                     if panel:
                         success_req, res_req = await panel.request("POST", "/api/security/disable-client", data={"email": email})
+                        if success_req and "already blocked" in res_req.get("msg", "").lower():
+                            logging.info("Tunnel client %s is already blocked, skipping duplicate alert", email)
+                            return
                         block_res = [(panel.name, success_req and res_req.get("success", False), res_req.get("msg", "OK"))]
                     else:
                         block_res = await spectre_manager.disable_client_everywhere(email)
+                        all_already_blocked = len(block_res) > 0 and all("already blocked" in item[2].lower() or "not found" in item[2].lower() for item in block_res)
+                        if all_already_blocked:
+                            logging.info("Tunnel client %s is already blocked everywhere, skipping duplicate alert", email)
+                            return
                         
                     reaction_time = f"{asyncio.get_event_loop().time() - start_time:.3f}s"
                     
@@ -341,9 +351,16 @@ async def handle_remote_traffic_line(line, server=None):
                     start_time = asyncio.get_event_loop().time()
                     if panel:
                         success_req, res_req = await panel.request("POST", "/api/security/disable-client", data={"email": email})
+                        if success_req and "already blocked" in res_req.get("msg", "").lower():
+                            logging.info("Xray client %s is already blocked, skipping duplicate alert", email)
+                            return
                         block_res = [(panel.name, success_req and res_req.get("success", False), res_req.get("msg", "OK"))]
                     else:
                         block_res = await spectre_manager.disable_client_everywhere(email)
+                        all_already_blocked = len(block_res) > 0 and all("already blocked" in item[2].lower() or "not found" in item[2].lower() for item in block_res)
+                        if all_already_blocked:
+                            logging.info("Xray client %s is already blocked everywhere, skipping duplicate alert", email)
+                            return
                         
                     reaction_time = f"{asyncio.get_event_loop().time() - start_time:.3f}s"
                     
@@ -357,7 +374,7 @@ async def handle_remote_traffic_line(line, server=None):
                     
                     proc_info = f"\n📁 Процесс: <code>{proc_name}</code> (PID: <code>{killed_pid}</code>)" if proc_name and killed_pid else ""
                     msg = get_ips_xray_attack_alert(
-                        server['ip'], email, proto, src_display, spt, dst, dpt, block_details_str, proc_info, timestamp
+                        server['ip'], email, proto, src_display, spt, dst, dpt, block_details_str, proc_info, timestamp, inbound_tag=inbound_tag
                     )
                     await send_alert_to_admins(msg, parse_mode="markdown")
                     return

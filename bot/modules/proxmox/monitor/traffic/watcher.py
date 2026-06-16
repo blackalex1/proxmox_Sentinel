@@ -170,22 +170,23 @@ async def handle_traffic_log_line(line):
                 proc_name, killed_pid = await get_and_kill_local_or_lxc_process(vmid, spt)
                 logging.info("traffic_monitor_process_destruction_result_proc_name_killed_pid", proc_name, killed_pid)
 
-            # Троттлинг одинаковых алертов (в пределах 15 секунд)
+            # Троттлинг одинаковых алертов (в пределах 5 секунд)
             now = time.time()
             throttle_key = (vmid, 'threat', label, dst, dpt)
             last_alert = lxc_alert_throttle.get(throttle_key, 0)
-            if now - last_alert < 15:
+            if now - last_alert < 5:
                 return
             lxc_alert_throttle[throttle_key] = now
 
             # Реальный IP клиента
             real_client_ip = None
             xray_client_email = None
+            inbound_tag = None
             if vmid == settings.vpn_vmid and not is_local and direction == 'OUT':
                 # Пауза 1.2 секунды, чтобы conntrack обновился и Xray успел сбросить буфер в access.log
                 await asyncio.sleep(1.2)
                 real_client_ip = find_real_vpn_client_ip(proto, src, dst, spt, dpt)
-                xray_client_email = await find_xray_client_email(vmid, dst, dpt, real_client_ip)
+                xray_client_email, inbound_tag = await find_xray_client_email(vmid, dst, dpt, real_client_ip)
 
             if killed_pid:
                 if killed_pid == "WHITELISTED":
@@ -215,9 +216,16 @@ async def handle_traffic_log_line(line):
                     lxc_panel = spectre_manager.get_panel_by_vmid(int(vmid))
                     if lxc_panel:
                         success, res = await lxc_panel.request("POST", "/api/security/disable-client", data={"email": xray_client_email})
+                        if success and "already blocked" in res.get("msg", "").lower():
+                            logging.info("Client %s is already blocked, skipping duplicate alert", xray_client_email)
+                            return
                         block_res = [(lxc_panel.name, success and res.get("success", False), res.get("msg", "OK"))]
                     else:
                         block_res = await spectre_manager.disable_client_everywhere(xray_client_email)
+                        all_already_blocked = len(block_res) > 0 and all("already blocked" in item[2].lower() or "not found" in item[2].lower() for item in block_res)
+                        if all_already_blocked:
+                            logging.info("Client %s is already blocked everywhere, skipping duplicate alert", xray_client_email)
+                            return
                         
                     _, block_details = spectre_manager.parse_action_results(block_res, action="ban")
                     block_details_str = "\n".join(block_details)
@@ -239,7 +247,8 @@ async def handle_traffic_log_line(line):
                 real_client_ip=real_client_ip,
                 xray_client_email=xray_client_email,
                 block_details_list=block_details if (xray_client_email and risk_level == 'CRITICAL') else None,
-                timestamp=timestamp
+                timestamp=timestamp,
+                inbound_tag=inbound_tag
             )
             
             # Добавляем кнопки быстрого добавления в белый список
