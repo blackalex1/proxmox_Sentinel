@@ -374,5 +374,48 @@ class SpectreClientManager:
         logging.debug("spectre_no_panels_slaves_report_not")
         return False
 
+    def parse_action_results(self, results: List[Tuple[str, bool, str]], action: str = "generic") -> Tuple[bool, List[str]]:
+        """
+        Разбирает результаты блокировки/разблокировки клиента на панелях.
+        Учитывает, что клиент может отсутствовать на некоторых панелях (no-op/не найден),
+        что не является ошибкой для общего результата, если на других панелях всё успешно.
+        """
+        success_count = 0
+        not_found_count = 0
+        failure_count = 0
+        
+        formatted_details = []
+        
+        for panel_name, success, msg in results:
+            msg_lower = msg.lower()
+            is_not_found = "not found" in msg_lower or "не найден" in msg_lower
+            
+            if success:
+                success_count += 1
+                if action == "ban":
+                    status_text = "🟢 Заблокирован"
+                elif action == "unban":
+                    status_text = "🟢 Разблокирован"
+                else:
+                    status_text = "🟢 Успешно"
+                formatted_details.append(f"  • {panel_name}: {status_text} ({msg})")
+            elif is_not_found:
+                not_found_count += 1
+                status_text = "⚪ Не требуется"
+                formatted_details.append(f"  • {panel_name}: {status_text} (Клиент отсутствует)")
+            else:
+                failure_count += 1
+                status_text = "🔴 Ошибка"
+                formatted_details.append(f"  • {panel_name}: {status_text} ({msg})")
+                
+        # Общий успех: хотя бы один реальный успех и отсутствие реальных ошибок
+        overall_success = (success_count > 0) and (failure_count == 0)
+        
+        # Если ни одна панель не вернула успех, но были "не найдены"
+        if success_count == 0 and failure_count == 0 and not_found_count > 0:
+            overall_success = False
+            
+        return overall_success, formatted_details
+
 
 spectre_manager = SpectreClientManager()
