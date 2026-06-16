@@ -55,13 +55,17 @@ def parse_hysteria_timestamp(line: str) -> Optional[datetime.datetime]:
 
 def find_email_in_hysteria_log(lines: List[str], dst_ip: Optional[str], dst_port: int) -> Optional[str]:
     dst_port_str = f":{dst_port}"
-    now = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
+    now_local = datetime.datetime.now()
+    now_utc = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
     
     # Pass 1: Match port and IP (main search)
     for line in reversed(lines):
         log_time = parse_hysteria_timestamp(line)
-        if log_time and abs((now - log_time).total_seconds()) > 300:
-            continue
+        if log_time:
+            diff_local = abs((now_local - log_time).total_seconds())
+            diff_utc = abs((now_utc - log_time).total_seconds())
+            if diff_local > 300 and diff_utc > 300:
+                continue
             
         if dst_port_str not in line:
             continue
@@ -91,8 +95,11 @@ def find_email_in_hysteria_log(lines: List[str], dst_ip: Optional[str], dst_port
     # Pass 2: Match port only (fallback search with destination IP verification)
     for line in reversed(lines):
         log_time = parse_hysteria_timestamp(line)
-        if log_time and abs((now - log_time).total_seconds()) > 300:
-            continue
+        if log_time:
+            diff_local = abs((now_local - log_time).total_seconds())
+            diff_utc = abs((now_utc - log_time).total_seconds())
+            if diff_local > 300 and diff_utc > 300:
+                continue
             
         if dst_port_str not in line:
             continue
@@ -133,11 +140,15 @@ def find_email_in_hysteria_log(lines: List[str], dst_ip: Optional[str], dst_port
     return None
 
 def find_client_ip_for_email_in_hysteria_log(lines: List[str], email: str) -> Optional[str]:
-    now = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
+    now_local = datetime.datetime.now()
+    now_utc = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
     for line in reversed(lines):
         log_time = parse_hysteria_timestamp(line)
-        if log_time and abs((now - log_time).total_seconds()) > 300:
-            continue
+        if log_time:
+            diff_local = abs((now_local - log_time).total_seconds())
+            diff_utc = abs((now_utc - log_time).total_seconds())
+            if diff_local > 300 and diff_utc > 300:
+                continue
             
         json_match = re.search(r'(\{.*\})', line)
         if json_match:
