@@ -186,8 +186,8 @@ async def investigate_and_resolve_remote_attack(server, dst_ip, dpt, tunnel_emai
                         if lines:
                             break
                     if lines:
-                        last_lines = lines[-10:]
-                        xray_logs_summary += f"\n<b>Логи Xray ({p.name}):</b>\n<code>" + "\n".join(last_lines)[-400:] + "</code>\n"
+                        last_lines = lines[-5:]
+                        xray_logs_summary += f"\n<b>Логи Xray ({p.name}):</b>\n<code>" + "\n".join(last_lines) + "</code>\n"
                 except Exception as e:
                     logging.error(f"Failed to gather LXC logs: {e}")
                     
@@ -209,7 +209,8 @@ async def investigate_and_resolve_remote_attack(server, dst_ip, dpt, tunnel_emai
                 if success_ssh and stdout_ssh:
                     lines = stdout_ssh.splitlines()
             if lines:
-                hysteria_logs_summary += f"\n<b>Логи Hysteria (VPS {server['ip']}):</b>\n<code>" + "\n".join(lines[-10:])[-400:] + "</code>\n"
+                clean_lines = [re.sub(r'\x1b\[[0-9;]*[a-zA-Z]', '', line) for line in lines[-5:]]
+                hysteria_logs_summary += f"\n<b>Логи Hysteria (VPS {server['ip']}):</b>\n<code>" + "\n".join(clean_lines) + "</code>\n"
         except Exception as e:
             logging.error(f"Failed to gather VPS logs: {e}")
             
