@@ -132,6 +132,9 @@ async def test_two_phase_ips_success(monkeypatch):
     # Сбрасываем кэш троттлинга
     recent_remote_traffic_alerts.clear()
     
+    from core.config import settings
+    monkeypatch.setattr(settings, "transit_tunnels", ["bot", "tunnel@hysteria.com"])
+    
     # 1. Настраиваем фейковые панели
     lxc_panel = SpectrePanelInstance("LXC Panel", "http://127.0.0.1:20530", "lxc_token", "ui", "lxc", "999")
     vps_panel = SpectrePanelInstance("VPS Panel", "http://127.0.0.1:15000", "vps_token", "ui", "vps", "1.1.1.1")
@@ -222,6 +225,9 @@ async def test_two_phase_ips_failure(monkeypatch):
     
     # Сбрасываем кэш троттлинга
     recent_remote_traffic_alerts.clear()
+    
+    from core.config import settings
+    monkeypatch.setattr(settings, "transit_tunnels", ["bot", "tunnel@hysteria.com"])
     
     lxc_panel = SpectrePanelInstance("LXC Panel", "http://127.0.0.1:20530", "lxc-token", "ui", "lxc", "999")
     vps_panel = SpectrePanelInstance("VPS Panel", "http://127.0.0.1:15000", "vps-token", "ui", "vps", "1.1.1.1")
