@@ -280,7 +280,7 @@ class SpectreClientManager:
         lines = []
         if panel.source_type == 'lxc':
             try:
-                cmd = ["pct", "exec", str(panel.identifier), "--", "tail", "-n", "1000", log_path]
+                cmd = ["pct", "exec", str(panel.identifier), "--", "tail", "-n", "5000", log_path]
                 proc = await asyncio.create_subprocess_exec(
                     *cmd,
                     stdout=asyncio.subprocess.PIPE,
@@ -296,7 +296,7 @@ class SpectreClientManager:
             if server:
                 try:
                     from modules.proxmox.monitor.remote.ssh import run_remote_ssh_cmd
-                    success, stdout, _ = await run_remote_ssh_cmd(server, ["tail", "-n", "1000", log_path])
+                    success, stdout, _ = await run_remote_ssh_cmd(server, ["tail", "-n", "5000", log_path])
                     if success and stdout:
                         lines = stdout.splitlines()
                 except Exception as e:
