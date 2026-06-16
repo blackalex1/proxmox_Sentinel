@@ -218,7 +218,8 @@ async def send_rich_message(chat_id, text, parse_mode="HTML", reply_markup=None)
             else:
                 logging.warning("rich_message_failed_send_rich_message_code", chat_id, res.get('description'))
     except Exception as e:
-        logging.warning("rich_message_exception_sending_rich_message", chat_id, e)
+        err_msg = f"{e.__class__.__name__}: {e}" if str(e) else e.__class__.__name__
+        logging.warning("rich_message_exception_sending_rich_message", chat_id, err_msg)
         
     if not sent_msg:
         try:
