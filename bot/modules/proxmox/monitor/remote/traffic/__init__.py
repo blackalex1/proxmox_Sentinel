@@ -171,19 +171,42 @@ async def investigate_and_resolve_remote_attack(server, dst_ip, dpt, tunnel_emai
         for p in spectre_manager.panels.values():
             if p.source_type == 'lxc':
                 try:
-                    cmd = ["pct", "exec", str(p.identifier), "--", "tail", "-n", "10", "/var/log/xray/access.log"]
-                    proc = await asyncio.create_subprocess_exec(*cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
-                    stdout, _ = await proc.communicate()
-                    if proc.returncode == 0 and stdout:
-                        xray_logs_summary += f"\n<b>Логи Xray ({p.name}):</b>\n<code>" + stdout.decode('utf-8', errors='ignore')[-400:] + "</code>\n"
+                    # Попробуем прочесть лог Xray по всем возможным путям
+                    xray_paths = ["/var/log/xray/access.log", "/var/log/xray/error.log"]
+                    if p.env_path:
+                        base_dir = p.env_path.replace("/config/.env", "")
+                        xray_paths.append(f"{base_dir}/bin/xray.log")
+                    
+                    lines = None
+                    for path in xray_paths:
+                        lines = await spectre_manager._read_log_lines(p, path)
+                        if lines:
+                            break
+                    if lines:
+                        last_lines = lines[-10:]
+                        xray_logs_summary += f"\n<b>Логи Xray ({p.name}):</b>\n<code>" + "\n".join(last_lines)[-400:] + "</code>\n"
                 except Exception as e:
                     logging.error(f"Failed to gather LXC logs: {e}")
                     
         # Сбор логов Hysteria с VPS
         try:
-            success, stdout, stderr = await run_remote_ssh_cmd(server, ["tail", "-n", "10", "/var/log/hysteria.log"])
-            if success and stdout:
-                hysteria_logs_summary += f"\n<b>Логи Hysteria (VPS {server['ip']}):</b>\n<code>" + stdout[-400:] + "</code>\n"
+            vps_panel = spectre_manager.get_panel_by_vps_ip(server['ip'])
+            lines = None
+            if vps_panel:
+                hysteria_paths = ["/var/log/hysteria.log"]
+                if vps_panel.env_path:
+                    base_dir = vps_panel.env_path.replace("/config/.env", "")
+                    hysteria_paths.append(f"{base_dir}/bin/hysteria.log")
+                for path in hysteria_paths:
+                    lines = await spectre_manager._read_log_lines(vps_panel, path)
+                    if lines:
+                        break
+            if not lines:
+                success_ssh, stdout_ssh, _ = await run_remote_ssh_cmd(server, ["tail", "-n", "10", "/var/log/hysteria.log"])
+                if success_ssh and stdout_ssh:
+                    lines = stdout_ssh.splitlines()
+            if lines:
+                hysteria_logs_summary += f"\n<b>Логи Hysteria (VPS {server['ip']}):</b>\n<code>" + "\n".join(lines[-10:])[-400:] + "</code>\n"
         except Exception as e:
             logging.error(f"Failed to gather VPS logs: {e}")
             
