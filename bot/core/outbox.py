@@ -350,7 +350,8 @@ class ResilientOutbox:
                 else:
                     logger.warning("rich_message_failed_send_rich_message_code", chat_id, res.get('description'))
         except Exception as e:
-            logger.warning("rich_message_exception_sending_rich_message", chat_id, e)
+            err_msg = f"{e.__class__.__name__}: {e}" if str(e) else e.__class__.__name__
+            logger.warning("rich_message_exception_sending_rich_message", chat_id, err_msg)
             
         return None
 
