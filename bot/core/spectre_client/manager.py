@@ -276,9 +276,69 @@ class SpectreClientManager:
 
     # --- Высокоуровневые API для взаимодействия с панелями ---
 
+    async def _read_log_lines(self, panel: SpectrePanelInstance, log_path: str) -> List[str]:
+        lines = []
+        if panel.source_type == 'lxc':
+            try:
+                cmd = ["pct", "exec", str(panel.identifier), "--", "tail", "-n", "1000", log_path]
+                proc = await asyncio.create_subprocess_exec(
+                    *cmd,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.DEVNULL
+                )
+                stdout, _ = await proc.communicate()
+                if proc.returncode == 0:
+                    lines = stdout.decode('utf-8', errors='ignore').splitlines()
+            except Exception as e:
+                logging.error(f"Failed to read local LXC log {log_path} for {panel.name}: {e}")
+        elif panel.source_type == 'vps':
+            server = next((s for s in settings.remote_servers if s.get('ip') == panel.identifier), None)
+            if server:
+                try:
+                    from modules.proxmox.monitor.remote.ssh import run_remote_ssh_cmd
+                    success, stdout, _ = await run_remote_ssh_cmd(server, ["tail", "-n", "1000", log_path])
+                    if success and stdout:
+                        lines = stdout.splitlines()
+                except Exception as e:
+                    logging.error(f"Failed to read remote VPS log {log_path} for {panel.name}: {e}")
+        return lines
+
+    async def _get_client_from_panel_logs(self, panel: SpectrePanelInstance, client_ip: Optional[str], dst_ip: Optional[str], port: int) -> Optional[Tuple[str, str, Optional[str]]]:
+        from .log_parser import find_email_in_hysteria_log, find_client_ip_for_email_in_hysteria_log, find_email_and_ip_in_xray_log
+        
+        # 1. Hysteria logs search
+        hysteria_paths = ["/var/log/hysteria.log"]
+        if panel.env_path:
+            base_dir = panel.env_path.replace("/config/.env", "")
+            hysteria_paths.append(f"{base_dir}/bin/hysteria.log")
+            
+        for path in hysteria_paths:
+            lines = await self._read_log_lines(panel, path)
+            if lines:
+                email = find_email_in_hysteria_log(lines, dst_ip, port)
+                if email:
+                    real_client_ip = find_client_ip_for_email_in_hysteria_log(lines, email)
+                    return email, "hysteria", real_client_ip
+                    
+        # 2. Xray logs search
+        xray_paths = ["/var/log/xray/access.log", "/var/log/xray/error.log"]
+        if panel.env_path:
+            base_dir = panel.env_path.replace("/config/.env", "")
+            xray_paths.append(f"{base_dir}/bin/xray.log")
+            
+        for path in xray_paths:
+            lines = await self._read_log_lines(panel, path)
+            if lines:
+                res = find_email_and_ip_in_xray_log(lines, client_ip, dst_ip, port)
+                if res:
+                    email, ip = res
+                    return email, "xray", ip
+                    
+        return None
+
     async def get_client_by_connection(self, client_ip: Optional[str], dst_ip: Optional[str], port: int, source_type: str, source_id: str) -> Optional[Tuple[str, SpectrePanelInstance, str, Optional[str]]]:
         """
-        Ищет email клиента, обращаясь к эндпоинту соответствующей панели.
+        Ищет email клиента, парся логи Xray/Hysteria напрямую на стороне бота.
         Возвращает кортеж (email, panel, source, real_client_ip) или None.
         """
         panel = None
@@ -287,25 +347,21 @@ class SpectreClientManager:
         elif source_type == 'vps':
             panel = self.get_panel_by_vps_ip(source_id)
             
-        params = {"port": port}
-        if client_ip:
-            params["client_ip"] = client_ip
-        if dst_ip:
-            params["dst_ip"] = dst_ip
-
         # 1. Сначала опрашиваем целевую панель, на которой зафиксировано событие
         if panel:
-            success, res = await panel.request("GET", "/api/security/client-by-connection", params=params)
-            if success and res.get("success"):
-                return res["email"], panel, res.get("source", "xray"), res.get("client_ip")
+            res = await self._get_client_from_panel_logs(panel, client_ip, dst_ip, port)
+            if res:
+                email, source, real_client_ip = res
+                return email, panel, source, real_client_ip
                 
         # 2. Резервный поиск (Fallback): опрашиваем все остальные панели.
         for p in self.panels.values():
             if panel and p.name == panel.name:
                 continue
-            success, res = await p.request("GET", "/api/security/client-by-connection", params=params)
-            if success and res.get("success"):
-                return res["email"], p, res.get("source", "xray"), res.get("client_ip")
+            res = await self._get_client_from_panel_logs(p, client_ip, dst_ip, port)
+            if res:
+                email, source, real_client_ip = res
+                return email, p, source, real_client_ip
                 
         return None
 

@@ -145,12 +145,7 @@ async def test_two_phase_ips_success(monkeypatch):
     
     async def mock_request(self, method, path, **kwargs):
         api_calls.append((self.name, method, path, kwargs))
-        if path == "/api/security/client-by-connection":
-            if self.name == "VPS Panel":
-                return True, {"success": True, "email": "tunnel@hysteria.com", "source": "hysteria"}
-            elif self.name == "LXC Panel":
-                return True, {"success": True, "email": "attacker@xray.com", "source": "xray"}
-        elif path == "/api/security/disable-client":
+        if path == "/api/security/disable-client":
             email = kwargs.get("data", {}).get("email")
             return True, {"success": True, "msg": f"Client {email} blocked"}
         elif path == "/api/security/enable-client":
@@ -159,6 +154,14 @@ async def test_two_phase_ips_success(monkeypatch):
         return False, {"error": "Not mocked"}
         
     monkeypatch.setattr(SpectrePanelInstance, "request", mock_request)
+
+    async def mock_get_client_by_connection(client_ip, dst_ip, port, source_type, source_id):
+        if source_type == 'vps':
+            return "tunnel@hysteria.com", vps_panel, "hysteria", "1.2.3.4"
+        elif source_type == 'lxc':
+            return "attacker@xray.com", lxc_panel, "xray", "1.2.3.4"
+        return None
+    monkeypatch.setattr(spectre_manager, "get_client_by_connection", mock_get_client_by_connection)
     
     # Замокаем отправку алертов в Telegram
     telegram_alerts = []
@@ -232,16 +235,17 @@ async def test_two_phase_ips_failure(monkeypatch):
     
     async def mock_request(self, method, path, **kwargs):
         api_calls.append((self.name, method, path, kwargs))
-        if path == "/api/security/client-by-connection":
-            if self.name == "VPS Panel":
-                return True, {"success": True, "email": "tunnel@hysteria.com", "source": "hysteria"}
-            elif self.name == "LXC Panel":
-                return True, {"success": False, "msg": "Not found"}
-        elif path == "/api/security/disable-client":
+        if path == "/api/security/disable-client":
             return True, {"success": True, "msg": "Blocked"}
         return False, {"error": "Not mocked"}
         
     monkeypatch.setattr(SpectrePanelInstance, "request", mock_request)
+
+    async def mock_get_client_by_connection(client_ip, dst_ip, port, source_type, source_id):
+        if source_type == 'vps':
+            return "tunnel@hysteria.com", vps_panel, "hysteria", "1.2.3.4"
+        return None
+    monkeypatch.setattr(spectre_manager, "get_client_by_connection", mock_get_client_by_connection)
     
     telegram_alerts = []
     async def mock_send_alert(text, parse_mode="HTML", reply_markup=None):
