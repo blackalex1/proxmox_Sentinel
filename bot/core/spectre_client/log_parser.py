@@ -159,13 +159,17 @@ def find_client_ip_for_email_in_hysteria_log(lines: List[str], email: str) -> Op
 
 def find_email_and_ip_in_xray_log(lines: List[str], client_ip: Optional[str], dst_ip: Optional[str], dst_port: int) -> Optional[Tuple[str, Optional[str]]]:
     dst_port_str = f":{dst_port}"
-    now = datetime.datetime.now()
+    now_local = datetime.datetime.now()
+    now_utc = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
     
     # Pass 1: Match port and IP/client_ip (main search)
     for line in reversed(lines):
         log_time = parse_xray_timestamp(line)
-        if log_time and abs((now - log_time).total_seconds()) > 300:
-            continue
+        if log_time:
+            diff_local = abs((now_local - log_time).total_seconds())
+            diff_utc = abs((now_utc - log_time).total_seconds())
+            if diff_local > 300 and diff_utc > 300:
+                continue
             
         if "email:" not in line:
             continue
@@ -182,8 +186,11 @@ def find_email_and_ip_in_xray_log(lines: List[str], client_ip: Optional[str], ds
     # Pass 2: Match port only (fallback search with destination IP verification)
     for line in reversed(lines):
         log_time = parse_xray_timestamp(line)
-        if log_time and abs((now - log_time).total_seconds()) > 300:
-            continue
+        if log_time:
+            diff_local = abs((now_local - log_time).total_seconds())
+            diff_utc = abs((now_utc - log_time).total_seconds())
+            if diff_local > 300 and diff_utc > 300:
+                continue
             
         if "email:" not in line:
             continue

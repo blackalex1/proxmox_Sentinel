@@ -89,6 +89,7 @@ class Settings(BaseSettings):
     # Дополнительные настройки уведомлений VPN
     vpn_offline_timeout: int = Field(default=1800, validation_alias='VPN_OFFLINE_TIMEOUT')
     vpn_ignore_users: List[str] | str = Field(default_factory=list, validation_alias='VPN_IGNORE_USERS')
+    transit_tunnels: List[str] | str = Field(default=['bot'], validation_alias='TRANSIT_TUNNELS')
     alert_vpn_client_unusual_ports: bool = Field(default=False, validation_alias='ALERT_VPN_CLIENT_UNUSUAL_PORTS')
     vpn_alert_debounce_sec: float = Field(default=3.0, validation_alias='VPN_ALERT_DEBOUNCE_SEC')
 
@@ -154,7 +155,7 @@ class Settings(BaseSettings):
         return [int(x.strip()) for x in str(v).split(',') if x.strip().isdigit()]
 
     @field_validator(
-        'trusted_admin_ips', 'vpn_ignore_users', 'ips_process_whitelist', 'remote_monitor_ignore_keys', 'remote_monitor_ignore_ips',
+        'trusted_admin_ips', 'vpn_ignore_users', 'ips_process_whitelist', 'remote_monitor_ignore_keys', 'remote_monitor_ignore_ips', 'transit_tunnels',
         mode='before'
     )
     @classmethod

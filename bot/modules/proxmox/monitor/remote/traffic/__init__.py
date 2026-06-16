@@ -306,34 +306,61 @@ async def handle_remote_traffic_line(line, server=None):
                 email, panel, source, real_client_ip = res_connection
                 src_display = f"{src} ({real_client_ip})" if real_client_ip else src
                 
-                # Если атака идет из Hysteria-туннеля:
+                # Если атака идет из Hysteria-соединения:
                 if source == "hysteria":
-                    # Фаза 1: Мгновенно блокируем Hysteria-туннель точечно на VPS-панели
-                    from core.spectre_client import spectre_manager
-                    start_time = asyncio.get_event_loop().time()
-                    if panel:
-                        success_req, res_req = await panel.request("POST", "/api/security/disable-client", data={"email": email})
-                        block_res = [(panel.name, success_req and res_req.get("success", False), res_req.get("msg", "OK"))]
-                    else:
-                        block_res = await spectre_manager.disable_client_everywhere(email)
+                    is_tunnel = email in settings.transit_tunnels
+                    if is_tunnel:
+                        # Фаза 1: Мгновенно блокируем Hysteria-туннель точечно на VPS-панели (с расследованием)
+                        from core.spectre_client import spectre_manager
+                        start_time = asyncio.get_event_loop().time()
+                        if panel:
+                            success_req, res_req = await panel.request("POST", "/api/security/disable-client", data={"email": email})
+                            block_res = [(panel.name, success_req and res_req.get("success", False), res_req.get("msg", "OK"))]
+                        else:
+                            block_res = await spectre_manager.disable_client_everywhere(email)
+                            
+                        reaction_time = f"{asyncio.get_event_loop().time() - start_time:.3f}s"
                         
-                    reaction_time = f"{asyncio.get_event_loop().time() - start_time:.3f}s"
-                    
-                    from core.db import log_ips_incident
-                    await log_ips_incident(attacker_ip=src, tunnel_name="Hysteria2", attacker_email=email, reaction_time=reaction_time)
-                    
-                    _, block_details = spectre_manager.parse_action_results(block_res, action="ban")
-                    block_details_str = "\n".join(block_details)
-                    
-                    # Пишем админам о временном бане и начале расследования
-                    msg = get_ips_hysteria_attack_alert(
-                        server['ip'], email, proto, src_display, spt, dst, dpt, block_details_str, timestamp
-                    )
-                    await send_alert_to_admins(msg, parse_mode="markdown")
-                    
-                    # Запускаем расследование в фоновом таске
-                    asyncio.create_task(investigate_and_resolve_remote_attack(server, dst, dpt, email, proto, src, spt))
-                    return
+                        from core.db import log_ips_incident
+                        await log_ips_incident(attacker_ip=src, tunnel_name="Hysteria2", attacker_email=email, reaction_time=reaction_time)
+                        
+                        _, block_details = spectre_manager.parse_action_results(block_res, action="ban")
+                        block_details_str = "\n".join(block_details)
+                        
+                        # Пишем админам о временном бане и начале расследования
+                        msg = get_ips_hysteria_attack_alert(
+                            server['ip'], email, proto, src_display, spt, dst, dpt, block_details_str, timestamp
+                        )
+                        await send_alert_to_admins(msg, parse_mode="markdown")
+                        
+                        # Запускаем расследование в фоновом таске
+                        asyncio.create_task(investigate_and_resolve_remote_attack(server, dst, dpt, email, proto, src, spt))
+                        return
+                    else:
+                        # Прямой клиент Hysteria (не туннель): баним перманентно сразу без расследования
+                        from core.spectre_client import spectre_manager
+                        start_time = asyncio.get_event_loop().time()
+                        if panel:
+                            success_req, res_req = await panel.request("POST", "/api/security/disable-client", data={"email": email})
+                            block_res = [(panel.name, success_req and res_req.get("success", False), res_req.get("msg", "OK"))]
+                        else:
+                            block_res = await spectre_manager.disable_client_everywhere(email)
+                            
+                        reaction_time = f"{asyncio.get_event_loop().time() - start_time:.3f}s"
+                        
+                        from core.db import log_ips_incident
+                        await log_ips_incident(attacker_ip=src, tunnel_name="Hysteria2", attacker_email=email, reaction_time=reaction_time)
+                        
+                        _, block_details = spectre_manager.parse_action_results(block_res, action="ban")
+                        block_details_str = "\n".join(block_details)
+                        
+                        # Пишем админам о перманентной блокировке прямого клиента Hysteria
+                        proc_info = "" # no process details needed for direct client
+                        msg = get_ips_xray_attack_alert(
+                            server['ip'], email, proto, src_display, spt, dst, dpt, block_details_str, proc_info, timestamp
+                        )
+                        await send_alert_to_admins(msg, parse_mode="markdown")
+                        return
                 else:
                     # Если атака идет напрямую от Xray клиента (source == "xray")
                     # Сразу баним его точечно на панели, где зафиксировано соединение
