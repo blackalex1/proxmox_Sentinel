@@ -141,14 +141,8 @@ async def cb_unban_tunnel(callback: CallbackQuery):
     try:
         unblock_res = await spectre_manager.enable_client_everywhere(tunnel_email)
         
-        unblock_details = []
-        all_success = True
-        for panel_name, success, msg in unblock_res:
-            status_str = _("spectre", "unban_status_success") if success else _("spectre", "unban_status_error")
-            if not success:
-                all_success = False
-            unblock_details.append(f"  • {panel_name}: {status_str} ({msg})")
-        unblock_details_str = "\n".join(unblock_details)
+        all_success, detail_lines = spectre_manager.parse_action_results(unblock_res, action="unban")
+        unblock_details_str = "\n".join(detail_lines)
         
         timestamp = datetime.datetime.now().strftime("%H:%M:%S")
         if all_success:
@@ -171,7 +165,7 @@ async def cb_unban_tunnel(callback: CallbackQuery):
         )
         
     await callback.answer()
-
+ 
 @router.message(Command("ban"))
 async def cmd_ban_client(message: types.Message):
     """
@@ -191,14 +185,7 @@ async def cmd_ban_client(message: types.Message):
     try:
         results = await spectre_manager.disable_client_everywhere(email)
         
-        detail_lines = []
-        any_success = False
-        for panel_name, success, msg in results:
-            status_str = _("spectre", "ban_status_success") if success else _("spectre", "ban_status_error")
-            if success:
-                any_success = True
-            detail_lines.append(f"  • {panel_name}: {status_str} ({msg})")
-            
+        any_success, detail_lines = spectre_manager.parse_action_results(results, action="ban")
         details_str = "\n".join(detail_lines)
         if any_success:
             await status_msg.edit_text(
@@ -213,7 +200,7 @@ async def cmd_ban_client(message: types.Message):
     except Exception as e:
         logging.error(f"Error executing manual ban in Sentinel bot: {e}")
         await status_msg.edit_text(_("spectre", "ban_error", error=e))
-
+ 
 @router.message(Command("unban"))
 async def cmd_unban_client(message: types.Message):
     """
@@ -233,14 +220,7 @@ async def cmd_unban_client(message: types.Message):
     try:
         results = await spectre_manager.enable_client_everywhere(email)
         
-        detail_lines = []
-        any_success = False
-        for panel_name, success, msg in results:
-            status_str = _("spectre", "unban_status_success") if success else _("spectre", "unban_status_error")
-            if success:
-                any_success = True
-            detail_lines.append(f"  • {panel_name}: {status_str} ({msg})")
-            
+        any_success, detail_lines = spectre_manager.parse_action_results(results, action="unban")
         details_str = "\n".join(detail_lines)
         if any_success:
             await status_msg.edit_text(

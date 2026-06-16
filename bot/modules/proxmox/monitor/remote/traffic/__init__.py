@@ -117,20 +117,25 @@ async def investigate_and_resolve_remote_attack(server, dst_ip, dpt, tunnel_emai
     
     if xray_client:
         # Фаза 2: Нарушитель найден!
-        # Глобальный бан нарушителя
-        block_res = await spectre_manager.disable_client_everywhere(xray_client)
-        block_details = []
-        for panel_name, success, msg in block_res:
-            status_str = "🟢 Успешно" if success else "🔴 Ошибка"
-            block_details.append(f"  • {panel_name}: {status_str} ({msg})")
+        # Точечный бан нарушителя на найденной панели
+        if target_panel:
+            success, res = await target_panel.request("POST", "/api/security/disable-client", data={"email": xray_client})
+            block_res = [(target_panel.name, success and res.get("success", False), res.get("msg", "OK"))]
+        else:
+            block_res = await spectre_manager.disable_client_everywhere(xray_client)
+            
+        _, block_details = spectre_manager.parse_action_results(block_res, action="ban")
         block_details_str = "\n".join(block_details)
         
-        # Разбан туннеля Hysteria
-        unblock_res = await spectre_manager.enable_client_everywhere(tunnel_email)
-        unblock_details = []
-        for panel_name, success, msg in unblock_res:
-            status_str = "🟢 Успешно" if success else "🔴 Ошибка"
-            unblock_details.append(f"  • {panel_name}: {status_str} ({msg})")
+        # Точечный разбан туннеля Hysteria на панели этого VPS
+        vps_panel = spectre_manager.get_panel_by_vps_ip(server['ip'])
+        if vps_panel:
+            success, res = await vps_panel.request("POST", "/api/security/enable-client", data={"email": tunnel_email})
+            unblock_res = [(vps_panel.name, success and res.get("success", False), res.get("msg", "OK"))]
+        else:
+            unblock_res = await spectre_manager.enable_client_everywhere(tunnel_email)
+            
+        _, unblock_details = spectre_manager.parse_action_results(unblock_res, action="unban")
         unblock_details_str = "\n".join(unblock_details)
         
         msg = get_ips_investigation_success_alert(
@@ -268,19 +273,21 @@ async def handle_remote_traffic_line(line, server=None):
                 
                 # Если атака идет из Hysteria-туннеля:
                 if source == "hysteria":
-                    # Фаза 1: Мгновенно блокируем Hysteria-туннель
+                    # Фаза 1: Мгновенно блокируем Hysteria-туннель точечно на VPS-панели
                     from core.spectre_client import spectre_manager
                     start_time = asyncio.get_event_loop().time()
-                    block_res = await spectre_manager.disable_client_everywhere(email)
+                    if panel:
+                        success_req, res_req = await panel.request("POST", "/api/security/disable-client", data={"email": email})
+                        block_res = [(panel.name, success_req and res_req.get("success", False), res_req.get("msg", "OK"))]
+                    else:
+                        block_res = await spectre_manager.disable_client_everywhere(email)
+                        
                     reaction_time = f"{asyncio.get_event_loop().time() - start_time:.3f}s"
                     
                     from core.db import log_ips_incident
                     await log_ips_incident(attacker_ip=src, tunnel_name="Hysteria2", attacker_email=email, reaction_time=reaction_time)
                     
-                    block_details = []
-                    for panel_name, success, msg in block_res:
-                        status_str = "🟢 Успешно" if success else "🔴 Ошибка"
-                        block_details.append(f"  • {panel_name}: {status_str} ({msg})")
+                    _, block_details = spectre_manager.parse_action_results(block_res, action="ban")
                     block_details_str = "\n".join(block_details)
                     
                     # Пишем админам о временном бане и начале расследования
@@ -294,19 +301,21 @@ async def handle_remote_traffic_line(line, server=None):
                     return
                 else:
                     # Если атака идет напрямую от Xray клиента (source == "xray")
-                    # Сразу баним его
+                    # Сразу баним его точечно на панели, где зафиксировано соединение
                     from core.spectre_client import spectre_manager
                     start_time = asyncio.get_event_loop().time()
-                    block_res = await spectre_manager.disable_client_everywhere(email)
+                    if panel:
+                        success_req, res_req = await panel.request("POST", "/api/security/disable-client", data={"email": email})
+                        block_res = [(panel.name, success_req and res_req.get("success", False), res_req.get("msg", "OK"))]
+                    else:
+                        block_res = await spectre_manager.disable_client_everywhere(email)
+                        
                     reaction_time = f"{asyncio.get_event_loop().time() - start_time:.3f}s"
                     
                     from core.db import log_ips_incident
                     await log_ips_incident(attacker_ip=src, tunnel_name="Xray", attacker_email=email, reaction_time=reaction_time)
                     
-                    block_details = []
-                    for panel_name, success, msg in block_res:
-                        status_str = "🟢 Успешно" if success else "🔴 Ошибка"
-                        block_details.append(f"  • {panel_name}: {status_str} ({msg})")
+                    _, block_details = spectre_manager.parse_action_results(block_res, action="ban")
                     block_details_str = "\n".join(block_details)
                     
                     proc_name, killed_pid = await get_and_kill_remote_process(server, spt)
