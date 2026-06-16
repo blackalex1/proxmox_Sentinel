@@ -303,7 +303,7 @@ class SpectreClientManager:
                     logging.error(f"Failed to read remote VPS log {log_path} for {panel.name}: {e}")
         return lines
 
-    async def _get_client_from_panel_logs(self, panel: SpectrePanelInstance, client_ip: Optional[str], dst_ip: Optional[str], port: int) -> Optional[Tuple[str, str, Optional[str]]]:
+    async def _get_client_from_panel_logs(self, panel: SpectrePanelInstance, client_ip: Optional[str], dst_ip: Optional[str], port: int) -> Optional[Tuple[str, str, Optional[str], Optional[str]]]:
         from .log_parser import find_email_in_hysteria_log, find_client_ip_for_email_in_hysteria_log, find_email_and_ip_in_xray_log
         
         # 1. Hysteria logs search
@@ -318,7 +318,7 @@ class SpectreClientManager:
                 email = find_email_in_hysteria_log(lines, dst_ip, port)
                 if email:
                     real_client_ip = find_client_ip_for_email_in_hysteria_log(lines, email)
-                    return email, "hysteria", real_client_ip
+                    return email, "hysteria", real_client_ip, "Hysteria2"
                     
         # 2. Xray logs search
         xray_paths = ["/var/log/xray/access.log", "/var/log/xray/error.log"]
@@ -331,15 +331,15 @@ class SpectreClientManager:
             if lines:
                 res = find_email_and_ip_in_xray_log(lines, client_ip, dst_ip, port)
                 if res:
-                    email, ip = res
-                    return email, "xray", ip
+                    email, ip, inbound_tag = res
+                    return email, "xray", ip, inbound_tag
                     
         return None
 
-    async def get_client_by_connection(self, client_ip: Optional[str], dst_ip: Optional[str], port: int, source_type: str, source_id: str) -> Optional[Tuple[str, SpectrePanelInstance, str, Optional[str]]]:
+    async def get_client_by_connection(self, client_ip: Optional[str], dst_ip: Optional[str], port: int, source_type: str, source_id: str) -> Optional[Tuple[str, SpectrePanelInstance, str, Optional[str], Optional[str]]]:
         """
         Ищет email клиента, парся логи Xray/Hysteria напрямую на стороне бота.
-        Возвращает кортеж (email, panel, source, real_client_ip) или None.
+        Возвращает кортеж (email, panel, source, real_client_ip, inbound_tag) или None.
         """
         panel = None
         if source_type == 'lxc':
@@ -351,8 +351,8 @@ class SpectreClientManager:
         if panel:
             res = await self._get_client_from_panel_logs(panel, client_ip, dst_ip, port)
             if res:
-                email, source, real_client_ip = res
-                return email, panel, source, real_client_ip
+                email, source, real_client_ip, inbound_tag = res
+                return email, panel, source, real_client_ip, inbound_tag
                 
         # 2. Резервный поиск (Fallback): опрашиваем все остальные панели.
         for p in self.panels.values():
@@ -360,8 +360,8 @@ class SpectreClientManager:
                 continue
             res = await self._get_client_from_panel_logs(p, client_ip, dst_ip, port)
             if res:
-                email, source, real_client_ip = res
-                return email, p, source, real_client_ip
+                email, source, real_client_ip, inbound_tag = res
+                return email, p, source, real_client_ip, inbound_tag
                 
         return None
 

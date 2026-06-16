@@ -170,7 +170,7 @@ def find_client_ip_for_email_in_hysteria_log(lines: List[str], email: str) -> Op
                     return match.group(1)
     return None
 
-def find_email_and_ip_in_xray_log(lines: List[str], client_ip: Optional[str], dst_ip: Optional[str], dst_port: int) -> Optional[Tuple[str, Optional[str]]]:
+def find_email_and_ip_in_xray_log(lines: List[str], client_ip: Optional[str], dst_ip: Optional[str], dst_port: int) -> Optional[Tuple[str, Optional[str], Optional[str]]]:
     dst_port_str = f":{dst_port}"
     now_local = datetime.datetime.now()
     now_utc = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
@@ -194,7 +194,9 @@ def find_email_and_ip_in_xray_log(lines: List[str], client_ip: Optional[str], ds
                     email = match_email.group(1)
                     match_ip = re.search(r"(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}):\d+\s+accepted", line)
                     ip = match_ip.group(1) if match_ip else None
-                    return email, ip
+                    match_tag = re.search(r"accepted\s+(?:tcp|udp):\S+\s+\[([^\]]+)\]", line)
+                    inbound_tag = match_tag.group(1) if match_tag else None
+                    return email, ip, inbound_tag
                     
     # Pass 2: Match port only (fallback search with destination IP verification)
     for line in reversed(lines):
@@ -221,6 +223,8 @@ def find_email_and_ip_in_xray_log(lines: List[str], client_ip: Optional[str], ds
                 email = match_email.group(1)
                 match_ip = re.search(r"(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}):\d+\s+accepted", line)
                 ip = match_ip.group(1) if match_ip else None
-                return email, ip
+                match_tag = re.search(r"accepted\s+(?:tcp|udp):\S+\s+\[([^\]]+)\]", line)
+                inbound_tag = match_tag.group(1) if match_tag else None
+                return email, ip, inbound_tag
                 
     return None

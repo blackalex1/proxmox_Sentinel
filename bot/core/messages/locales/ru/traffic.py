@@ -7,7 +7,7 @@ translation = {
         "| :--- | :--- |\n"
         "| **👤 Нарушитель (Xray)** | `{xray_client}` (Заблокирован) |\n"
         "| **🔓 Hysteria туннель** | `{tunnel_email}` (Разблокирован) |\n"
-        "| **🌐 Маршрут атаки** | Вход: `{target_panel_name}` (Xray)<br/>Транзит: `{tunnel_email}` (Hysteria2)<br/>Выход: VPS `{server_ip}` → `{dst_ip}:{dpt}` |\n\n"
+        "| **🌐 Маршрут атаки** | Вход: `{target_panel_name}` (Xray{inbound_display})<br/>Транзит: `{tunnel_email}` (Hysteria2)<br/>Выход: VPS `{server_ip}` → `{dst_ip}:{dpt}` |\n\n"
         "✨ *Все остальные пользователи туннеля снова в сети!*\n\n"
         "<details>\n"
         "  <summary>📋 <b>Показать детали глобального бана нарушителя</b></summary>\n"
@@ -71,7 +71,7 @@ translation = {
         "| Параметр | Значение |\n"
         "| :--- | :--- |\n"
         "| **🌐 VPS Server** | `{server_ip}` |\n"
-        "| **👤 Нарушитель (Xray)** | `{email}` |\n"
+        "| **👤 Нарушитель (Xray)** | `{email}`{inbound_display} |\n"
         "| **🔌 Протокол** | `{proto}` |\n"
         "| **👤 Источник** | `{src}:{spt}`{proc_info} |\n"
         "| **🎯 Назначение** | `{dst}:{dpt}` |\n\n"
@@ -134,7 +134,8 @@ translation = {
         "| **👤 Источник** | `{src}:{spt}` |\n"
         "| **🎯 Назначение** | `{dst}:{dpt}` |"
         "{vpn_ip_row}"
-        "{vpn_client_row}\n\n"
+        "{vpn_client_row}"
+        "{vpn_inbound_row}\n\n"
         "{block_details_block}\n\n"
         "*Aegis Security Guard • Время: {timestamp}*"
     ),
@@ -149,6 +150,7 @@ translation = {
     "local_direction_out": "ИСХОДЯЩЕЕ",
     "local_real_ip": "\n| **👤 Реальный IP** | `{real_client_ip}` |",
     "local_vpn_client": "\n| **👤 Клиент VPN** | `{xray_client_email}` |",
+    "local_vpn_inbound": "\n| **🔌 Инбаунд VPN** | `{inbound_tag}` |",
     "local_block_status": "\n\n<details>\n  <summary>🚨 <b>Показать статус авто-блокировки аккаунта</b></summary>\n  <pre><code>{block_details_str}</code></pre>\n</details>",
     "proc_info_tmpl": " (Процесс: `{proc_name}`)"
 }

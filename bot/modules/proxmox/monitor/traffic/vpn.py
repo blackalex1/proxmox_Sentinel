@@ -98,15 +98,15 @@ async def find_xray_client_email(vmid, dst_ip, dpt, client_ip=None):
             source_id=str(vmid)
         )
         if res:
-            email, panel, *extra = res
+            email, panel, source, real_client_ip, inbound_tag = res
             logging.info("vpn_ips_successfully_found_client_email_via", email, panel.name)
-            return email
+            return email, inbound_tag
     except Exception as e:
         logging.error("error_calling_spectre_panel_api", e)
 
     # 2. Резервный метод (поиск в xray.log Spectre Panel напрямую в LXC)
     if platform.system() != 'Linux':
-        return None
+        return None, None
     try:
         target_conn = f"{dst_ip}:{dpt}"
         # Возможные пути к бинарной папке и логу Xray в LXC контейнере
@@ -130,8 +130,11 @@ async def find_xray_client_email(vmid, dst_ip, dpt, client_ip=None):
                     if target_conn in line and "email:" in line:
                         match = re.search(r"email:\s*(\S+)", line)
                         if match:
-                            return match.group(1)
+                            email = match.group(1)
+                            match_tag = re.search(r"accepted\s+(?:tcp|udp):\S+\s+\[([^\]]+)\]", line)
+                            inbound_tag = match_tag.group(1) if match_tag else None
+                            return email, inbound_tag
                             
     except Exception as e:
         logging.error("error_backup_searching_xray_client_email_in", e)
-    return None
+    return None, None
