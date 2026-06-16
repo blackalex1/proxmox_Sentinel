@@ -56,6 +56,7 @@ translation = {
     "error_checking_local_bot_process_in_watcher": "Error checking local bot process in watcher: %s",
     "error_clearing_iptables": "Error clearing iptables: %s",
     "error_closing_bot_session": "Error closing bot session: %s",
+    "error_deleting_webhook": "Error deleting webhook: %s",
     "error_configuring_proxy_or_alternative_bot_api": "Error configuring proxy or alternative Bot API: %s",
     "error_configuring_user_ansible_in_lxc": "Error configuring user ansible in LXC %s: %s",
     "error_configuring_user_ansible_on_proxmox_host": "Error configuring user ansible on Proxmox host: %s",
