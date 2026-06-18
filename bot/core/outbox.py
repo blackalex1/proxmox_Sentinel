@@ -222,6 +222,21 @@ class ResilientOutbox:
             self.save_to_disk()
             logger.info("outbox_message_added_deferred_queue_total", chat_id, len(self.queue))
 
+    async def add_edit(self, chat_id, message_id, text, **kwargs):
+        """Добавляет запрос на редактирование сообщения в очередь."""
+        async with self.lock:
+            msg_data = {
+                "chat_id": chat_id,
+                "message_id": message_id,
+                "text": text,
+                "kwargs": kwargs,
+                "is_edit": True,
+                "timestamp": time.time()
+            }
+            self.queue.append(msg_data)
+            self.save_to_disk()
+            logger.info("outbox_edit_added_deferred_queue_total", chat_id, message_id, len(self.queue))
+
     async def flush_queue(self, bot: Bot):
         """
         Пытается отправить все сообщения из очереди.
@@ -241,44 +256,68 @@ class ResilientOutbox:
                 chat_id = msg["chat_id"]
                 text = msg["text"]
                 kwargs = msg.get("kwargs", {}).copy()
+                is_edit = msg.get("is_edit", False)
+                message_id = msg.get("message_id")
                 
                 # Пометка с номером сообщения в очереди
                 queue_tag = f"\n\n[Отложенное сообщение {idx}/{total_count}]"
                 
                 try:
-                    # Сначала пробуем отправить как Rich Message
                     parse_mode = kwargs.get("parse_mode", "HTML")
                     reply_markup = kwargs.get("reply_markup", None)
-                    
                     rich_text = f"{text}{queue_tag}"
                     
-                    rich_msg = await self._send_rich_message_impl(bot, chat_id, rich_text, parse_mode=parse_mode, reply_markup=reply_markup)
-                    if rich_msg:
-                        logger.info("outbox_message_successfully_delivered_as_rich", chat_id, idx, total_count)
-                        await asyncio.sleep(0.5)
-                        continue
-                    
-                    # Если Rich Message не сработал, очищаем форматирование для стандартного API
-                    actual_parse_mode = parse_mode
-                    if parse_mode and parse_mode.lower() == "html" and text:
-                        if re.search(r'^#\s+', text, re.MULTILINE) or re.search(r'^###\s+', text, re.MULTILINE) or ('| ---' in text) or ('| :---' in text) or re.search(r'^---\s*$', text, re.MULTILINE):
-                            actual_parse_mode = "markdown"
+                    if is_edit:
+                        rich_edit = await self._edit_rich_message_impl(bot, chat_id, message_id, rich_text, parse_mode=parse_mode, reply_markup=reply_markup)
+                        if rich_edit:
+                            logger.info("outbox_message_successfully_edited_as_rich", chat_id, message_id, idx, total_count)
+                            await asyncio.sleep(0.5)
+                            continue
                             
-                    if actual_parse_mode and actual_parse_mode.lower() in ("markdown", "markdownv2"):
-                        cleaned_text = clean_mixed_html_to_markdown(text)
-                        kwargs['parse_mode'] = actual_parse_mode
-                    else:
-                        cleaned_text = clean_html_for_telegram(text)
-                        kwargs['parse_mode'] = "HTML"
+                        # Если Rich Message не сработал, очищаем форматирование для стандартного API
+                        actual_parse_mode = parse_mode
+                        if parse_mode and parse_mode.lower() == "html" and text:
+                            if re.search(r'^#\s+', text, re.MULTILINE) or re.search(r'^###\s+', text, re.MULTILINE) or ('| ---' in text) or ('| :---' in text) or re.search(r'^---\s*$', text, re.MULTILINE):
+                                actual_parse_mode = "markdown"
+                                
+                        if actual_parse_mode and actual_parse_mode.lower() in ("markdown", "markdownv2"):
+                            cleaned_text = clean_mixed_html_to_markdown(text)
+                            kwargs['parse_mode'] = actual_parse_mode
+                        else:
+                            cleaned_text = clean_html_for_telegram(text)
+                            kwargs['parse_mode'] = "HTML"
+                            
+                        resilient_text = f"{cleaned_text}{queue_tag}"
                         
-                    resilient_text = f"{cleaned_text}{queue_tag}"
-                    
-                    # Используем оригинальный метод класса Bot для отправки без перехвата
-                    await bot._original_send_message(chat_id, resilient_text, **kwargs)
-                    logger.info("outbox_message_successfully_delivered_queue", chat_id, idx, total_count)
-                    
-                    # Анти-спам защита: задержка 0.5 сек между сообщениями
-                    await asyncio.sleep(0.5)
+                        await bot._original_edit_message_text(chat_id=chat_id, message_id=message_id, text=resilient_text, **kwargs)
+                        logger.info("outbox_message_successfully_edited_queue", chat_id, message_id, idx, total_count)
+                        await asyncio.sleep(0.5)
+                    else:
+                        rich_msg = await self._send_rich_message_impl(bot, chat_id, rich_text, parse_mode=parse_mode, reply_markup=reply_markup)
+                        if rich_msg:
+                            logger.info("outbox_message_successfully_delivered_as_rich", chat_id, idx, total_count)
+                            await asyncio.sleep(0.5)
+                            continue
+                        
+                        # Если Rich Message не сработал, очищаем форматирование для стандартного API
+                        actual_parse_mode = parse_mode
+                        if parse_mode and parse_mode.lower() == "html" and text:
+                            if re.search(r'^#\s+', text, re.MULTILINE) or re.search(r'^###\s+', text, re.MULTILINE) or ('| ---' in text) or ('| :---' in text) or re.search(r'^---\s*$', text, re.MULTILINE):
+                                actual_parse_mode = "markdown"
+                                
+                        if actual_parse_mode and actual_parse_mode.lower() in ("markdown", "markdownv2"):
+                            cleaned_text = clean_mixed_html_to_markdown(text)
+                            kwargs['parse_mode'] = actual_parse_mode
+                        else:
+                            cleaned_text = clean_html_for_telegram(text)
+                            kwargs['parse_mode'] = "HTML"
+                            
+                        resilient_text = f"{cleaned_text}{queue_tag}"
+                        
+                        # Используем оригинальный метод класса Bot для отправки без перехвата
+                        await bot._original_send_message(chat_id, resilient_text, **kwargs)
+                        logger.info("outbox_message_successfully_delivered_queue", chat_id, idx, total_count)
+                        await asyncio.sleep(0.5)
                 except (TelegramNetworkError, ClientOSError, asyncio.TimeoutError) as e:
                     # Если всё еще нет сети, прерываем отправку и оставляем это и все последующие сообщения
                     logger.warning("outbox_network_error_sending_message_suspending", chat_id, e)
@@ -464,9 +503,25 @@ class ResilientOutbox:
                 text = args_list[0]
                 
             chat_id = kwargs.get('chat_id')
+            if not chat_id and len(args_list) > 1:
+                chat_id = args_list[1]
+                
             message_id = kwargs.get('message_id')
+            if not message_id and len(args_list) > 2:
+                message_id = args_list[2]
+                
             parse_mode = kwargs.get('parse_mode', 'HTML')
             reply_markup = kwargs.get('reply_markup')
+            
+            # Сохраняем оригинальный текст и аргументы для возможной очереди
+            original_text = text
+            original_kwargs = kwargs.copy()
+            if 'text' in original_kwargs:
+                del original_kwargs['text']
+            if 'chat_id' in original_kwargs:
+                del original_kwargs['chat_id']
+            if 'message_id' in original_kwargs:
+                del original_kwargs['message_id']
             
             if chat_id and message_id and text:
                 rich_edit = await self._edit_rich_message_impl(bot, chat_id, message_id, text, parse_mode=parse_mode, reply_markup=reply_markup)
@@ -490,7 +545,19 @@ class ResilientOutbox:
                 kwargs['text'] = cleaned_text
             elif args_list:
                 args_list[0] = cleaned_text
-            return await bot._original_edit_message_text(*args_list, **kwargs)
+                
+            try:
+                return await bot._original_edit_message_text(*args_list, **kwargs)
+            except Exception as e:
+                is_network = isinstance(e, (TelegramNetworkError, ClientOSError, asyncio.TimeoutError))
+                err_msg = str(e).lower()
+                
+                if is_network or any(x in err_msg for x in ["connection", "timeout", "reset", "abort"]):
+                    logger.warning("outbox_network_failure_editing_message_redirecting", chat_id, message_id, e)
+                    await self.add_edit(chat_id, message_id, original_text, **original_kwargs)
+                    return None
+                else:
+                    raise e
             
         bot.edit_message_text = resilient_edit_message_text
         logger.info("outbox_bot_successfully_patched_all_outgoing")

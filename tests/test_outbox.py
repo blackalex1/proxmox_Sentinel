@@ -195,6 +195,65 @@ async def test_outbox_flood_control(clean_outbox):
         assert len(outbox.queue) == 2
 
 
+@pytest.mark.asyncio
+async def test_bot_patching_and_edit_fallback(clean_outbox):
+    """
+    Проверяет, что patch_bot корректно перехватывает сетевые ошибки при редактировании
+    и складывает запросы редактирования в исходящую очередь.
+    """
+    outbox = clean_outbox
+    bot = MagicMock(spec=Bot)
+    
+    # Мокаем оригинальный метод редактирования так, чтобы он всегда падал с сетевой ошибкой
+    bot.edit_message_text = AsyncMock(side_effect=TelegramNetworkError(
+        method=MagicMock(), 
+        message="Simulated Network Failure"
+    ))
+    
+    outbox.patch_bot(bot)
+    
+    result = await bot.edit_message_text(chat_id=99999, message_id=123, text="Новое содержимое", parse_mode="HTML")
+    
+    assert result is None
+    assert len(outbox.queue) == 1
+    assert outbox.queue[0]["chat_id"] == 99999
+    assert outbox.queue[0]["message_id"] == 123
+    assert outbox.queue[0]["text"] == "Новое содержимое"
+    assert outbox.queue[0]["is_edit"] is True
+
+@pytest.mark.asyncio
+async def test_outbox_flush_edit_success(clean_outbox):
+    """
+    Проверяет, что flush_queue успешно отправляет отложенные редактирования
+    после восстановления сети.
+    """
+    outbox = clean_outbox
+    
+    # Заполняем очередь редактированием
+    outbox.queue.append({
+        "chat_id": 55555,
+        "message_id": 123,
+        "text": "Сеть починилась, отредактировано!",
+        "is_edit": True,
+        "kwargs": {}
+    })
+    outbox.save_to_disk()
+    
+    bot = MagicMock(spec=Bot)
+    bot._original_edit_message_text = AsyncMock()
+    
+    await outbox.flush_queue(bot)
+    
+    bot._original_edit_message_text.assert_called_once_with(
+        chat_id=55555,
+        message_id=123,
+        text="Сеть починилась, отредактировано!\n\n[Отложенное сообщение 1/1]",
+        parse_mode="HTML"
+    )
+    
+    assert len(outbox.queue) == 0
+
+
 def test_clean_mixed_html_to_markdown_formatting():
     from core.outbox import clean_mixed_html_to_markdown
     
