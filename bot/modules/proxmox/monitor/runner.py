@@ -128,8 +128,15 @@ async def monitor_panel_audit_logs():
     """
     from core.spectre_client import spectre_manager
     from core.bot import bot
+    from core.db import get_state, set_state
     
-    last_log_ids = {}
+    # Загружаем сохраненные чекпоинты из базы данных, чтобы не пропускать логи после перезапуска бота
+    last_log_ids = await get_state("audit_log_last_ids", {})
+    if not isinstance(last_log_ids, dict):
+        last_log_ids = {}
+    else:
+        last_log_ids = {k: int(v) for k, v in last_log_ids.items() if v is not None}
+        
     logging.info("audit_monitor_background_monitoring_of_panels_audit")
     traffic_update_counter = 0
     
@@ -144,11 +151,12 @@ async def monitor_panel_audit_logs():
                         last_log_ids[p_key] = res["logs"][0]["id"]
                     else:
                         last_log_ids[p_key] = 0
+                    await set_state("audit_log_last_ids", last_log_ids)
                     continue
                     
                 # Запрашиваем новые логи
                 try:
-                    success, res = await panel.get_audit_logs(limit=20)
+                    success, res = await panel.get_audit_logs(limit=100)
                     if not success or not res.get("success"):
                         continue
                         
@@ -242,7 +250,9 @@ async def monitor_panel_audit_logs():
                             except Exception as ex:
                                 logging.error("audit_monitor_error_processing_client_event", ex)
                                     
-                    last_log_ids[p_key] = new_max_id
+                    if new_max_id > prev_max_id:
+                        last_log_ids[p_key] = new_max_id
+                        await set_state("audit_log_last_ids", last_log_ids)
                 except Exception as panel_err:
                     logging.debug("audit_monitor_error_polling_panel", panel.name, panel_err)
         except Exception as e:
