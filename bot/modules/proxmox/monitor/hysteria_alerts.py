@@ -16,6 +16,8 @@ def format_card_msg(panel_name, username, protocol, lines, tx, rx):
 def is_card_active(card, now_time):
     if not card:
         return False
+    if not card.get('admin_messages'):
+        return False
     has_active = False
     for ip, conns in card.get('connections', {}).items():
         if conns:
