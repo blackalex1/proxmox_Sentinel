@@ -19,9 +19,9 @@ def get_new_ip_alert(protocol, panel_name, username, client_ip, timestamp_str, h
     geo_row = ""
     if geoip_info:
         if settings.bot_language.lower() == "en":
-            geo_row = f"| **🗺️ Geo** | `{geoip_info}` |\n"
+            geo_row = f'  <tr>\n    <td style="padding: 8px;"><b>🗺️ Geo</b></td>\n    <td style="padding: 8px;"><code>{html.escape(geoip_info)}</code></td>\n  </tr>\n'
         else:
-            geo_row = f"| **🗺️ Гео** | `{geoip_info}` |\n"
+            geo_row = f'  <tr>\n    <td style="padding: 8px;"><b>🗺️ Гео</b></td>\n    <td style="padding: 8px;"><code>{html.escape(geoip_info)}</code></td>\n  </tr>\n'
             
     return _(
         "spectre", "new_ip_alert",
@@ -58,9 +58,9 @@ def get_client_disconnected_alert(protocol, panel_name, username, client_ip, tim
     geo_row = ""
     if geoip_info:
         if settings.bot_language.lower() == "en":
-            geo_row = f"| **🗺️ Geo** | `{geoip_info}` |\n"
+            geo_row = f'  <tr>\n    <td style="padding: 8px;"><b>🗺️ Geo</b></td>\n    <td style="padding: 8px;"><code>{html.escape(geoip_info)}</code></td>\n  </tr>\n'
         else:
-            geo_row = f"| **🗺️ Гео** | `{geoip_info}` |\n"
+            geo_row = f'  <tr>\n    <td style="padding: 8px;"><b>🗺️ Гео</b></td>\n    <td style="padding: 8px;"><code>{html.escape(geoip_info)}</code></td>\n  </tr>\n'
             
     return _(
         "spectre", "client_disconnected_alert",
@@ -78,9 +78,9 @@ def get_login_success_alert(panel_name, username, ip, details, time_str, geoip_i
     geo_row = ""
     if geoip_info:
         if settings.bot_language.lower() == "en":
-            geo_row = f"| **🗺️ Geo** | `{geoip_info}` |\n"
+            geo_row = f'  <tr>\n    <td style="padding: 8px;"><b>🗺️ Geo</b></td>\n    <td style="padding: 8px;"><code>{html.escape(geoip_info)}</code></td>\n  </tr>\n'
         else:
-            geo_row = f"| **🗺️ Гео** | `{geoip_info}` |\n"
+            geo_row = f'  <tr>\n    <td style="padding: 8px;"><b>🗺️ Гео</b></td>\n    <td style="padding: 8px;"><code>{html.escape(geoip_info)}</code></td>\n  </tr>\n'
             
     return _(
         "spectre", "login_success_alert",
@@ -92,9 +92,9 @@ def get_spectre_2fa_alert(panel_name, username, client_ip, time_str, geoip_info=
     geo_row = ""
     if geoip_info:
         if settings.bot_language.lower() == "en":
-            geo_row = f"| **🗺️ Geo** | `{geoip_info}` |\n"
+            geo_row = f'  <tr>\n    <td style="padding: 8px;"><b>🗺️ Geo</b></td>\n    <td style="padding: 8px;"><code>{html.escape(geoip_info)}</code></td>\n  </tr>\n'
         else:
-            geo_row = f"| **🗺️ Гео** | `{geoip_info}` |\n"
+            geo_row = f'  <tr>\n    <td style="padding: 8px;"><b>🗺️ Гео</b></td>\n    <td style="padding: 8px;"><code>{html.escape(geoip_info)}</code></td>\n  </tr>\n'
             
     return _(
         "spectre", "spectre_2fa_alert",
