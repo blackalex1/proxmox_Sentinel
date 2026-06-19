@@ -100,10 +100,6 @@ async def main():
             if custom_api:
                 session_kwargs['api'] = custom_api
             
-            session_kwargs = {}
-            if custom_api:
-                session_kwargs['api'] = custom_api
-            
             session = None
             
             if settings.proxy_url:

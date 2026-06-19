@@ -140,6 +140,7 @@ class ResilientOutbox:
     def __init__(self):
         self.queue = []
         self.lock = asyncio.Lock()
+        self.rate_limit_until = 0
         self.load_from_disk()
 
     def load_from_disk(self):
@@ -330,6 +331,7 @@ class ResilientOutbox:
                 except TelegramRetryAfter as e:
                     # Защита от флуда: если Telegram попросил подождать (Flood Control)
                     logger.warning("outbox_telegram_flood_control_limit_exceeded", e.retry_after)
+                    self.rate_limit_until = time.time() + e.retry_after
                     remaining_queue.append(msg)
                     current_idx = self.queue.index(msg)
                     remaining_queue.extend(self.queue[current_idx+1:])
@@ -455,15 +457,19 @@ class ResilientOutbox:
             parse_mode = kwargs.get("parse_mode", "HTML")
             reply_markup = kwargs.get("reply_markup", None)
             
+            original_text = text
+            original_kwargs = kwargs.copy()
+
+            if time.time() < self.rate_limit_until:
+                logger.warning("[Outbox] Bot is currently rate-limited. Queueing message to outbox.")
+                await self.add_message(chat_id, original_text, **original_kwargs)
+                return None
+            
             # Попытка отправить через Rich Message
             rich_msg = await self._send_rich_message_impl(bot, chat_id, text, parse_mode=parse_mode, reply_markup=reply_markup)
             if rich_msg:
                 return rich_msg
                 
-            # Сохраняем оригинальные значения для очереди на случай сбоя
-            original_text = text
-            original_kwargs = kwargs.copy()
-            
             # Если не удалось, делаем очистку и шлем стандартно
             actual_parse_mode = parse_mode
             if parse_mode and parse_mode.lower() == "html" and text:
@@ -479,6 +485,11 @@ class ResilientOutbox:
                 
             try:
                 return await bot._original_send_message(chat_id, cleaned_text, *args, **kwargs)
+            except TelegramRetryAfter as e:
+                logger.warning("[Outbox] Telegram flood control limit exceeded. Delaying for %s seconds. Redirecting to outbox.", e.retry_after)
+                self.rate_limit_until = time.time() + e.retry_after
+                await self.add_message(chat_id, original_text, **original_kwargs)
+                return None
             except Exception as e:
                 # Проверяем, является ли ошибка сетевой
                 is_network = isinstance(e, (TelegramNetworkError, ClientOSError, asyncio.TimeoutError))
@@ -523,6 +534,11 @@ class ResilientOutbox:
             if 'message_id' in original_kwargs:
                 del original_kwargs['message_id']
             
+            if time.time() < self.rate_limit_until:
+                logger.warning("[Outbox] Bot is currently rate-limited. Queueing edit for message %s in chat %s.", message_id, chat_id)
+                await self.add_edit(chat_id, message_id, original_text, **original_kwargs)
+                return None
+
             if chat_id and message_id and text:
                 rich_edit = await self._edit_rich_message_impl(bot, chat_id, message_id, text, parse_mode=parse_mode, reply_markup=reply_markup)
                 if rich_edit:
@@ -548,6 +564,11 @@ class ResilientOutbox:
                 
             try:
                 return await bot._original_edit_message_text(*args_list, **kwargs)
+            except TelegramRetryAfter as e:
+                logger.warning("[Outbox] Telegram flood control limit exceeded on edit. Delaying for %s seconds. Redirecting to outbox.", e.retry_after)
+                self.rate_limit_until = time.time() + e.retry_after
+                await self.add_edit(chat_id, message_id, original_text, **original_kwargs)
+                return None
             except Exception as e:
                 is_network = isinstance(e, (TelegramNetworkError, ClientOSError, asyncio.TimeoutError))
                 err_msg = str(e).lower()

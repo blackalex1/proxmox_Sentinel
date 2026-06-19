@@ -2,6 +2,7 @@ import logging
 import json
 import time
 import datetime
+import asyncio
 from core.bot import bot
 from core.config import settings
 from core.messages import get_session_activity_card, get_new_ip_alert, get_client_disconnected_alert
@@ -9,6 +10,39 @@ from core.messages.i18n import _
 
 # In-memory cards state: (panel_name, username, protocol) -> card dict
 active_activity_cards = {}
+
+async def trigger_card_edit(card, msg_text):
+    card['pending_text'] = msg_text
+    now = time.time()
+    
+    if now - card.get('last_edited_at', 0) >= 3.0:
+        card['last_edited_at'] = now
+        card['pending_text'] = None
+        
+        from .utils import edit_rich_message
+        for msg in card['admin_messages']:
+            try:
+                await edit_rich_message(chat_id=msg['admin_id'], message_id=msg['message_id'], text=msg_text, parse_mode="markdown")
+            except Exception as e:
+                if "message is not modified" not in str(e).lower():
+                    logging.error(f"[Controller Alerts] Error editing card: {e}")
+    else:
+        if not card.get('edit_task') or card['edit_task'].done():
+            async def run_delayed_edit():
+                await asyncio.sleep(3.0)
+                if card.get('pending_text'):
+                    text_to_send = card['pending_text']
+                    card['pending_text'] = None
+                    card['last_edited_at'] = time.time()
+                    
+                    from .utils import edit_rich_message
+                    for msg in card['admin_messages']:
+                        try:
+                            await edit_rich_message(chat_id=msg['admin_id'], message_id=msg['message_id'], text=text_to_send, parse_mode="markdown")
+                        except Exception as e:
+                            if "message is not modified" not in str(e).lower():
+                                logging.error(f"[Controller Alerts] Error in debounced card edit: {e}")
+            card['edit_task'] = asyncio.create_task(run_delayed_edit())
 
 def format_card_msg(panel_name, username, protocol, lines, tx, rx):
     return get_session_activity_card(protocol, panel_name, username, tx, rx, lines)
@@ -145,13 +179,7 @@ async def process_hysteria_audit_event(panel, action, client_ip, log_timestamp, 
             card['connections'][client_ip].append(datetime.datetime.now())
             
             msg_text = format_card_msg(panel_name, username, protocol, card['lines'], tx, rx)
-            from .utils import edit_rich_message
-            for msg in card['admin_messages']:
-                try:
-                    await edit_rich_message(chat_id=msg['admin_id'], message_id=msg['message_id'], text=msg_text, parse_mode="markdown")
-                except Exception as e:
-                    if "message is not modified" not in str(e).lower():
-                        logging.error(f"[Controller Alerts] Error editing card: {e}")
+            await trigger_card_edit(card, msg_text)
         else:
             lines = [event_line]
             connections = {client_ip: [datetime.datetime.now()]}
@@ -170,6 +198,7 @@ async def process_hysteria_audit_event(panel, action, client_ip, log_timestamp, 
             active_activity_cards[key] = {
                 'started_at': now_time,
                 'last_activity_at': now_time,
+                'last_edited_at': time.time(),
                 'lines': lines,
                 'connections': connections,
                 'admin_messages': admin_messages
@@ -210,13 +239,7 @@ async def process_hysteria_audit_event(panel, action, client_ip, log_timestamp, 
             card['lines'].append(event_line)
             
             msg_text = format_card_msg(panel_name, username, protocol, card['lines'], tx, rx)
-            from .utils import edit_rich_message
-            for msg in card['admin_messages']:
-                try:
-                    await edit_rich_message(chat_id=msg['admin_id'], message_id=msg['message_id'], text=msg_text, parse_mode="markdown")
-                except Exception as e:
-                    if "message is not modified" not in str(e).lower():
-                        logging.error(f"[Controller Alerts] Error editing card on disconnect: {e}")
+            await trigger_card_edit(card, msg_text)
         else:
             from .utils import get_geoip_info
             geoip_info = await get_geoip_info(client_ip)
@@ -256,10 +279,4 @@ async def update_controller_active_cards_traffic():
             
             # In database, up is client upload (rx from server perspective), down is download (tx from server perspective)
             msg_text = format_card_msg(panel_name, username, protocol, card['lines'], rx, tx)
-            from .utils import edit_rich_message
-            for msg in card['admin_messages']:
-                try:
-                    await edit_rich_message(chat_id=msg['admin_id'], message_id=msg['message_id'], text=msg_text, parse_mode="markdown")
-                except Exception as e:
-                    if "message is not modified" not in str(e).lower():
-                        logging.error(f"[Controller Alerts] Error editing card during traffic poll: {e}")
+            await trigger_card_edit(card, msg_text)

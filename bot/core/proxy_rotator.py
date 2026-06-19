@@ -70,6 +70,7 @@ class SocksProxyRotator:
         proxy_key = None
         try:
             from urllib.parse import urlparse
+            import socket
             parsed = urlparse(proxy_url)
             netloc = parsed.netloc
             if '@' in netloc:
@@ -81,7 +82,12 @@ class SocksProxyRotator:
                 proxy_host = netloc
                 proxy_port = 1080 if parsed.scheme == 'socks5' else 80
             if proxy_host and proxy_port:
-                proxy_key = (proxy_host, proxy_port)
+                # Резолвим имя хоста в IP для точного сопоставления в IPS
+                try:
+                    proxy_host_ip = socket.gethostbyname(proxy_host)
+                    proxy_key = (proxy_host_ip, proxy_port)
+                except Exception:
+                    proxy_key = (proxy_host, proxy_port)
         except Exception:
             pass
 
