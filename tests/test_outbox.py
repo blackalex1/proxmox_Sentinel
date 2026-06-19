@@ -288,3 +288,31 @@ def test_clean_mixed_html_to_markdown_formatting():
     # Check details/summary/pre/code cleanup
     assert "**📋 Хронология событий**" in cleaned
     assert "```\nline 1\nline 2\n```" in cleaned
+
+
+def test_clean_html_for_telegram_tables():
+    from core.outbox import clean_html_for_telegram
+    from core.messages.spectre import get_session_activity_card
+    
+    # Generate a card which uses our new HTML table template
+    card_html = get_session_activity_card(
+        protocol="Hysteria",
+        panel_name="VPS 198.51.100.42",
+        username="bot",
+        download_bytes=859.62 * 1024 * 1024,
+        upload_bytes=18.97 * 1024 * 1024 * 1024,
+        timeline_lines=["🟢 [17:46:05] Подключение с 198.51.100.50"]
+    )
+    
+    # Ensure HTML table syntax is present in the output
+    assert "<table" in card_html
+    
+    # Process it with clean_html_for_telegram
+    cleaned = clean_html_for_telegram(card_html)
+    
+    # Check that it converted the HTML table to text table rows (supporting both RU/EN locales)
+    assert ("<b>👤 Пользователь</b> | <code>bot</code>" in cleaned) or ("<b>👤 User</b> | <code>bot</code>" in cleaned)
+    assert ("<b>📥 Скачано</b> | <code>859.62 MB</code>" in cleaned) or ("<b>📥 Downloaded</b> | <code>859.62 MB</code>" in cleaned)
+    assert ("<b>📤 Загружено</b> | <code>18.97 GB</code>" in cleaned) or ("<b>📤 Uploaded</b> | <code>18.97 GB</code>" in cleaned)
+    assert "🟢 [17:46:05] Подключение с 198.51.100.50" in cleaned
+    assert "<table" not in cleaned

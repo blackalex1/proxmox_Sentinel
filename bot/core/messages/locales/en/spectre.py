@@ -3,12 +3,25 @@ translation = {
         "# 🚨 New IP Connection\n"
         "---\n\n"
         "### 🚨 [{protocol} Security] Connection detected from a new IP!\n\n"
-        "| Parameter | Value |\n"
-        "| :--- | :--- |\n"
-        "| **📦 Panel** | `{panel_name}` |\n"
-        "| **👤 User** | `{username}` |\n"
-        "| **🌐 New IP** | `{client_ip}` ⚠️ [WARNING] |\n"
-        "{geo_row}\n"
+        '<table border="1" style="border-collapse: collapse; width: 100%;">\n'
+        '  <tr style="background-color: #1e1e2e; color: #ffffff;">\n'
+        '    <th style="padding: 8px; text-align: left;"><b>Parameter</b></th>\n'
+        '    <th style="padding: 8px; text-align: left;"><b>Value</b></th>\n'
+        '  </tr>\n'
+        '  <tr>\n'
+        '    <td style="padding: 8px;"><b>📦 Panel</b></td>\n'
+        '    <td style="padding: 8px;"><code>{panel_name}</code></td>\n'
+        '  </tr>\n'
+        '  <tr>\n'
+        '    <td style="padding: 8px;"><b>👤 User</b></td>\n'
+        '    <td style="padding: 8px;"><code>{username}</code></td>\n'
+        '  </tr>\n'
+        '  <tr>\n'
+        '    <td style="padding: 8px;"><b>🌐 New IP</b></td>\n'
+        '    <td style="padding: 8px;"><code>{client_ip}</code> ⚠️ [WARNING]</td>\n'
+        '  </tr>\n'
+        '{geo_row}'
+        '</table>\n\n'
         "<details>\n"
         "  <summary>📋 <b>Previous connections</b></summary>\n"
         "  <pre><code>{history_text}</code></pre>\n"
@@ -18,11 +31,24 @@ translation = {
         "# 📊 Session Activity\n"
         "---\n\n"
         "### 📊 [{protocol}] Session activity on {panel_name}\n\n"
-        "| Parameter | Value |\n"
-        "| :--- | :--- |\n"
-        "| **👤 User** | `{username}` |\n"
-        "| **📥 Downloaded** | `{download}` |\n"
-        "| **📤 Uploaded** | `{upload}` |\n\n"
+        '<table border="1" style="border-collapse: collapse; width: 100%;">\n'
+        '  <tr style="background-color: #1e1e2e; color: #ffffff;">\n'
+        '    <th style="padding: 8px; text-align: left;"><b>Parameter</b></th>\n'
+        '    <th style="padding: 8px; text-align: left;"><b>Value</b></th>\n'
+        '  </tr>\n'
+        '  <tr>\n'
+        '    <td style="padding: 8px;"><b>👤 User</b></td>\n'
+        '    <td style="padding: 8px;"><code>{username}</code></td>\n'
+        '  </tr>\n'
+        '  <tr>\n'
+        '    <td style="padding: 8px;"><b>📥 Downloaded</b></td>\n'
+        '    <td style="padding: 8px;"><code>{download}</code></td>\n'
+        '  </tr>\n'
+        '  <tr>\n'
+        '    <td style="padding: 8px;"><b>📤 Uploaded</b></td>\n'
+        '    <td style="padding: 8px;"><code>{upload}</code></td>\n'
+        '  </tr>\n'
+        '</table>\n\n'
         "<details>\n"
         "  <summary>📋 <b>Event timeline</b></summary>\n"
         "  <pre><code>{timeline}</code></pre>\n"
@@ -32,57 +58,131 @@ translation = {
         "# 🔴 Client Disconnected\n"
         "---\n\n"
         "### 🔴 [{protocol}] Client disconnected from {panel_name}\n\n"
-        "| Parameter | Value |\n"
-        "| :--- | :--- |\n"
-        "| **👤 User** | `{username}` |\n"
-        "| **🌐 IP Address** | `{client_ip}` |\n"
-        "{geo_row}"
+        '<table border="1" style="border-collapse: collapse; width: 100%;">\n'
+        '  <tr style="background-color: #1e1e2e; color: #ffffff;">\n'
+        '    <th style="padding: 8px; text-align: left;"><b>Parameter</b></th>\n'
+        '    <th style="padding: 8px; text-align: left;"><b>Value</b></th>\n'
+        '  </tr>\n'
+        '  <tr>\n'
+        '    <td style="padding: 8px;"><b>👤 User</b></td>\n'
+        '    <td style="padding: 8px;"><code>{username}</code></td>\n'
+        '  </tr>\n'
+        '  <tr>\n'
+        '    <td style="padding: 8px;"><b>🌐 IP Address</b></td>\n'
+        '    <td style="padding: 8px;"><code>{client_ip}</code></td>\n'
+        '  </tr>\n'
+        '{geo_row}'
+        '</table>'
     ),
     "ips_autoblock_alert_audit": (
         "# 🛑 Account Auto-Blocked\n"
         "---\n\n"
         "### 🛑 [IPS: Auto-Block on {panel_name}]\n\n"
-        "| Parameter | Value |\n"
-        "| :--- | :--- |\n"
-        "| **👤 User** | `{email}` |\n"
-        "| **📝 Reason** | **{details}** |\n"
+        '<table border="1" style="border-collapse: collapse; width: 100%;">\n'
+        '  <tr style="background-color: #1e1e2e; color: #ffffff;">\n'
+        '    <th style="padding: 8px; text-align: left;"><b>Parameter</b></th>\n'
+        '    <th style="padding: 8px; text-align: left;"><b>Value</b></th>\n'
+        '  </tr>\n'
+        '  <tr>\n'
+        '    <td style="padding: 8px;"><b>👤 User</b></td>\n'
+        '    <td style="padding: 8px;"><code>{email}</code></td>\n'
+        '  </tr>\n'
+        '  <tr>\n'
+        '    <td style="padding: 8px;"><b>📝 Reason</b></td>\n'
+        '    <td style="padding: 8px;"><b>{details}</b></td>\n'
+        '  </tr>\n'
+        '</table>'
     ),
     "login_success_alert": (
         "# 🔑 Web GUI Access\n"
         "---\n\n"
         "### 🟢 Login successful on {panel_name}\n\n"
-        "| Parameter | Value |\n"
-        "| :--- | :--- |\n"
-        "| **👤 Login** | `{username}` |\n"
-        "| **🌐 IP Address** | `{ip}` |\n"
-        "{geo_row}"
-        "| **ℹ️ Details** | **{details}** |\n"
+        '<table border="1" style="border-collapse: collapse; width: 100%;">\n'
+        '  <tr style="background-color: #1e1e2e; color: #ffffff;">\n'
+        '    <th style="padding: 8px; text-align: left;"><b>Parameter</b></th>\n'
+        '    <th style="padding: 8px; text-align: left;"><b>Value</b></th>\n'
+        '  </tr>\n'
+        '  <tr>\n'
+        '    <td style="padding: 8px;"><b>👤 Login</b></td>\n'
+        '    <td style="padding: 8px;"><code>{username}</code></td>\n'
+        '  </tr>\n'
+        '  <tr>\n'
+        '    <td style="padding: 8px;"><b>🌐 IP Address</b></td>\n'
+        '    <td style="padding: 8px;"><code>{ip}</code></td>\n'
+        '  </tr>\n'
+        '{geo_row}'
+        '  <tr>\n'
+        '    <td style="padding: 8px;"><b>ℹ️ Details</b></td>\n'
+        '    <td style="padding: 8px;"><b>{details}</b></td>\n'
+        '  </tr>\n'
+        '</table>'
     ),
     "spectre_2fa_alert": (
         "# 🔑 Spectre 2FA Prompt\n"
         "---\n\n"
         "### 🔑 [Spectre 2FA: Login Attempt]\n\n"
-        "| Parameter | Value |\n"
-        "| :--- | :--- |\n"
-        "| **🖥 Panel** | **{panel_name}** |\n"
-        "| **👤 User** | `{username}` |\n"
-        "| **🌐 IP Address** | `{client_ip}` |\n"
-        "{geo_row}"
+        '<table border="1" style="border-collapse: collapse; width: 100%;">\n'
+        '  <tr style="background-color: #1e1e2e; color: #ffffff;">\n'
+        '    <th style="padding: 8px; text-align: left;"><b>Parameter</b></th>\n'
+        '    <th style="padding: 8px; text-align: left;"><b>Value</b></th>\n'
+        '  </tr>\n'
+        '  <tr>\n'
+        '    <td style="padding: 8px;"><b>🖥 Panel</b></td>\n'
+        '    <td style="padding: 8px;"><b>{panel_name}</b></td>\n'
+        '  </tr>\n'
+        '  <tr>\n'
+        '    <td style="padding: 8px;"><b>👤 User</b></td>\n'
+        '    <td style="padding: 8px;"><code>{username}</code></td>\n'
+        '  </tr>\n'
+        '  <tr>\n'
+        '    <td style="padding: 8px;"><b>🌐 IP Address</b></td>\n'
+        '    <td style="padding: 8px;"><code>{client_ip}</code></td>\n'
+        '  </tr>\n'
+        '{geo_row}'
+        '</table>'
     ),
     "panel_status_message": (
         "# 📊 Server Status: {panel_name}\n"
         "---\n\n"
         "### 📊 Current Server Status\n\n"
-        "| Parameter | Value |\n"
-        "| :--- | :--- |\n"
-        "| **🖥️ CPU** | `[{cpu_bar}] {cpu:.1f}%` |\n"
-        "| **💾 RAM** | `[{mem_bar}] {mem_curr:.2f} / {mem_tot:.2f} GB` |\n"
-        "| **⏱️ Uptime** | `{uptime_str}` |\n"
-        "| **🖧 Inbounds** | `{total_inbounds}` |\n"
-        "| **👥 Clients** | `{total_clients}` |\n"
-        "| **🟢 Active** | `{active_clients}` |\n"
-        "| **🔵 Online** | `{online_clients}` |\n"
-        "| **🔴 Blocked** | `{blocked_clients}` |\n"
+        '<table border="1" style="border-collapse: collapse; width: 100%;">\n'
+        '  <tr style="background-color: #1e1e2e; color: #ffffff;">\n'
+        '    <th style="padding: 8px; text-align: left;"><b>Parameter</b></th>\n'
+        '    <th style="padding: 8px; text-align: left;"><b>Value</b></th>\n'
+        '  </tr>\n'
+        '  <tr>\n'
+        '    <td style="padding: 8px;"><b>🖥️ CPU</b></td>\n'
+        '    <td style="padding: 8px;"><code>[{cpu_bar}] {cpu:.1f}%</code></td>\n'
+        '  </tr>\n'
+        '  <tr>\n'
+        '    <td style="padding: 8px;"><b>💾 RAM</b></td>\n'
+        '    <td style="padding: 8px;"><code>[{mem_bar}] {mem_curr:.2f} / {mem_tot:.2f} GB</code></td>\n'
+        '  </tr>\n'
+        '  <tr>\n'
+        '    <td style="padding: 8px;"><b>⏱️ Uptime</b></td>\n'
+        '    <td style="padding: 8px;"><code>{uptime_str}</code></td>\n'
+        '  </tr>\n'
+        '  <tr>\n'
+        '    <td style="padding: 8px;"><b>🖧 Inbounds</b></td>\n'
+        '    <td style="padding: 8px;"><code>{total_inbounds}</code></td>\n'
+        '  </tr>\n'
+        '  <tr>\n'
+        '    <td style="padding: 8px;"><b>👥 Clients</b></td>\n'
+        '    <td style="padding: 8px;"><code>{total_clients}</code></td>\n'
+        '  </tr>\n'
+        '  <tr>\n'
+        '    <td style="padding: 8px;"><b>🟢 Active</b></td>\n'
+        '    <td style="padding: 8px;"><code>{active_clients}</code></td>\n'
+        '  </tr>\n'
+        '  <tr>\n'
+        '    <td style="padding: 8px;"><b>🔵 Online</b></td>\n'
+        '    <td style="padding: 8px;"><code>{online_clients}</code></td>\n'
+        '  </tr>\n'
+        '  <tr>\n'
+        '    <td style="padding: 8px;"><b>🔴 Blocked</b></td>\n'
+        '    <td style="padding: 8px;"><code>{blocked_clients}</code></td>\n'
+        '  </tr>\n'
+        '</table>\n'
     ),
     
     # Traffic table
@@ -202,14 +302,36 @@ translation = {
         "# 👤 Client Profile: {email}\n"
         "---\n\n"
         "### 👤 VPN Client Profile\n\n"
-        "| Parameter | Value |\n"
-        "| :--- | :--- |\n"
-        "| **🖥️ Panel** | `{panel_name}` |\n"
-        "| **🚦 Downloaded (DL)** | `{down_gb:.3f} GB` |\n"
-        "| **📤 Uploaded (UL)** | `{up_gb:.3f} GB` |\n"
-        "| **💾 Traffic Limit** | `{total_gb_str}` |\n"
-        "| **⏱️ Expires** | `{exp_str}` |\n"
-        "| **⚡ Status** | **{status_str}** |\n"
+        '<table border="1" style="border-collapse: collapse; width: 100%;">\n'
+        '  <tr style="background-color: #1e1e2e; color: #ffffff;">\n'
+        '    <th style="padding: 8px; text-align: left;"><b>Parameter</b></th>\n'
+        '    <th style="padding: 8px; text-align: left;"><b>Value</b></th>\n'
+        '  </tr>\n'
+        '  <tr>\n'
+        '    <td style="padding: 8px;"><b>🖥️ Panel</b></td>\n'
+        '    <td style="padding: 8px;"><code>{panel_name}</code></td>\n'
+        '  </tr>\n'
+        '  <tr>\n'
+        '    <td style="padding: 8px;"><b>🚦 Downloaded (DL)</b></td>\n'
+        '    <td style="padding: 8px;"><code>{down_gb:.3f} GB</code></td>\n'
+        '  </tr>\n'
+        '  <tr>\n'
+        '    <td style="padding: 8px;"><b>📤 Uploaded (UL)</b></td>\n'
+        '    <td style="padding: 8px;"><code>{up_gb:.3f} GB</code></td>\n'
+        '  </tr>\n'
+        '  <tr>\n'
+        '    <td style="padding: 8px;"><b>💾 Traffic Limit</b></td>\n'
+        '    <td style="padding: 8px;"><code>{total_gb_str}</code></td>\n'
+        '  </tr>\n'
+        '  <tr>\n'
+        '    <td style="padding: 8px;"><b>⏱️ Expires</b></td>\n'
+        '    <td style="padding: 8px;"><code>{exp_str}</code></td>\n'
+        '  </tr>\n'
+        '  <tr>\n'
+        '    <td style="padding: 8px;"><b>⚡ Status</b></td>\n'
+        '    <td style="padding: 8px;"><b>{status_str}</b></td>\n'
+        '  </tr>\n'
+        '</table>\n'
     ),
     "btn_conn_history": "📊 Connection History & IP",
 
