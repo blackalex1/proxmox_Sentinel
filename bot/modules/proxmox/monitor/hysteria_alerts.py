@@ -209,15 +209,28 @@ async def process_hysteria_audit_event(panel, action, client_ip, log_timestamp, 
             
     elif action in ("xray_disconnect", "hysteria_disconnect"):
         # Записываем событие отключения в SQLite БД
+        duration_sec, diff_tx, diff_rx = 0, 0, 0
         try:
             from core.db import save_vpn_disconnect
             try:
                 disc_time_str = datetime.datetime.fromtimestamp(log_timestamp).strftime("%Y-%m-%d %H:%M:%S")
             except Exception:
                 disc_time_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            await save_vpn_disconnect(username, client_ip, disc_time_str, tx, rx)
+            res_tuple = await save_vpn_disconnect(username, client_ip, disc_time_str, tx, rx)
+            if isinstance(res_tuple, tuple) and len(res_tuple) == 3:
+                duration_sec, diff_tx, diff_rx = res_tuple
         except Exception as db_err:
             logging.error("controller_database_error_saving_disconnection", db_err)
+
+        # Фильтр шума/флаппинга: если сессия длилась <= 3 сек и не передала трафика (0 байт)
+        if duration_sec <= 3 and diff_tx == 0 and diff_rx == 0:
+            # Удаляем соответствующее событие подключения из очереди дайджеста
+            for i, ev in enumerate(list(pending_events)):
+                if ev["username"] == username and ev["client_ip"] == client_ip and "connect" in ev["action"]:
+                    pending_events.pop(i)
+                    break
+            # Выходим сразу, не добавляя дисконнект в очередь дайджеста
+            return
 
         # Вычисляем длительность для дайджеста
         duration_val = _("spectre", "history_unknown")
