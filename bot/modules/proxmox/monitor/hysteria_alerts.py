@@ -22,7 +22,7 @@ async def trigger_card_edit(card, msg_text):
         from .utils import edit_rich_message
         for msg in card['admin_messages']:
             try:
-                await edit_rich_message(chat_id=msg['admin_id'], message_id=msg['message_id'], text=msg_text, parse_mode="markdown")
+                await edit_rich_message(chat_id=msg['admin_id'], message_id=msg['message_id'], text=msg_text, parse_mode="HTML")
             except Exception as e:
                 if "message is not modified" not in str(e).lower():
                     logging.error(f"[Controller Alerts] Error editing card: {e}")
@@ -38,7 +38,7 @@ async def trigger_card_edit(card, msg_text):
                     from .utils import edit_rich_message
                     for msg in card['admin_messages']:
                         try:
-                            await edit_rich_message(chat_id=msg['admin_id'], message_id=msg['message_id'], text=text_to_send, parse_mode="markdown")
+                            await edit_rich_message(chat_id=msg['admin_id'], message_id=msg['message_id'], text=text_to_send, parse_mode="HTML")
                         except Exception as e:
                             if "message is not modified" not in str(e).lower():
                                 logging.error(f"[Controller Alerts] Error in debounced card edit: {e}")
@@ -146,7 +146,7 @@ async def check_and_send_card_delayed(key, session_id):
             from .utils import send_rich_message
             for admin_id in settings.admin_ids:
                 try:
-                    m = await send_rich_message(admin_id, msg_text, parse_mode="markdown")
+                    m = await send_rich_message(admin_id, msg_text, parse_mode="HTML")
                     if m:
                         admin_messages.append({'admin_id': admin_id, 'message_id': m.message_id})
                 except Exception as e:
@@ -249,7 +249,7 @@ async def process_hysteria_audit_event(panel, action, client_ip, log_timestamp, 
                     from .utils import send_rich_message
                     for admin_id in settings.admin_ids:
                         try:
-                            await send_rich_message(admin_id, alert_text, parse_mode="markdown")
+                            await send_rich_message(admin_id, alert_text, parse_mode="HTML")
                         except Exception as e:
                             logging.error(f"[Controller Alerts] Error sending new IP alert to admin {admin_id}: {e}")
             except Exception as e:
@@ -350,7 +350,7 @@ async def process_hysteria_audit_event(panel, action, client_ip, log_timestamp, 
                 from .utils import send_rich_message
                 for admin_id in settings.admin_ids:
                     try:
-                        await send_rich_message(admin_id, msg_text, parse_mode="markdown")
+                        await send_rich_message(admin_id, msg_text, parse_mode="HTML")
                     except Exception as e:
                         logging.error(f"[Controller Alerts] Error sending disconnect message: {e}")
 
