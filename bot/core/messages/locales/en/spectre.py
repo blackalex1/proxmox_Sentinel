@@ -1,7 +1,7 @@
 translation = {
     "new_ip_alert": (
         "<b>🚨 New IP Connection</b>\n"
-        "⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯\n"
+        "<hr/>\n"
         "<b>🚨 [{protocol} Security] Connection detected from a new IP!</b>\n\n"
         '<table border="1" style="border-collapse: collapse; width: 100%;">\n'
         '  <tr style="background-color: #1e1e2e; color: #ffffff;">\n'
@@ -40,7 +40,7 @@ translation = {
     "btn_back_to_categories": "🔙 To categories",
     "session_activity_card": (
         "<b>📊 Session Activity</b>\n"
-        "⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯\n"
+        "<hr/>\n"
         "<b>📊 [{protocol}] Session activity on {panel_name}</b>\n\n"
         '<table border="1" style="border-collapse: collapse; width: 100%;">\n'
         '  <tr style="background-color: #1e1e2e; color: #ffffff;">\n'
@@ -67,7 +67,7 @@ translation = {
     ),
     "client_disconnected_alert": (
         "<b>🔴 Client Disconnected</b>\n"
-        "⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯\n"
+        "<hr/>\n"
         "<b>🔴 [{protocol}] Client disconnected from {panel_name}</b>\n\n"
         '<table border="1" style="border-collapse: collapse; width: 100%;">\n'
         '  <tr style="background-color: #1e1e2e; color: #ffffff;">\n'
