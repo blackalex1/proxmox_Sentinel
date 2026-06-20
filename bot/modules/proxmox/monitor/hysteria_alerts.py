@@ -245,6 +245,7 @@ async def process_hysteria_audit_event(panel, action, client_ip, log_timestamp, 
                 if is_new_ip:
                     from .utils import get_geoip_info
                     geoip_info = await get_geoip_info(client_ip)
+                    alert_text = get_new_ip_alert(protocol, panel_name, username, client_ip, timestamp_str, history, geoip_info=geoip_info)
                     from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
                     kb = InlineKeyboardMarkup(inline_keyboard=[
                         [InlineKeyboardButton(text=_("spectre", "btn_approve_ip"), callback_data=f"approve_ip:{username}:{client_ip}")]
