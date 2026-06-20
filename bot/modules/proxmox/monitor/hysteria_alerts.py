@@ -12,12 +12,15 @@ from core.messages.i18n import _
 active_activity_cards = {}
 
 async def trigger_card_edit(card, msg_text):
+    if card.get('last_sent_text') == msg_text:
+        return
     card['pending_text'] = msg_text
     now = time.time()
     
     if now - card.get('last_edited_at', 0) >= 30.0:
         card['last_edited_at'] = now
         card['pending_text'] = None
+        card['last_sent_text'] = msg_text
         
         from .utils import edit_rich_message
         for msg in card['admin_messages']:
@@ -34,6 +37,7 @@ async def trigger_card_edit(card, msg_text):
                     text_to_send = card['pending_text']
                     card['pending_text'] = None
                     card['last_edited_at'] = time.time()
+                    card['last_sent_text'] = text_to_send
                     
                     from .utils import edit_rich_message
                     for msg in card['admin_messages']:
@@ -153,6 +157,7 @@ async def check_and_send_card_delayed(key, session_id):
                     logging.error(f"[Controller Alerts] Error sending card to admin {admin_id}: {e}")
             
             card['admin_messages'] = admin_messages
+            card['last_sent_text'] = msg_text
 
 
 async def check_new_ip_and_get_history(username, current_ip, session_id):
