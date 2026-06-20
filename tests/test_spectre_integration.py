@@ -410,7 +410,7 @@ async def test_spectre_handlers_audit(monkeypatch):
     panel = SpectrePanelInstance("Panel", "http://127.0.0.1:15000", "token", "ui", "vps", "1.1.1.1")
     spectre_manager.panels = {"vps_1.1.1.1": panel}
     
-    async def mock_get_audit_logs(self, limit=10):
+    async def mock_get_audit_logs(self, limit=10, search=""):
         import time
         return True, {
             "success": True,
@@ -430,14 +430,28 @@ async def test_spectre_handlers_audit(monkeypatch):
     mock_message = AsyncMock()
     mock_message.answer = AsyncMock(return_value=mock_status_msg)
     
+    # 1. Проверяем, что cmd_audit выводит выбор категорий
     await cmd_audit(mock_message)
+    assert mock_message.answer.call_count == 1
+    call_text = mock_message.answer.call_args_list[0][0][0]
+    assert "Выберите категорию логов" in call_text
     
-    # Сначала отправляется статус-сообщение о загрузке, затем оно удаляется, и отправляется результат
-    assert mock_message.answer.call_count == 2
+    # 2. Проверяем, что cb_audit_category загружает и выводит логи
+    from core.handlers.spectre.system import cb_audit_category
+    mock_callback = AsyncMock()
+    mock_callback.data = "spectre_audit_cat:vps_1.1.1.1:login"
+    mock_callback.message = AsyncMock()
+    mock_callback.message.chat = AsyncMock()
+    mock_callback.message.chat.id = 12345
+    mock_callback.message.answer = AsyncMock(return_value=mock_status_msg)
+    
+    await cb_audit_category(mock_callback)
+    
+    mock_callback.message.delete.assert_called_once()
+    assert mock_callback.message.answer.call_count == 2
     mock_status_msg.delete.assert_called_once()
     
-    # Проверяем, что во втором вызове answer был передан текст с логом
-    second_call_text = mock_message.answer.call_args_list[1][0][0]
+    second_call_text = mock_callback.message.answer.call_args_list[1][0][0]
     assert "Последние действия в панели" in second_call_text
 
 

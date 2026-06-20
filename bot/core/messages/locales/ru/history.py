@@ -28,5 +28,10 @@ translation = {
     "btn_start": "⏹️ Начало",
     "btn_page_info": "Стр. {current}/{total}",
     "btn_next": "Вперед ▶️",
-    "btn_end": "⏹️ Конец"
+    "btn_end": "⏹️ Конец",
+    "btn_clear_db": "🗑️ Сбросить историю",
+    "clear_confirm_desc": "⚠️ <b>Внимание!</b> Вы действительно хотите полностью очистить всю историю VPN-подключений? Это действие нельзя отменить.",
+    "btn_clear_confirm_yes": "✅ Да, сбросить",
+    "btn_clear_confirm_no": "❌ Отмена",
+    "clear_success": "✅ История подключений успешно очищена!"
 }

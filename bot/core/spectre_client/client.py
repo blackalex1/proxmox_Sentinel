@@ -105,6 +105,9 @@ class SpectrePanelInstance:
             logging.error("spectre_api_exception_during_request", self.name, e)
             return False, {"error": str(e)}
 
-    async def get_audit_logs(self, limit: int = 10) -> Tuple[bool, dict]:
+    async def get_audit_logs(self, limit: int = 10, search: str = "") -> Tuple[bool, dict]:
         """Запрашивает последние записи логов аудита с панели."""
-        return await self.request("GET", "/api/security/audit-logs", params={"limit": limit})
+        params = {"limit": limit}
+        if search:
+            params["search"] = search
+        return await self.request("GET", "/api/security/audit-logs", params=params)
