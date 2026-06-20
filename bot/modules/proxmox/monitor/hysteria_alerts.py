@@ -2,9 +2,14 @@ import logging
 import json
 import time
 import datetime
+import asyncio
 from core.messages import get_new_ip_alert
 from core.messages.i18n import _
 from core.config import settings
+
+# Очередь для агрегации событий подключений
+pending_events = []
+digest_task = None
 
 async def check_new_ip_and_get_history(username, current_ip, session_id):
     from core.db import execute_read_one, execute_read_all
@@ -40,13 +45,96 @@ async def check_new_ip_and_get_history(username, current_ip, session_id):
     return is_new_ip, history
 
 
+async def digest_sender_loop():
+    logging.info("[Controller Alerts] Started connection notification digest loop.")
+    while True:
+        try:
+            await asyncio.sleep(30)
+            if not pending_events:
+                continue
+                
+            # Забираем накопившиеся события и очищаем очередь
+            events = list(pending_events)
+            pending_events.clear()
+            
+            # Группируем события по ключу (username, client_ip, panel_name, protocol)
+            grouped = {}
+            for ev in events:
+                key = (ev["username"], ev["client_ip"], ev["panel_name"], ev["protocol"])
+                if key not in grouped:
+                    grouped[key] = []
+                grouped[key].append(ev)
+                
+            lines = []
+            for key, ev_list in grouped.items():
+                username, client_ip, panel_name, protocol = key
+                
+                # Сортируем события внутри группы по времени
+                ev_list.sort(key=lambda x: x["timestamp"])
+                
+                connects = [x for x in ev_list if "connect" in x["action"]]
+                disconnects = [x for x in ev_list if "disconnect" in x["action"]]
+                
+                C = len(connects)
+                D = len(disconnects)
+                
+                last_event = ev_list[-1]
+                last_action = last_event["action"]
+                
+                try:
+                    time_str = datetime.datetime.fromtimestamp(last_event["timestamp"]).strftime("%H:%M:%S")
+                except Exception:
+                    time_str = datetime.datetime.now().strftime("%H:%M:%S")
+                
+                if C > 1 or D > 1:
+                    # Флаппинг / множественные переподключения
+                    state = "ПОДКЛЮЧЕН 🟢" if "connect" in last_action else "ОТКЛЮЧЕН 🔴"
+                    lines.append(f"• 👤 `{username}` ({client_ip}) @ {panel_name} ({protocol}): {C} переподключений, сейчас {state} [{time_str}]")
+                elif C == 1 and D == 0:
+                    lines.append(f"• 👤 `{username}` ({client_ip}) @ {panel_name} ({protocol}): ПОДКЛЮЧИЛСЯ 🟢 [{time_str}]")
+                elif C == 0 and D == 1:
+                    duration_info = f" (Длительность: {last_event['duration_str']})" if last_event.get('duration_str') else ""
+                    lines.append(f"• 👤 `{username}` ({client_ip}) @ {panel_name} ({protocol}): ОТКЛЮЧИЛСЯ 🔴 [{time_str}]{duration_info}")
+                elif C == 1 and D == 1:
+                    # Зашел и вышел в рамках одного окна
+                    first_event = ev_list[0]
+                    if "connect" in first_event["action"]:
+                        duration_info = f" (Длительность: {last_event['duration_str']})" if last_event.get('duration_str') else ""
+                        lines.append(f"• 👤 `{username}` ({client_ip}) @ {panel_name} ({protocol}): Зашел и вышел 🔴 [{time_str}]{duration_info}")
+                    else:
+                        lines.append(f"• 👤 `{username}` ({client_ip}) @ {panel_name} ({protocol}): Переподключился 🟢 [{time_str}]")
+                        
+            if lines:
+                msg_text = "📊 **События подключений (дайджест за 30 сек):**\n\n" + "\n".join(lines)
+                
+                from .utils import send_rich_message
+                for admin_id in settings.admin_ids:
+                    try:
+                        await send_rich_message(admin_id, msg_text, parse_mode="markdown")
+                    except Exception as e:
+                        logging.error(f"[Controller Alerts] Error sending digest to admin {admin_id}: {e}")
+                        
+        except Exception as e:
+            logging.error(f"[Controller Alerts] Error in digest loop: {e}")
+
+
+def start_digest_loop_if_needed():
+    global digest_task
+    if digest_task is None or digest_task.done():
+        digest_task = asyncio.create_task(digest_sender_loop())
+
+
 async def process_hysteria_audit_event(panel, action, client_ip, log_timestamp, details_str):
+    # Запускаем фоновый цикл при первом получении события
+    start_digest_loop_if_needed()
+
     try:
         details = json.loads(details_str)
     except Exception:
         return
         
     username = details.get("username", "Unknown")
+    duration_str = details.get("duration", _("spectre", "history_unknown"))
     
     panel_name = panel.name
     protocol = "Xray" if "xray" in action else "Hysteria"
@@ -89,7 +177,7 @@ async def process_hysteria_audit_event(panel, action, client_ip, log_timestamp, 
         except Exception as db_err:
             logging.error("controller_database_error_saving_connection", db_err)
 
-        # Отправляем предупреждение в Telegram ТОЛЬКО если IP новый
+        # Критические алерты о НОВОМ IP отправляем мгновенно
         if session_id and not is_too_old:
             try:
                 is_new_ip, history = await check_new_ip_and_get_history(username, client_ip, session_id)
@@ -105,6 +193,19 @@ async def process_hysteria_audit_event(panel, action, client_ip, log_timestamp, 
                             logging.error(f"[Controller Alerts] Error sending new IP alert to admin {admin_id}: {e}")
             except Exception as e:
                 logging.error(f"[Controller Alerts] Error checking new IP: {e}")
+
+        # Добавляем событие в очередь дайджеста
+        pending_events.append({
+            "timestamp": log_timestamp,
+            "panel_name": panel_name,
+            "username": username,
+            "protocol": protocol,
+            "action": action,
+            "client_ip": client_ip,
+            "duration_str": None,
+            "tx": tx,
+            "rx": rx
+        })
             
     elif action in ("xray_disconnect", "hysteria_disconnect"):
         # Записываем событие отключения в SQLite БД
@@ -117,6 +218,25 @@ async def process_hysteria_audit_event(panel, action, client_ip, log_timestamp, 
             await save_vpn_disconnect(username, client_ip, disc_time_str, tx, rx)
         except Exception as db_err:
             logging.error("controller_database_error_saving_disconnection", db_err)
+
+        # Вычисляем длительность для дайджеста
+        duration_val = _("spectre", "history_unknown")
+        if "hysteria" in action:
+            # Для Hysteria пробуем получить длительность
+            duration_val = duration_str
+        
+        # Добавляем событие в очередь дайджеста
+        pending_events.append({
+            "timestamp": log_timestamp,
+            "panel_name": panel_name,
+            "username": username,
+            "protocol": protocol,
+            "action": action,
+            "client_ip": client_ip,
+            "duration_str": duration_val,
+            "tx": tx,
+            "rx": rx
+        })
 
 
 async def update_controller_active_cards_traffic():
