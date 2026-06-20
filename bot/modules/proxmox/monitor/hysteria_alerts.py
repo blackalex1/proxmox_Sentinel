@@ -15,7 +15,7 @@ async def trigger_card_edit(card, msg_text):
     card['pending_text'] = msg_text
     now = time.time()
     
-    if now - card.get('last_edited_at', 0) >= 20.0:
+    if now - card.get('last_edited_at', 0) >= 30.0:
         card['last_edited_at'] = now
         card['pending_text'] = None
         
@@ -29,7 +29,7 @@ async def trigger_card_edit(card, msg_text):
     else:
         if not card.get('edit_task') or card['edit_task'].done():
             async def run_delayed_edit():
-                await asyncio.sleep(20.0)
+                await asyncio.sleep(30.0)
                 if card.get('pending_text'):
                     text_to_send = card['pending_text']
                     card['pending_text'] = None
