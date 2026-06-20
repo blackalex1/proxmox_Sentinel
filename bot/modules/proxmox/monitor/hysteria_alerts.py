@@ -3,29 +3,177 @@ import json
 import time
 import datetime
 import asyncio
-from core.messages import get_new_ip_alert
-from core.messages.i18n import _
+from core.bot import bot
 from core.config import settings
+from core.messages import get_session_activity_card, get_new_ip_alert, get_client_disconnected_alert
+from core.messages.i18n import _
 
-# Очередь для агрегации событий подключений
-pending_events = []
-digest_task = None
+# In-memory cards state: (panel_name, username, protocol) -> card dict
+active_activity_cards = {}
+
+async def trigger_card_edit(card, msg_text):
+    card['pending_text'] = msg_text
+    now = time.time()
+    
+    if now - card.get('last_edited_at', 0) >= 20.0:
+        card['last_edited_at'] = now
+        card['pending_text'] = None
+        
+        from .utils import edit_rich_message
+        for msg in card['admin_messages']:
+            try:
+                await edit_rich_message(chat_id=msg['admin_id'], message_id=msg['message_id'], text=msg_text, parse_mode="markdown")
+            except Exception as e:
+                if "message is not modified" not in str(e).lower():
+                    logging.error(f"[Controller Alerts] Error editing card: {e}")
+    else:
+        if not card.get('edit_task') or card['edit_task'].done():
+            async def run_delayed_edit():
+                await asyncio.sleep(20.0)
+                if card.get('pending_text'):
+                    text_to_send = card['pending_text']
+                    card['pending_text'] = None
+                    card['last_edited_at'] = time.time()
+                    
+                    from .utils import edit_rich_message
+                    for msg in card['admin_messages']:
+                        try:
+                            await edit_rich_message(chat_id=msg['admin_id'], message_id=msg['message_id'], text=text_to_send, parse_mode="markdown")
+                        except Exception as e:
+                            if "message is not modified" not in str(e).lower():
+                                logging.error(f"[Controller Alerts] Error in debounced card edit: {e}")
+            card['edit_task'] = asyncio.create_task(run_delayed_edit())
+
+def format_card_msg(panel_name, username, protocol, lines, tx, rx):
+    return get_session_activity_card(protocol, panel_name, username, tx, rx, lines)
+
+def is_card_active(card, now_time):
+    if not card:
+        return False
+    if not card.get('admin_messages') and not card.get('pending_send'):
+        return False
+    has_active = False
+    for ip, conns in card.get('connections', {}).items():
+        if conns:
+            has_active = True
+            break
+    if has_active:
+        return True
+    last_act = card.get('last_activity_at', card.get('started_at', now_time))
+    return now_time - last_act < 900.0
+
+
+async def get_traffic_from_api(panel, username):
+    db_download, db_upload = 0, 0
+    if not panel:
+        return 0, 0
+    try:
+        success, res = await panel.request("GET", "/api/security/search-client", params={"key": username})
+        if success and res.get("success") and res.get("clients"):
+            for item in res["clients"]:
+                c_data = item.get("client", {})
+                db_download += c_data.get("down", 0)
+                db_upload += c_data.get("up", 0)
+    except Exception as e:
+        logging.error(f"[Controller Alerts] Error fetching traffic for {username} on panel {panel.name}: {e}")
+    return db_download, db_upload
+
+
+async def check_and_send_card_delayed(key, session_id):
+    await asyncio.sleep(5.0)
+    
+    from core.db import execute_read_one
+    try:
+        row = await execute_read_one(
+            "SELECT connect_time, disconnect_time, download_bytes, upload_bytes FROM vpn_sessions WHERE session_id = ?",
+            (session_id,)
+        )
+    except Exception as e:
+        logging.error(f"[Controller Alerts] Error querying session {session_id} in delay task: {e}")
+        row = None
+
+    is_noise = False
+    if row and row["disconnect_time"] is not None:
+        try:
+            conn_dt = datetime.datetime.strptime(row["connect_time"], "%Y-%m-%d %H:%M:%S")
+            disc_dt = datetime.datetime.strptime(row["disconnect_time"], "%Y-%m-%d %H:%M:%S")
+            duration_sec = int((disc_dt - conn_dt).total_seconds())
+        except Exception:
+            duration_sec = 0
+        tx_diff = row["download_bytes"] or 0
+        rx_diff = row["upload_bytes"] or 0
+        
+        if duration_sec <= 3 and tx_diff == 0 and rx_diff == 0:
+            is_noise = True
+
+    card = active_activity_cards.get(key)
+    if not card:
+        return
+
+    panel_name, username, protocol = key
+
+    if is_noise:
+        card['lines'] = [l for l in card['lines'] if l.get('session_id') != session_id]
+        
+        if not card['lines']:
+            active_activity_cards.pop(key, None)
+            return
+            
+        if not card.get('pending_send', True):
+            from core.spectre_client import spectre_manager
+            panel = None
+            for p in spectre_manager.panels.values():
+                if p.name == panel_name:
+                    panel = p
+                    break
+            tx, rx = await get_traffic_from_api(panel, username)
+            msg_text = format_card_msg(panel_name, username, protocol, [l['text'] for l in card['lines']], tx, rx)
+            await trigger_card_edit(card, msg_text)
+    else:
+        if card.get('pending_send', True):
+            card['pending_send'] = False
+            
+            from core.spectre_client import spectre_manager
+            panel = None
+            for p in spectre_manager.panels.values():
+                if p.name == panel_name:
+                    panel = p
+                    break
+            tx, rx = await get_traffic_from_api(panel, username)
+            msg_text = format_card_msg(panel_name, username, protocol, [l['text'] for l in card['lines']], tx, rx)
+            
+            admin_messages = []
+            from .utils import send_rich_message
+            for admin_id in settings.admin_ids:
+                try:
+                    m = await send_rich_message(admin_id, msg_text, parse_mode="markdown")
+                    if m:
+                        admin_messages.append({'admin_id': admin_id, 'message_id': m.message_id})
+                except Exception as e:
+                    logging.error(f"[Controller Alerts] Error sending card to admin {admin_id}: {e}")
+            
+            card['admin_messages'] = admin_messages
+
 
 async def check_new_ip_and_get_history(username, current_ip, session_id):
     from core.db import execute_read_one, execute_read_all
     
+    # 1. Читаем статус новизны IP из созданной сессии
     row = await execute_read_one(
         "SELECT is_new_ip FROM vpn_sessions WHERE username = ? AND session_id = ?",
         (username, session_id)
     )
     is_new_ip = bool(row["is_new_ip"]) if row else False
     
+    # 2. Получаем историю предыдущих подключений с других IP
+    # Исключаем текущую сессию по session_id
     rows = await execute_read_all(
         "SELECT ip, connect_time, duration FROM vpn_sessions WHERE username = ? AND ip != ? AND session_id != ? ORDER BY connect_time DESC LIMIT 5",
         (username, current_ip, session_id)
     )
     
     history = []
+    import datetime
     for r in rows:
         ip = r["ip"]
         conn_time_str = r["connect_time"]
@@ -45,89 +193,7 @@ async def check_new_ip_and_get_history(username, current_ip, session_id):
     return is_new_ip, history
 
 
-async def digest_sender_loop():
-    logging.info("[Controller Alerts] Started connection notification digest loop.")
-    while True:
-        try:
-            await asyncio.sleep(30)
-            if not pending_events:
-                continue
-                
-            # Забираем накопившиеся события и очищаем очередь
-            events = list(pending_events)
-            pending_events.clear()
-            
-            # Группируем события по ключу (username, client_ip, panel_name, protocol)
-            grouped = {}
-            for ev in events:
-                key = (ev["username"], ev["client_ip"], ev["panel_name"], ev["protocol"])
-                if key not in grouped:
-                    grouped[key] = []
-                grouped[key].append(ev)
-                
-            lines = []
-            for key, ev_list in grouped.items():
-                username, client_ip, panel_name, protocol = key
-                
-                # Сортируем события внутри группы по времени
-                ev_list.sort(key=lambda x: x["timestamp"])
-                
-                connects = [x for x in ev_list if "connect" in x["action"]]
-                disconnects = [x for x in ev_list if "disconnect" in x["action"]]
-                
-                C = len(connects)
-                D = len(disconnects)
-                
-                last_event = ev_list[-1]
-                last_action = last_event["action"]
-                
-                try:
-                    time_str = datetime.datetime.fromtimestamp(last_event["timestamp"]).strftime("%H:%M:%S")
-                except Exception:
-                    time_str = datetime.datetime.now().strftime("%H:%M:%S")
-                
-                if C > 1 or D > 1:
-                    # Флаппинг / множественные переподключения
-                    state = "ПОДКЛЮЧЕН 🟢" if "connect" in last_action else "ОТКЛЮЧЕН 🔴"
-                    lines.append(f"• 👤 `{username}` ({client_ip}) @ {panel_name} ({protocol}): {C} переподключений, сейчас {state} [{time_str}]")
-                elif C == 1 and D == 0:
-                    lines.append(f"• 👤 `{username}` ({client_ip}) @ {panel_name} ({protocol}): ПОДКЛЮЧИЛСЯ 🟢 [{time_str}]")
-                elif C == 0 and D == 1:
-                    duration_info = f" (Длительность: {last_event['duration_str']})" if last_event.get('duration_str') else ""
-                    lines.append(f"• 👤 `{username}` ({client_ip}) @ {panel_name} ({protocol}): ОТКЛЮЧИЛСЯ 🔴 [{time_str}]{duration_info}")
-                elif C == 1 and D == 1:
-                    # Зашел и вышел в рамках одного окна
-                    first_event = ev_list[0]
-                    if "connect" in first_event["action"]:
-                        duration_info = f" (Длительность: {last_event['duration_str']})" if last_event.get('duration_str') else ""
-                        lines.append(f"• 👤 `{username}` ({client_ip}) @ {panel_name} ({protocol}): Зашел и вышел 🔴 [{time_str}]{duration_info}")
-                    else:
-                        lines.append(f"• 👤 `{username}` ({client_ip}) @ {panel_name} ({protocol}): Переподключился 🟢 [{time_str}]")
-                        
-            if lines:
-                msg_text = "📊 **События подключений (дайджест за 30 сек):**\n\n" + "\n".join(lines)
-                
-                from .utils import send_rich_message
-                for admin_id in settings.admin_ids:
-                    try:
-                        await send_rich_message(admin_id, msg_text, parse_mode="markdown")
-                    except Exception as e:
-                        logging.error(f"[Controller Alerts] Error sending digest to admin {admin_id}: {e}")
-                        
-        except Exception as e:
-            logging.error(f"[Controller Alerts] Error in digest loop: {e}")
-
-
-def start_digest_loop_if_needed():
-    global digest_task
-    if digest_task is None or digest_task.done():
-        digest_task = asyncio.create_task(digest_sender_loop())
-
-
 async def process_hysteria_audit_event(panel, action, client_ip, log_timestamp, details_str):
-    # Запускаем фоновый цикл при первом получении события
-    start_digest_loop_if_needed()
-
     try:
         details = json.loads(details_str)
     except Exception:
@@ -140,22 +206,15 @@ async def process_hysteria_audit_event(panel, action, client_ip, log_timestamp, 
     protocol = "Xray" if "xray" in action else "Hysteria"
     
     # Получаем актуальный совокупный трафик из базы панели
-    db_download, db_upload = 0, 0
-    success, res = await panel.request("GET", "/api/security/search-client", params={"key": username})
-    if success and res.get("success") and res.get("clients"):
-        for item in res["clients"]:
-            c_data = item.get("client", {})
-            db_download += c_data.get("down", 0)
-            db_upload += c_data.get("up", 0)
-        tx = db_download
-        rx = db_upload
-    else:
+    tx, rx = await get_traffic_from_api(panel, username)
+    if tx == 0 and rx == 0:
         # Резервный фолбек на данные из лога события
         tx = details.get("tx", 0)
         rx = details.get("rx", 0)
         if protocol == "Xray":
             tx, rx = rx, tx  # Swap: tx becomes client download, rx becomes client upload
-            
+        
+    key = (panel_name, username, protocol)
     now_time = time.time()
     is_too_old = (now_time - log_timestamp) > 180.0
     
@@ -164,6 +223,8 @@ async def process_hysteria_audit_event(panel, action, client_ip, log_timestamp, 
     except Exception:
         timestamp_str = datetime.datetime.now().strftime("%H:%M:%S")
 
+    card = active_activity_cards.get(key)
+    
     if action in ("xray_connect", "hysteria_connect"):
         session_id = None
         # Записываем событие подключения в SQLite БД
@@ -177,7 +238,7 @@ async def process_hysteria_audit_event(panel, action, client_ip, log_timestamp, 
         except Exception as db_err:
             logging.error("controller_database_error_saving_connection", db_err)
 
-        # Критические алерты о НОВОМ IP отправляем мгновенно
+        # Check for new IP connection on controller using bot database
         if session_id and not is_too_old:
             try:
                 is_new_ip, history = await check_new_ip_and_get_history(username, client_ip, session_id)
@@ -194,22 +255,47 @@ async def process_hysteria_audit_event(panel, action, client_ip, log_timestamp, 
             except Exception as e:
                 logging.error(f"[Controller Alerts] Error checking new IP: {e}")
 
-        # Добавляем событие в очередь дайджеста
-        pending_events.append({
-            "timestamp": log_timestamp,
-            "panel_name": panel_name,
-            "username": username,
-            "protocol": protocol,
-            "action": action,
-            "client_ip": client_ip,
-            "duration_str": None,
-            "tx": tx,
-            "rx": rx
-        })
+        event_line = _("spectre", "timeline_connect", timestamp=timestamp_str, ip=client_ip)
+        
+        if card and is_card_active(card, now_time):
+            card['lines'].append({
+                'session_id': session_id,
+                'text': event_line,
+                'type': 'connect'
+            })
+            card['last_activity_at'] = now_time
+            if client_ip not in card['connections']:
+                card['connections'][client_ip] = []
+            card['connections'][client_ip].append(datetime.datetime.now())
+            
+            # Start background task to process send/noise checks after delay
+            asyncio.create_task(check_and_send_card_delayed(key, session_id))
+            
+            if not is_too_old and not card.get('pending_send', True):
+                msg_text = format_card_msg(panel_name, username, protocol, [l['text'] for l in card['lines']], tx, rx)
+                await trigger_card_edit(card, msg_text)
+        else:
+            lines = [{
+                'session_id': session_id,
+                'text': event_line,
+                'type': 'connect'
+            }]
+            connections = {client_ip: [datetime.datetime.now()]}
+            
+            active_activity_cards[key] = {
+                'started_at': now_time,
+                'last_activity_at': now_time,
+                'last_edited_at': time.time(),
+                'lines': lines,
+                'connections': connections,
+                'admin_messages': [],
+                'pending_send': True
+            }
+            # Start background task to process send/noise checks after delay
+            asyncio.create_task(check_and_send_card_delayed(key, session_id))
             
     elif action in ("xray_disconnect", "hysteria_disconnect"):
         # Записываем событие отключения в SQLite БД
-        duration_sec, diff_tx, diff_rx = 0, 0, 0
         try:
             from core.db import save_vpn_disconnect
             try:
@@ -217,40 +303,74 @@ async def process_hysteria_audit_event(panel, action, client_ip, log_timestamp, 
             except Exception:
                 disc_time_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             res_tuple = await save_vpn_disconnect(username, client_ip, disc_time_str, tx, rx)
-            if isinstance(res_tuple, tuple) and len(res_tuple) == 3:
-                duration_sec, diff_tx, diff_rx = res_tuple
+            session_id, duration_sec, diff_tx, diff_rx = res_tuple
         except Exception as db_err:
             logging.error("controller_database_error_saving_disconnection", db_err)
+            session_id, duration_sec, diff_tx, diff_rx = None, 0, 0, 0
 
-        # Фильтр шума/флаппинга: если сессия длилась <= 3 сек и не передала трафика (0 байт)
-        if duration_sec <= 3 and diff_tx == 0 and diff_rx == 0:
-            # Удаляем соответствующее событие подключения из очереди дайджеста
-            for i, ev in enumerate(list(pending_events)):
-                if ev["username"] == username and ev["client_ip"] == client_ip and "connect" in ev["action"]:
-                    pending_events.pop(i)
-                    break
-            # Выходим сразу, не добавляя дисконнект в очередь дайджеста
+        is_noise = (duration_sec <= 3 and diff_tx == 0 and diff_rx == 0)
+        if is_noise:
+            # Noise disconnect is ignored completely
             return
 
-        # Вычисляем длительность для дайджеста
-        duration_val = _("spectre", "history_unknown")
-        if "hysteria" in action:
-            # Для Hysteria пробуем получить длительность
-            duration_val = duration_str
-        
-        # Добавляем событие в очередь дайджеста
-        pending_events.append({
-            "timestamp": log_timestamp,
-            "panel_name": panel_name,
-            "username": username,
-            "protocol": protocol,
-            "action": action,
-            "client_ip": client_ip,
-            "duration_str": duration_val,
-            "tx": tx,
-            "rx": rx
-        })
-
+        if card and is_card_active(card, now_time):
+            card['last_activity_at'] = now_time
+            
+            if "hysteria" in action:
+                conn_list = card['connections'].get(client_ip, [])
+                if conn_list:
+                    conn_time = conn_list.pop(0)
+                    duration_sec_calc = int((datetime.datetime.now() - conn_time).total_seconds())
+                    if duration_sec_calc < 60:
+                        duration_str = _("spectre", "duration_sec", val=duration_sec_calc)
+                    elif duration_sec_calc < 3600:
+                        duration_str = _("spectre", "duration_min_sec", min=duration_sec_calc // 60, sec=duration_sec_calc % 60)
+                    else:
+                        duration_str = _("spectre", "duration_hour_min", hour=duration_sec_calc // 3600, min=(duration_sec_calc % 3600) // 60)
+            else:
+                conn_list = card['connections'].get(client_ip, [])
+                if conn_list:
+                    conn_list.pop(0)
+            
+            event_line = _("spectre", "timeline_disconnect", timestamp=timestamp_str, ip=client_ip, duration=duration_str)
+            card['lines'].append({
+                'session_id': session_id,
+                'text': event_line,
+                'type': 'disconnect'
+            })
+            
+            if not is_too_old and not card.get('pending_send', True):
+                msg_text = format_card_msg(panel_name, username, protocol, [l['text'] for l in card['lines']], tx, rx)
+                await trigger_card_edit(card, msg_text)
+        else:
+            if not is_too_old:
+                from .utils import get_geoip_info
+                geoip_info = await get_geoip_info(client_ip)
+                msg_text = get_client_disconnected_alert(protocol, panel_name, username, client_ip, timestamp_str, geoip_info=geoip_info)
+                from .utils import send_rich_message
+                for admin_id in settings.admin_ids:
+                    try:
+                        await send_rich_message(admin_id, msg_text, parse_mode="markdown")
+                    except Exception as e:
+                        logging.error(f"[Controller Alerts] Error sending disconnect message: {e}")
 
 async def update_controller_active_cards_traffic():
-    pass
+    now_time = time.time()
+    for (panel_name, username, protocol), card in list(active_activity_cards.items()):
+        if not is_card_active(card, now_time):
+            continue
+        if not card.get('admin_messages'):
+            continue
+            
+        from core.spectre_client import spectre_manager
+        panel = None
+        for p in spectre_manager.panels.values():
+            if p.name == panel_name:
+                panel = p
+                break
+        if not panel:
+            continue
+            
+        tx, rx = await get_traffic_from_api(panel, username)
+        msg_text = format_card_msg(panel_name, username, protocol, [l['text'] for l in card['lines']], tx, rx)
+        await trigger_card_edit(card, msg_text)
