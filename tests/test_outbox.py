@@ -316,3 +316,48 @@ def test_clean_html_for_telegram_tables():
     assert ("<b>📤 Загружено</b> | <code>18.97 GB</code>" in cleaned) or ("<b>📤 Uploaded</b> | <code>18.97 GB</code>" in cleaned)
     assert "🟢 [17:46:05] Подключение с 198.51.100.50" in cleaned
     assert "<table" not in cleaned
+
+
+def test_clean_mixed_html_to_markdown_tables():
+    from core.outbox import clean_mixed_html_to_markdown
+    from core.messages.spectre import get_session_activity_card
+    
+    card_html = get_session_activity_card(
+        protocol="Hysteria",
+        panel_name="VPS 198.51.100.42",
+        username="bot",
+        download_bytes=859.62 * 1024 * 1024,
+        upload_bytes=18.97 * 1024 * 1024 * 1024,
+        timeline_lines=["🟢 [17:46:05] Подключение с 198.51.100.50"]
+    )
+    
+    cleaned = clean_mixed_html_to_markdown(card_html)
+    
+    assert ("**👤 Пользователь** | `bot`" in cleaned) or ("**👤 User** | `bot`" in cleaned)
+    assert ("**📥 Скачано** | `859.62 MB`" in cleaned) or ("**📥 Downloaded** | `859.62 MB`" in cleaned)
+    assert ("**📤 Загружено** | `18.97 GB`" in cleaned) or ("**📤 Uploaded** | `18.97 GB`" in cleaned)
+    assert "🟢 [17:46:05] Подключение с 198.51.100.50" in cleaned
+    assert "<table" not in cleaned
+
+
+@pytest.mark.asyncio
+async def test_outbox_flush_rate_limited(clean_outbox):
+    """
+    Проверяет, что flush_queue не отправляет сообщения, если взведен self.rate_limit_until.
+    """
+    import time
+    outbox = clean_outbox
+    
+    # Имитируем активный лимит флуда
+    outbox.rate_limit_until = time.time() + 100
+    outbox.queue.append({"chat_id": 111, "text": "Msg 1", "kwargs": {}})
+    outbox.save_to_disk()
+    
+    bot = MagicMock(spec=Bot)
+    bot._original_send_message = AsyncMock()
+    
+    await outbox.flush_queue(bot)
+    
+    # Отправка не должна случиться
+    bot._original_send_message.assert_not_called()
+    assert len(outbox.queue) == 1

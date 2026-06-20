@@ -58,6 +58,22 @@ def clean_mixed_html_to_markdown(text: str) -> str:
     text = re.sub(r'</code>\s*</pre>', '\n```', text)
     text = re.sub(r'</?code[^>]*>', '`', text)
     
+    # Convert HTML table rows to text rows separated by |
+    def clean_tr(match):
+        row_content = match.group(1)
+        cols = re.findall(r'<(?:td|th)\b[^>]*>(.*?)</(?:td|th)>', row_content, flags=re.DOTALL)
+        if len(cols) == 2:
+            val1 = re.sub(r'\s+', ' ', cols[0]).strip()
+            val2 = re.sub(r'\s+', ' ', cols[1]).strip()
+            return f"{val1} | {val2}\n"
+        elif cols:
+            vals = [re.sub(r'\s+', ' ', c).strip() for c in cols]
+            return " | ".join(vals) + "\n"
+        return ""
+
+    text = re.sub(r'\s*<tr\b[^>]*>(.*?)</tr>\s*', clean_tr, text, flags=re.DOTALL)
+    text = re.sub(r'</?table[^>]*>', '', text)
+
     # Convert bold/italic
     text = re.sub(r'</?(?:b|strong)[^>]*>', '**', text)
     text = re.sub(r'</?(?:i|em)[^>]*>', '*', text)
@@ -246,6 +262,9 @@ class ResilientOutbox:
         Каждое отложенное сообщение снабжается пометкой о его номере в очереди: "[Отложенное сообщение 1/120]".
         """
         if not self.queue:
+            return
+
+        if time.time() < self.rate_limit_until:
             return
 
         async with self.lock:
