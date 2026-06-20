@@ -164,6 +164,8 @@ async def test_save_vpn_connect_disconnect():
     assert rows[0]['disconnect_time'] is None
     
     # 2. Второе подключение (тот же IP) - не должен быть новым
+    from core.db import approve_ip
+    await approve_ip("test_user_hist", "1.2.3.4")
     session_id_2 = await save_vpn_connect(
         username="test_user_hist",
         ip="1.2.3.4",
@@ -213,5 +215,39 @@ async def test_save_vpn_connect_disconnect():
     assert rows_fallback[0]['duration'] == "неизвестно"
     assert rows_fallback[0]['download_bytes'] == 0
     assert rows_fallback[0]['upload_bytes'] == 0
+
+
+@pytest.mark.asyncio
+async def test_approved_ips_functionality():
+    from core.db import is_ip_approved, approve_ip, save_vpn_connect, execute_write
+    
+    # Clean approved_ips table
+    await execute_write("DELETE FROM approved_ips")
+    await execute_write("DELETE FROM vpn_sessions")
+    
+    # 1. Initially, IP is not approved
+    approved = await is_ip_approved("test_user", "192.168.1.99")
+    assert approved is False
+    
+    # 2. Approve the IP
+    success = await approve_ip("test_user", "192.168.1.99")
+    assert success is True
+    
+    # 3. Check again
+    approved = await is_ip_approved("test_user", "192.168.1.99")
+    assert approved is True
+    
+    # 4. Connecting from approved IP should not mark it as new
+    sess_id_approved = await save_vpn_connect("test_user", "192.168.1.99", "2026-06-20 12:00:00", 0, 0)
+    from core.db import execute_read_one
+    sess_row = await execute_read_one("SELECT is_new_ip FROM vpn_sessions WHERE session_id = ?", (sess_id_approved,))
+    assert sess_row is not None
+    assert sess_row["is_new_ip"] == 0
+    
+    # 5. Connecting from an unapproved IP should mark it as new
+    sess_id_unapproved = await save_vpn_connect("test_user", "192.168.1.88", "2026-06-20 12:05:00", 0, 0)
+    sess_row2 = await execute_read_one("SELECT is_new_ip FROM vpn_sessions WHERE session_id = ?", (sess_id_unapproved,))
+    assert sess_row2 is not None
+    assert sess_row2["is_new_ip"] == 1
 
 
