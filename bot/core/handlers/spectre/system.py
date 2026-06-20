@@ -198,7 +198,7 @@ async def cmd_audit(message: types.Message):
         
     if len(panels) == 1:
         panel_key = list(panels.keys())[0]
-        await run_audit_for_panel(message, panel_key)
+        await show_audit_categories(message, panel_key)
     else:
         buttons = []
         for p_key, p in panels.items():
@@ -206,23 +206,65 @@ async def cmd_audit(message: types.Message):
         kb = InlineKeyboardMarkup(inline_keyboard=buttons)
         await message.reply(_("spectre", "select_panel_audit"), reply_markup=kb, parse_mode="HTML")
 
+
 @router.callback_query(F.data.startswith("spectre_audit:"))
 async def cb_audit(callback: CallbackQuery):
     panel_key = callback.data.split(":", 1)[1]
     await callback.message.delete()
-    await run_audit_for_panel(callback.message, panel_key)
+    await show_audit_categories(callback.message, panel_key)
     await callback.answer()
 
-async def run_audit_for_panel(message: types.Message, panel_key: str):
+
+async def show_audit_categories(message: types.Message, panel_key: str):
+    panel = spectre_manager.panels.get(panel_key)
+    if not panel:
+        await message.answer(_("spectre", "panel_not_found"))
+        return
+        
+    buttons = [
+        [InlineKeyboardButton(text=_("spectre", "audit_cat_all"), callback_data=f"spectre_audit_cat:{panel_key}:")],
+        [InlineKeyboardButton(text=_("spectre", "audit_cat_logins"), callback_data=f"spectre_audit_cat:{panel_key}:login")],
+        [InlineKeyboardButton(text=_("spectre", "audit_cat_clients"), callback_data=f"spectre_audit_cat:{panel_key}:client")],
+        [InlineKeyboardButton(text=_("spectre", "audit_cat_inbounds"), callback_data=f"spectre_audit_cat:{panel_key}:inbound")],
+        [InlineKeyboardButton(text=_("spectre", "audit_cat_security"), callback_data=f"spectre_audit_cat:{panel_key}:block")],
+        [InlineKeyboardButton(text=_("spectre", "audit_cat_settings"), callback_data=f"spectre_audit_cat:{panel_key}:setting")],
+        [
+            InlineKeyboardButton(text=_("spectre", "back_to_menu_btn"), callback_data=f"spectre_menu:{panel_key}"),
+            InlineKeyboardButton(text=_("keyboards", "btn_back_to_menu"), callback_data="main_menu")
+        ]
+    ]
+    kb = InlineKeyboardMarkup(inline_keyboard=buttons)
+    await message.answer(
+        _("spectre", "select_audit_category", name=panel.name),
+        parse_mode="HTML",
+        reply_markup=kb
+    )
+
+
+@router.callback_query(F.data.startswith("spectre_audit_cat:"))
+async def cb_audit_category(callback: CallbackQuery):
+    parts = callback.data.split(":", 2)
+    if len(parts) < 3:
+        return
+    panel_key = parts[1]
+    search = parts[2]
+    
+    await callback.message.delete()
+    await run_audit_for_panel(callback.message, panel_key, search=search)
+    await callback.answer()
+
+
+async def run_audit_for_panel(message: types.Message, panel_key: str, search: str = ""):
     panel = spectre_manager.panels.get(panel_key)
     if not panel:
         await message.answer(_("spectre", "panel_not_found"))
         return
         
     status_msg = await message.answer(_("spectre", "audit_logs_fetching", name=panel.name))
-    success, res = await panel.get_audit_logs(limit=10)
+    success, res = await panel.get_audit_logs(limit=10, search=search)
     
     kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=_("spectre", "btn_back_to_categories"), callback_data=f"spectre_audit:{panel_key}")],
         [InlineKeyboardButton(text=_("spectre", "back_to_menu_btn"), callback_data=f"spectre_menu:{panel_key}")],
         [InlineKeyboardButton(text=_("keyboards", "btn_back_to_menu"), callback_data="main_menu")]
     ])

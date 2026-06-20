@@ -28,5 +28,10 @@ translation = {
     "btn_start": "⏹️ Start",
     "btn_page_info": "Page {current}/{total}",
     "btn_next": "Next ▶️",
-    "btn_end": "⏹️ End"
+    "btn_end": "⏹️ End",
+    "btn_clear_db": "🗑️ Reset History",
+    "clear_confirm_desc": "⚠️ <b>Warning!</b> Are you sure you want to completely clear the entire VPN connection history? This action cannot be undone.",
+    "btn_clear_confirm_yes": "✅ Yes, Clear",
+    "btn_clear_confirm_no": "❌ Cancel",
+    "clear_success": "✅ Connection history successfully cleared!"
 }

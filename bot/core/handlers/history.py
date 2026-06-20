@@ -36,6 +36,7 @@ async def callback_vpn_history_select(callback: CallbackQuery):
             callback_data=f"vpn_hist:{username}:0"
         )])
         
+    buttons.append([InlineKeyboardButton(text=_("history", "btn_clear_db"), callback_data="vpn_history_clear")])
     buttons.append([InlineKeyboardButton(text=_("keyboards", "btn_back_to_menu"), callback_data="main_menu")])
     kb = InlineKeyboardMarkup(inline_keyboard=buttons)
     
@@ -198,3 +199,72 @@ async def callback_vpn_history_view(callback: CallbackQuery):
         await callback.message.edit_text(msg_text, parse_mode="HTML", reply_markup=kb)
     except Exception as e:
         logging.error("error_viewing_session_history", e)
+
+
+@router.callback_query(F.data.startswith("approve_ip:"))
+async def callback_approve_ip(callback: CallbackQuery):
+    parts = callback.data.split(":")
+    if len(parts) < 3:
+        return
+    username = parts[1]
+    ip = parts[2]
+    
+    from core.db import approve_ip
+    success = await approve_ip(username, ip)
+    
+    if success:
+        await callback.answer(_("spectre", "ip_approved_success_toast", ip=ip), show_alert=True)
+        from modules.proxmox.monitor.utils import edit_rich_message
+        
+        # Get existing message text
+        existing_text = callback.message.html_text or callback.message.text or ""
+        updated_text = existing_text + f"\n\n✅ <b>IP {ip} одобрен.</b>"
+        
+        try:
+            await edit_rich_message(
+                chat_id=callback.message.chat.id,
+                message_id=callback.message.message_id,
+                text=updated_text,
+                parse_mode="HTML",
+                reply_markup=None
+            )
+        except Exception as e:
+            logging.error(f"Error editing rich message after IP approval: {e}")
+            try:
+                await callback.message.edit_reply_markup(reply_markup=None)
+            except Exception:
+                pass
+    else:
+        await callback.answer(_("spectre", "ip_approve_failed"), show_alert=True)
+
+
+@router.callback_query(F.data == "vpn_history_clear")
+async def callback_vpn_history_clear(callback: CallbackQuery):
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text=_("history", "btn_clear_confirm_yes"), callback_data="vpn_history_clear_confirm"),
+            InlineKeyboardButton(text=_("history", "btn_clear_confirm_no"), callback_data="vpn_history_select")
+        ]
+    ])
+    await callback.message.edit_text(
+        _("history", "clear_confirm_desc"),
+        parse_mode="HTML",
+        reply_markup=kb
+    )
+
+
+@router.callback_query(F.data == "vpn_history_clear_confirm")
+async def callback_vpn_history_clear_confirm(callback: CallbackQuery):
+    from core.db import execute_write
+    # Сбрасываем всю таблицу сессий
+    await execute_write("DELETE FROM vpn_sessions")
+    
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=_("history", "btn_back_to_select"), callback_data="vpn_history_select")],
+        [InlineKeyboardButton(text=_("keyboards", "btn_back_to_menu"), callback_data="main_menu")]
+    ])
+    await callback.message.edit_text(
+        _("history", "clear_success"),
+        parse_mode="HTML",
+        reply_markup=kb
+    )

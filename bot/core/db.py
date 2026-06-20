@@ -85,6 +85,14 @@ def init_db():
                     timestamp TEXT
                 );
             """)
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS approved_ips (
+                    username TEXT,
+                    ip TEXT,
+                    PRIMARY KEY (username, ip)
+                );
+            """)
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_approved_ips_username ON approved_ips (username);")
             
         logging.info("database_database_tables_successfully_verified_created_with")
         
@@ -262,6 +270,23 @@ async def is_whitelisted(node: str, ip: Optional[str] = None, port: Optional[int
     return False
 
 
+async def is_ip_approved(username: str, ip: str) -> bool:
+    """Проверяет, одобрен ли IP для пользователя."""
+    row = await execute_read_one(
+        "SELECT 1 FROM approved_ips WHERE username = ? AND ip = ?",
+        (username, ip)
+    )
+    return row is not None
+
+
+async def approve_ip(username: str, ip: str) -> bool:
+    """Добавляет IP в список одобренных для пользователя."""
+    return await execute_write(
+        "INSERT OR IGNORE INTO approved_ips (username, ip) VALUES (?, ?)",
+        (username, ip)
+    )
+
+
 async def save_vpn_connect(username: str, ip: str, connect_time_str: str, tx: int, rx: int) -> str:
     """
     Сохраняет событие подключения к VPN в базу данных.
@@ -269,12 +294,9 @@ async def save_vpn_connect(username: str, ip: str, connect_time_str: str, tx: in
     Возвращает сгенерированный session_id.
     """
     import uuid
-    # 1. Проверяем, встречался ли IP ранее для этого пользователя
-    row = await execute_read_one(
-        "SELECT 1 FROM vpn_sessions WHERE username = ? AND ip = ? LIMIT 1",
-        (username, ip)
-    )
-    is_new_ip = 0 if row else 1
+    # 1. Проверяем, одобрен ли IP
+    is_approved = await is_ip_approved(username, ip)
+    is_new_ip = 0 if is_approved else 1
     
     # 2. Генерируем уникальный session_id
     session_id = str(uuid.uuid4())

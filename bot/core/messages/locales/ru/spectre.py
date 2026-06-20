@@ -27,6 +27,17 @@ translation = {
         "  <pre><code>{history_text}</code></pre>\n"
         "</details>"
     ),
+    "btn_approve_ip": "✅ Одобрить IP",
+    "ip_approved_success_toast": "✅ IP {ip} успешно одобрен!",
+    "ip_approve_failed": "❌ Не удалось одобрить IP.",
+    "select_audit_category": "📋 <b>Выберите категорию логов для панели {name}:</b>",
+    "audit_cat_all": "📂 Все логи",
+    "audit_cat_logins": "🔑 Входы в панель",
+    "audit_cat_clients": "👤 Управление клиентами",
+    "audit_cat_inbounds": "🔌 Подключения / Протоколы",
+    "audit_cat_security": "🛡️ Безопасность / Блокировки",
+    "audit_cat_settings": "⚙️ Настройки системы",
+    "btn_back_to_categories": "🔙 К категориям",
     "session_activity_card": (
         "<b>📊 Session Activity</b>\n"
         "⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯\n"
