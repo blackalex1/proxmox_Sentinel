@@ -1,8 +1,8 @@
 translation = {
     "new_ip_alert": (
-        "# 🚨 New IP Connection\n"
-        "---\n\n"
-        "### 🚨 [{protocol} Security] Обнаружено подключение с нового IP!\n\n"
+        "<b>🚨 New IP Connection</b>\n"
+        "⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯\n"
+        "<b>🚨 [{protocol} Security] Обнаружено подключение с нового IP!</b>\n\n"
         '<table border="1" style="border-collapse: collapse; width: 100%;">\n'
         '  <tr style="background-color: #1e1e2e; color: #ffffff;">\n'
         '    <th style="padding: 8px; text-align: left;"><b>Параметр</b></th>\n'
@@ -28,9 +28,9 @@ translation = {
         "</details>"
     ),
     "session_activity_card": (
-        "# 📊 Session Activity\n"
-        "---\n\n"
-        "### 📊 [{protocol}] Активность сессии на {panel_name}\n\n"
+        "<b>📊 Session Activity</b>\n"
+        "⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯\n"
+        "<b>📊 [{protocol}] Активность сессии на {panel_name}</b>\n\n"
         '<table border="1" style="border-collapse: collapse; width: 100%;">\n'
         '  <tr style="background-color: #1e1e2e; color: #ffffff;">\n'
         '    <th style="padding: 8px; text-align: left;"><b>Параметр</b></th>\n'
@@ -55,9 +55,9 @@ translation = {
         "</details>"
     ),
     "client_disconnected_alert": (
-        "# 🔴 Client Disconnected\n"
-        "---\n\n"
-        "### 🔴 [{protocol}] Клиент отключился от {panel_name}\n\n"
+        "<b>🔴 Client Disconnected</b>\n"
+        "⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯\n"
+        "<b>🔴 [{protocol}] Клиент отключился от {panel_name}</b>\n\n"
         '<table border="1" style="border-collapse: collapse; width: 100%;">\n'
         '  <tr style="background-color: #1e1e2e; color: #ffffff;">\n'
         '    <th style="padding: 8px; text-align: left;"><b>Параметр</b></th>\n'
