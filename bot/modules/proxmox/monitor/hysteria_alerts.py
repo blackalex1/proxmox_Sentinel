@@ -132,6 +132,7 @@ async def process_hysteria_audit_event(panel, action, client_ip, log_timestamp, 
         
     key = (panel_name, username, protocol)
     now_time = time.time()
+    is_too_old = (now_time - log_timestamp) > 180.0
     
     try:
         timestamp_str = datetime.datetime.fromtimestamp(log_timestamp).strftime("%H:%M:%S")
@@ -154,7 +155,7 @@ async def process_hysteria_audit_event(panel, action, client_ip, log_timestamp, 
             logging.error("controller_database_error_saving_connection", db_err)
 
         # Check for new IP connection on controller using bot database
-        if session_id:
+        if session_id and not is_too_old:
             try:
                 is_new_ip, history = await check_new_ip_and_get_history(username, client_ip, session_id)
                 if is_new_ip:
@@ -178,31 +179,34 @@ async def process_hysteria_audit_event(panel, action, client_ip, log_timestamp, 
                 card['connections'][client_ip] = []
             card['connections'][client_ip].append(datetime.datetime.now())
             
-            msg_text = format_card_msg(panel_name, username, protocol, card['lines'], tx, rx)
-            await trigger_card_edit(card, msg_text)
+            if not is_too_old:
+                msg_text = format_card_msg(panel_name, username, protocol, card['lines'], tx, rx)
+                await trigger_card_edit(card, msg_text)
         else:
             lines = [event_line]
             connections = {client_ip: [datetime.datetime.now()]}
-            msg_text = format_card_msg(panel_name, username, protocol, lines, tx, rx)
             
-            admin_messages = []
-            from .utils import send_rich_message
-            for admin_id in settings.admin_ids:
-                try:
-                    m = await send_rich_message(admin_id, msg_text, parse_mode="markdown")
-                    if m:
-                        admin_messages.append({'admin_id': admin_id, 'message_id': m.message_id})
-                except Exception as e:
-                    logging.error(f"[Controller Alerts] Error sending card to admin {admin_id}: {e}")
-                    
-            active_activity_cards[key] = {
-                'started_at': now_time,
-                'last_activity_at': now_time,
-                'last_edited_at': time.time(),
-                'lines': lines,
-                'connections': connections,
-                'admin_messages': admin_messages
-            }
+            if not is_too_old:
+                msg_text = format_card_msg(panel_name, username, protocol, lines, tx, rx)
+                
+                admin_messages = []
+                from .utils import send_rich_message
+                for admin_id in settings.admin_ids:
+                    try:
+                        m = await send_rich_message(admin_id, msg_text, parse_mode="markdown")
+                        if m:
+                            admin_messages.append({'admin_id': admin_id, 'message_id': m.message_id})
+                    except Exception as e:
+                        logging.error(f"[Controller Alerts] Error sending card to admin {admin_id}: {e}")
+                        
+                active_activity_cards[key] = {
+                    'started_at': now_time,
+                    'last_activity_at': now_time,
+                    'last_edited_at': time.time(),
+                    'lines': lines,
+                    'connections': connections,
+                    'admin_messages': admin_messages
+                }
             
     elif action in ("xray_disconnect", "hysteria_disconnect"):
         # Записываем событие отключения в SQLite БД
@@ -238,18 +242,20 @@ async def process_hysteria_audit_event(panel, action, client_ip, log_timestamp, 
             event_line = _("spectre", "timeline_disconnect", timestamp=timestamp_str, ip=client_ip, duration=duration_str)
             card['lines'].append(event_line)
             
-            msg_text = format_card_msg(panel_name, username, protocol, card['lines'], tx, rx)
-            await trigger_card_edit(card, msg_text)
+            if not is_too_old:
+                msg_text = format_card_msg(panel_name, username, protocol, card['lines'], tx, rx)
+                await trigger_card_edit(card, msg_text)
         else:
-            from .utils import get_geoip_info
-            geoip_info = await get_geoip_info(client_ip)
-            msg_text = get_client_disconnected_alert(protocol, panel_name, username, client_ip, timestamp_str, geoip_info=geoip_info)
-            from .utils import send_rich_message
-            for admin_id in settings.admin_ids:
-                try:
-                    await send_rich_message(admin_id, msg_text, parse_mode="markdown")
-                except Exception as e:
-                    logging.error(f"[Controller Alerts] Error sending disconnect message: {e}")
+            if not is_too_old:
+                from .utils import get_geoip_info
+                geoip_info = await get_geoip_info(client_ip)
+                msg_text = get_client_disconnected_alert(protocol, panel_name, username, client_ip, timestamp_str, geoip_info=geoip_info)
+                from .utils import send_rich_message
+                for admin_id in settings.admin_ids:
+                    try:
+                        await send_rich_message(admin_id, msg_text, parse_mode="markdown")
+                    except Exception as e:
+                        logging.error(f"[Controller Alerts] Error sending disconnect message: {e}")
 
 async def update_controller_active_cards_traffic():
     now_time = time.time()
