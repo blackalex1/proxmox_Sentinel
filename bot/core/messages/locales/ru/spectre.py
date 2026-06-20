@@ -1,7 +1,7 @@
 translation = {
     "new_ip_alert": (
         "<b>🚨 New IP Connection</b>\n"
-        "⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯\n"
+        "<hr/>\n"
         "<b>🚨 [{protocol} Security] Обнаружено подключение с нового IP!</b>\n\n"
         '<table border="1" style="border-collapse: collapse; width: 100%;">\n'
         '  <tr style="background-color: #1e1e2e; color: #ffffff;">\n'
@@ -40,7 +40,7 @@ translation = {
     "btn_back_to_categories": "🔙 К категориям",
     "session_activity_card": (
         "<b>📊 Session Activity</b>\n"
-        "⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯\n"
+        "<hr/>\n"
         "<b>📊 [{protocol}] Активность сессии на {panel_name}</b>\n\n"
         '<table border="1" style="border-collapse: collapse; width: 100%;">\n'
         '  <tr style="background-color: #1e1e2e; color: #ffffff;">\n'
@@ -67,7 +67,7 @@ translation = {
     ),
     "client_disconnected_alert": (
         "<b>🔴 Client Disconnected</b>\n"
-        "⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯\n"
+        "<hr/>\n"
         "<b>🔴 [{protocol}] Клиент отключился от {panel_name}</b>\n\n"
         '<table border="1" style="border-collapse: collapse; width: 100%;">\n'
         '  <tr style="background-color: #1e1e2e; color: #ffffff;">\n'

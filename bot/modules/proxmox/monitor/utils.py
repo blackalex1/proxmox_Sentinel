@@ -120,7 +120,7 @@ def convert_rich_html_to_standard(html):
     html = re.sub(r'</h[1-6]>', '</b>\n', html)
     
     # Convert <hr> / <hr/> to separator
-    html = re.sub(r'<hr\s*/?>', '\n-------------------\n', html)
+    html = re.sub(r'<hr\s*/?>', '\n⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯\n', html)
     
     # Convert <aside> to blockquote
     html = re.sub(r'<aside[^>]*>', '<blockquote>', html)
