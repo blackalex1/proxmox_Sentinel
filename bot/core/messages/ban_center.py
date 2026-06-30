@@ -11,7 +11,7 @@ def get_ban_center_table(active_bans, banned_keys, banned_login_ips=None):
     rows.append(f'    <th colspan="4" style="padding: 8px; text-align: center;"><b>{_("ban_center", "ban_center_title")}</b></th>')
     rows.append('  </tr>')
     
-    if not active_bans and not banned_keys:
+    if not active_bans and not banned_keys and not banned_login_ips:
         rows.append(_("ban_center", "ban_center_empty"))
     else:
         if active_bans:
