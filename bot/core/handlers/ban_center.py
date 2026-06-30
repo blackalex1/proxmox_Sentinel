@@ -80,8 +80,29 @@ async def render_ban_center(message_or_query) -> tuple[str, InlineKeyboardMarkup
     from core.db import get_state
     banned_keys = await get_state("banned_ssh_keys", [])
 
+    # Получаем заблокированные IP входа с панелей
+    import asyncio
+    from core.spectre_client import spectre_manager
+    banned_login_ips = []
+    
+    async def fetch_panel_bans(p_key, panel):
+        try:
+            success, res = await panel.request("GET", "api/security/banned-ips")
+            if success and res.get("success"):
+                ips = res.get("banned_ips", [])
+                return [{"ip": ip, "panel_name": panel.name, "panel_key": p_key} for ip in ips]
+        except Exception as e:
+            logging.error(f"Error fetching banned login IPs from panel {panel.name}: {e}")
+        return []
+
+    if spectre_manager.panels:
+        tasks = [fetch_panel_bans(p_key, p) for p_key, p in spectre_manager.panels.items()]
+        results = await asyncio.gather(*tasks)
+        for r in results:
+            banned_login_ips.extend(r)
+
     from core.messages import get_ban_center_table
-    text = get_ban_center_table(active_bans, banned_keys)
+    text = get_ban_center_table(active_bans, banned_keys, banned_login_ips)
     
     kb_buttons = []
     
@@ -103,6 +124,15 @@ async def render_ban_center(message_or_query) -> tuple[str, InlineKeyboardMarkup
                 InlineKeyboardButton(
                     text=_("ban_center", "btn_unban_key", fp=short_fp),
                     callback_data=f"ban_center_unbankey:{key['id']}"
+                )
+            ])
+            
+    if banned_login_ips:
+        for item in banned_login_ips:
+            kb_buttons.append([
+                InlineKeyboardButton(
+                    text=_("ban_center", "btn_unban_ip", ip=item['ip']) + f" ({item['panel_name']})",
+                    callback_data=f"unban_login_ip_cb:{item['panel_key']}:{item['ip']}"
                 )
             ])
             
@@ -359,3 +389,33 @@ async def cmd_unban_login_ip(message: types.Message):
             _("ban_center", "unban_login_ip_failed", ip=ip_to_unban, details=details_str),
             parse_mode="HTML"
         )
+
+
+@router.callback_query(F.data.startswith("unban_login_ip_cb:"))
+async def cb_unban_login_ip(callback: CallbackQuery):
+    parts = callback.data.split(":", 2)
+    panel_key = parts[1]
+    ip = parts[2]
+    
+    from core.spectre_client import spectre_manager
+    panel = spectre_manager.panels.get(panel_key)
+    if not panel:
+        await callback.answer(_("ban_center", "vps_not_found_err", ip=""), show_alert=True)
+        return
+        
+    await callback.message.edit_text(_("ban_center", "unban_login_ip_in_progress", ip=ip), parse_mode="HTML")
+    
+    try:
+        success, res = await panel.request("POST", "api/security/unban-ip", data={"ip": ip})
+        if success and res.get("success"):
+            await callback.answer(_("ban_center", "unban_success_alert", ip=ip), show_alert=True)
+        else:
+            msg = res.get("msg") or "Unknown error"
+            await callback.answer(_("ban_center", "unban_failed_alert", desc=msg), show_alert=True)
+    except Exception as e:
+        await callback.answer(_("ban_center", "unban_failed_alert", desc=str(e)), show_alert=True)
+        
+    # Re-render the ban center
+    text, kb = await render_ban_center(callback.message)
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
+

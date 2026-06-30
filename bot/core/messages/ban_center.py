@@ -4,7 +4,7 @@
 import html
 from core.messages.i18n import _
 
-def get_ban_center_table(active_bans, banned_keys):
+def get_ban_center_table(active_bans, banned_keys, banned_login_ips=None):
     rows = []
     rows.append('<table border="1" style="border-collapse: collapse; width: 100%;">')
     rows.append('  <tr style="background-color: #1e1e2e; color: #ffffff;">')
@@ -52,8 +52,23 @@ def get_ban_center_table(active_bans, banned_keys):
                 target_lbl = get_target_label(key['target'])
                 rows.append('  <tr>')
                 rows.append(f'    <td colspan="2" style="padding: 8px;"><code>{html.escape(key["username"])}</code><br/><small>...{html.escape(short_fp)}</small></td>')
-                rows.append(f'    <td style="padding: 8px;">{html.escape(target_lbl)}</td>')
+                rows.append(f'    <td colspan="2" style="padding: 8px;">{html.escape(target_lbl)}</td>')
                 rows.append(f'    <td style="padding: 8px;"><b>{html.escape(key["banned_at"])}</b></td>')
+                rows.append('  </tr>')
+                
+        if banned_login_ips:
+            rows.append('  <tr style="background-color: #2b2b36; color: #ffffff;">')
+            rows.append(f'    <td colspan="4" style="padding: 6px;"><b>{_("ban_center", "banned_login_ips_header")}</b></td>')
+            rows.append('  </tr>')
+            rows.append('  <tr style="background-color: #3b3b4f; color: #ffffff;">')
+            rows.append(f'    <td colspan="2" style="padding: 6px; width: 50%;"><b>{_("ban_center", "col_ip")}</b></td>')
+            rows.append(f'    <td colspan="2" style="padding: 6px; width: 50%;"><b>{_("ban_center", "col_panel")}</b></td>')
+            rows.append('  </tr>')
+            
+            for item in banned_login_ips:
+                rows.append('  <tr>')
+                rows.append(f'    <td colspan="2" style="padding: 8px;"><code>{html.escape(item["ip"])}</code></td>')
+                rows.append(f'    <td colspan="2" style="padding: 8px;">{html.escape(item["panel_name"])}</td>')
                 rows.append('  </tr>')
                 
     rows.append('</table>')
