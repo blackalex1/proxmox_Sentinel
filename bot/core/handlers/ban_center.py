@@ -431,5 +431,15 @@ async def cb_unban_login_ip(callback: CallbackQuery):
         
     # Re-render the ban center
     text, kb = await render_ban_center(callback.message)
-    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
+    try:
+        from modules.proxmox.monitor.utils import edit_rich_message
+        await edit_rich_message(
+            chat_id=callback.message.chat.id,
+            message_id=callback.message.message_id,
+            text=text,
+            parse_mode="HTML",
+            reply_markup=kb
+        )
+    except Exception:
+        pass
 
