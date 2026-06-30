@@ -3,6 +3,8 @@ translation = {
     "ban_center_empty": "<tr><td colspan=\"4\" style=\"padding: 8px; color: #a6adc8; text-align: center;\"><i>No active blocks in the system.<br/>All network activity is monitored by the Active IPS Engine.</i></td></tr>",
     "active_bans_header": "👤 Active Temporary IP Blocks",
     "banned_keys_header": "🔑 Banned SSH Keys",
+    "banned_login_ips_header": "🛡 Failed Login Blocks",
+    "col_panel": "Panel",
     
     # Active IP table headers
     "col_ip": "IP Address",
