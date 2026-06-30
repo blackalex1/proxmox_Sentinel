@@ -17,7 +17,7 @@ translation = {
     "col_banned_at": "Забанен",
     
     "reason_manual": "Вручную",
-    "reason_failed_logins": "Ошибки входа (Bruteforce)",
+    "reason_2fa_blocked": "2FA-блокировка (Вход)",
 
     # Remaining time formatting
     "remaining_hours": "{hours}ч {minutes}м",
