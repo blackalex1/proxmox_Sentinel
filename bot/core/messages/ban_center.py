@@ -61,14 +61,17 @@ def get_ban_center_table(active_bans, banned_keys, banned_login_ips=None):
             rows.append(f'    <td colspan="4" style="padding: 6px;"><b>{_("ban_center", "banned_login_ips_header")}</b></td>')
             rows.append('  </tr>')
             rows.append('  <tr style="background-color: #3b3b4f; color: #ffffff;">')
-            rows.append(f'    <td colspan="2" style="padding: 6px; width: 50%;"><b>{_("ban_center", "col_ip")}</b></td>')
-            rows.append(f'    <td colspan="2" style="padding: 6px; width: 50%;"><b>{_("ban_center", "col_panel")}</b></td>')
+            rows.append(f'    <td style="padding: 6px; width: 30%;"><b>{_("ban_center", "col_ip")}</b></td>')
+            rows.append(f'    <td style="padding: 6px; width: 30%;"><b>{_("ban_center", "col_panel")}</b></td>')
+            rows.append(f'    <td colspan="2" style="padding: 6px; width: 40%;"><b>{_("ban_center", "col_reason")}</b></td>')
             rows.append('  </tr>')
             
             for item in banned_login_ips:
+                reason = _("ban_center", "reason_failed_logins")
                 rows.append('  <tr>')
-                rows.append(f'    <td colspan="2" style="padding: 8px;"><code>{html.escape(item["ip"])}</code></td>')
-                rows.append(f'    <td colspan="2" style="padding: 8px;">{html.escape(item["panel_name"])}</td>')
+                rows.append(f'    <td style="padding: 8px;"><code>{html.escape(item["ip"])}</code></td>')
+                rows.append(f'    <td style="padding: 8px;">{html.escape(item["panel_name"])}</td>')
+                rows.append(f'    <td colspan="2" style="padding: 8px; color: #f38ba8;">{html.escape(reason)}</td>')
                 rows.append('  </tr>')
                 
     rows.append('</table>')
