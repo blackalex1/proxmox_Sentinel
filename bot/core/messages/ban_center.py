@@ -67,7 +67,7 @@ def get_ban_center_table(active_bans, banned_keys, banned_login_ips=None):
             rows.append('  </tr>')
             
             for item in banned_login_ips:
-                reason = _("ban_center", "reason_2fa_blocked")
+                reason = item.get("reason", _("ban_center", "reason_2fa_blocked"))
                 rows.append('  <tr>')
                 rows.append(f'    <td style="padding: 8px;"><code>{html.escape(item["ip"])}</code></td>')
                 rows.append(f'    <td style="padding: 8px;">{html.escape(item["panel_name"])}</td>')
