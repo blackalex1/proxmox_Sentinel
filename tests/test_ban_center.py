@@ -254,6 +254,72 @@ async def test_render_ban_center_with_reasons():
     assert "Порт 22 (TCP)" in text
 
 
+@pytest.mark.asyncio
+async def test_render_ban_center_with_login_bans():
+    from core.handlers.ban_center import render_ban_center
+    from core.db import execute_write
+    
+    await execute_write("DELETE FROM temp_bans")
+    
+    # Мокаем spectre_manager.panels
+    mock_panel = MagicMock()
+    mock_panel.name = "TestPanel"
+    mock_panel.identifier = "test_panel_id"
+    mock_panel.request = AsyncMock(return_value=(True, {
+        "success": True, 
+        "banned_ips": [
+            {"ip": "8.8.8.8", "reason": "Превышение попыток входа (Bruteforce)"}
+        ]
+    }))
+    
+    from core.spectre_client import spectre_manager
+    with patch.dict(spectre_manager.panels, {"panel1": mock_panel}):
+        text, reply_markup = await render_ban_center(None)
+        
+        # 8.8.8.8 должен быть в тексте
+        assert "8.8.8.8" in text
+        assert "TestPanel" in text
+        assert "Bruteforce" in text
+        
+        # Должна быть кнопка разблокировки 8.8.8.8
+        assert len(reply_markup.inline_keyboard) == 2
+        assert reply_markup.inline_keyboard[0][0].callback_data == "unban_login_ip_cb:panel1:8.8.8.8"
+        assert reply_markup.inline_keyboard[1][0].callback_data == "main_menu"
+
+
+@pytest.mark.asyncio
+async def test_cb_unban_login_ip_success():
+    from core.handlers.ban_center import cb_unban_login_ip
+    from aiogram.types import CallbackQuery
+    
+    mock_message = AsyncMock()
+    mock_message.chat.id = 12345
+    mock_message.message_id = 67890
+    
+    mock_callback = AsyncMock(spec=CallbackQuery)
+    mock_callback.data = "unban_login_ip_cb:panel1:8.8.8.8"
+    mock_callback.message = mock_message
+    mock_callback.answer = AsyncMock()
+    
+    mock_panel = MagicMock()
+    mock_panel.name = "TestPanel"
+    mock_panel.request = AsyncMock(return_value=(True, {"success": True, "msg": "IP 8.8.8.8 разблокирован"}))
+    
+    from core.spectre_client import spectre_manager
+    with patch.dict(spectre_manager.panels, {"panel1": mock_panel}), \
+         patch("modules.proxmox.monitor.utils.edit_rich_message", AsyncMock()) as mock_edit_rich:
+        await cb_unban_login_ip(mock_callback)
+        
+        # Проверяем, что запрос улетел на панель
+        mock_panel.request.assert_any_call("POST", "api/security/unban-ip", data={"ip": "8.8.8.8"})
+        
+        # Проверяем уведомления
+        mock_callback.answer.assert_any_call("🟢 Блокировка с IP 8.8.8.8 успешно снята!", show_alert=True)
+        
+        # Проверяем, что сообщение было обновлено с помощью edit_rich_message
+        mock_edit_rich.assert_called_once()
+
+
 def teardown_module(module):
     try:
         os.close(temp_db_fd)
