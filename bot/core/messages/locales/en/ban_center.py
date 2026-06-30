@@ -17,7 +17,7 @@ translation = {
     "col_banned_at": "Banned At",
     
     "reason_manual": "Manual",
-    "reason_failed_logins": "Failed logins (Bruteforce)",
+    "reason_2fa_blocked": "2FA Block (Login)",
 
     # Remaining time formatting
     "remaining_hours": "{hours}h {minutes}m",
