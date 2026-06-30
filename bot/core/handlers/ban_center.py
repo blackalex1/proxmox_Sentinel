@@ -90,7 +90,21 @@ async def render_ban_center(message_or_query) -> tuple[str, InlineKeyboardMarkup
             success, res = await panel.request("GET", "api/security/banned-ips")
             if success and res.get("success"):
                 ips = res.get("banned_ips", [])
-                return [{"ip": ip, "panel_name": panel.name, "panel_key": p_key} for ip in ips]
+                result = []
+                for item in ips:
+                    if isinstance(item, dict):
+                        ip = item.get("ip")
+                        reason = item.get("reason", "2FA-блокировка или настройки")
+                    else:
+                        ip = item
+                        reason = "2FA-блокировка или настройки"
+                    result.append({
+                        "ip": ip,
+                        "reason": reason,
+                        "panel_name": panel.name,
+                        "panel_key": p_key
+                    })
+                return result
         except Exception as e:
             logging.error(f"Error fetching banned login IPs from panel {panel.name}: {e}")
         return []
