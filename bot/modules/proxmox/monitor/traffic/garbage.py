@@ -173,6 +173,33 @@ async def monitor_expired_bans():
                     "DELETE FROM temp_bans WHERE server_ip = ? AND dst_ip = ?",
                     (server_ip, dst_ip)
                 )
+                
+            # Обрабатываем истекшие блокировки портов
+            try:
+                expired_port_bans = await execute_read_all(
+                    "SELECT * FROM temp_port_bans WHERE expire_time <= ?",
+                    (now_str,)
+                )
+                for pban in expired_port_bans:
+                    srv = pban['server_ip']
+                    ip = pban['client_ip']
+                    port = pban['port']
+                    proto = pban['protocol']
+                    logging.info(f"Expired port block detected: {ip}:{port}/{proto} on {srv}")
+                    if srv == "router":
+                        try:
+                            from modules.router.router import unban_router_port
+                            await unban_router_port(ip, port, proto)
+                        except Exception as err:
+                            logging.error(f"Error unbanning expired port {port}/{proto} on router: {err}")
+                    else:
+                        await execute_write(
+                            "DELETE FROM temp_port_bans WHERE server_ip = ? AND client_ip = ? AND port = ? AND protocol = ?",
+                            (srv, ip, port, proto)
+                        )
+            except Exception as e_port:
+                logging.error("garbage_collector_error_processing_expired_ports", e_port)
+                
         except Exception as e:
             logging.error("garbage_collector_error_in_background_worker", e)
             
