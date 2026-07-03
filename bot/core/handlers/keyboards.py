@@ -23,11 +23,17 @@ def get_main_menu_keyboard() -> InlineKeyboardMarkup:
         [
             InlineKeyboardButton(text=_("keyboards", "btn_whitelist"), callback_data="whitelist_main")
         ],
+    ]
+    if settings.router_monitor_enable:
+        buttons.insert(6, [
+            InlineKeyboardButton(text=_("keyboards", "btn_router_clients", "🖥️ Клиенты роутера"), callback_data="r_list")
+        ])
+    buttons.append(
         [
             InlineKeyboardButton(text=_("keyboards", "btn_status"), callback_data="status_check"),
             InlineKeyboardButton(text=_("keyboards", "btn_help"), callback_data="help_info")
         ]
-    ]
+    )
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 def get_persistent_reply_keyboard() -> ReplyKeyboardMarkup:

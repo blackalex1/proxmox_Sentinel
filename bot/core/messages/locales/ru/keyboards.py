@@ -6,6 +6,7 @@ translation = {
     "btn_vpn_history": "📋 История VPN-подключений",
     "btn_ban_center": "🛑 Центр блокировок",
     "btn_whitelist": "⚙️ Белые списки Aegis IPS",
+    "btn_router_clients": "🖥️ Клиенты роутера",
     "btn_status": "📊 Статус систем",
     "btn_help": "ℹ️ Справка",
     "btn_back_to_menu": "🔙 В главное меню",
