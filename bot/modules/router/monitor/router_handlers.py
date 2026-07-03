@@ -29,6 +29,15 @@ async def handle_router_iptables_log_line(line):
         if not is_sensitive:
             return
             
+        # Проверяем, заблокирован ли уже этот IP полностью или точечно для этого порта на роутере
+        from core.db import execute_read_one
+        full_ban = await execute_read_one("SELECT 1 FROM temp_bans WHERE server_ip = 'router' AND dst_ip = ?", (src_ip,))
+        if full_ban:
+            return
+        port_ban = await execute_read_one("SELECT 1 FROM temp_port_bans WHERE server_ip = 'router' AND client_ip = ? AND port = ? AND protocol = ?", (src_ip, dst_port, proto.lower()))
+        if port_ban:
+            return
+            
         # Проверяем белый список IP (с детальной проверкой процессов на хосте)
         if await check_is_bot_or_admin(src_ip, src_port, dst_host, dst_port):
             return
@@ -101,6 +110,15 @@ async def handle_router_conntrack_log_line(line):
         # 1. Проверяем, идет ли запрос на чувствительный порт
         is_sensitive = dst_port in settings.monitor_lxc_ports_sensitive
         if not is_sensitive:
+            return
+            
+        # Проверяем, заблокирован ли уже этот IP полностью или точечно для этого порта на роутере
+        from core.db import execute_read_one
+        full_ban = await execute_read_one("SELECT 1 FROM temp_bans WHERE server_ip = 'router' AND dst_ip = ?", (src_ip,))
+        if full_ban:
+            return
+        port_ban = await execute_read_one("SELECT 1 FROM temp_port_bans WHERE server_ip = 'router' AND client_ip = ? AND port = ? AND protocol = ?", (src_ip, dst_port, proto.lower()))
+        if port_ban:
             return
             
         # Проверяем белый список IP (с детальной проверкой процессов на хосте)

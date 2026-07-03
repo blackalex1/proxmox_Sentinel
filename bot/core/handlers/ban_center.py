@@ -76,6 +76,52 @@ async def render_ban_center(message_or_query) -> tuple[str, InlineKeyboardMarkup
                 'reason': _("ban_center", "reason_manual")
             })
 
+    # Получаем временные блокировки портов из БД
+    try:
+        port_bans = await execute_read_all("SELECT * FROM temp_port_bans")
+        for pb in port_bans:
+            try:
+                expire_time = pb['expire_time']
+                if expire_time == "never":
+                    remaining = "Навсегда"
+                else:
+                    expire_dt = datetime.datetime.fromisoformat(expire_time)
+                    if now >= expire_dt:
+                        await execute_write(
+                            "DELETE FROM temp_port_bans WHERE server_ip = ? AND client_ip = ? AND port = ? AND protocol = ?",
+                            (pb['server_ip'], pb['client_ip'], pb['port'], pb['protocol'])
+                        )
+                        continue
+                    diff = expire_dt - now
+                    seconds = int(diff.total_seconds())
+                    hours = seconds // 3600
+                    minutes = (seconds % 3600) // 60
+                    secs = seconds % 60
+                    if hours > 0:
+                        remaining = _("ban_center", "remaining_hours", hours=hours, minutes=minutes)
+                    else:
+                        remaining = _("ban_center", "remaining_minutes", minutes=minutes, seconds=secs)
+                        
+                port = pb['port']
+                proto = pb['protocol']
+                client_ip = pb['client_ip']
+                
+                active_bans.append({
+                    'server_ip': pb['server_ip'],
+                    'dst_ip': f"{client_ip} ({port}/{proto})",
+                    'remaining': remaining,
+                    'label': get_target_label(pb['server_ip']),
+                    'reason': pb.get('reason') or "Блок порта",
+                    'is_port_ban': True,
+                    'client_ip': client_ip,
+                    'port': port,
+                    'protocol': proto
+                })
+            except Exception as pe:
+                logging.error("ban_center_error_processing_port_ban", pe)
+    except Exception as e_pb:
+        logging.error("ban_center_error_fetching_port_bans", e_pb)
+
     # Получаем заблокированные ключи из БД
     from core.db import get_state
     banned_keys = await get_state("banned_ssh_keys", [])
@@ -122,13 +168,20 @@ async def render_ban_center(message_or_query) -> tuple[str, InlineKeyboardMarkup
     
     if active_bans:
         for ban in active_bans:
-            # Кнопка разблокировки для каждого IP
-            kb_buttons.append([
-                InlineKeyboardButton(
-                    text=_("ban_center", "btn_unban_ip", ip=ban['dst_ip']),
-                    callback_data=f"ban_center_unban:{ban['server_ip']}:{ban['dst_ip']}"
-                )
-            ])
+            if ban.get('is_port_ban'):
+                kb_buttons.append([
+                    InlineKeyboardButton(
+                        text=_("ban_center", "btn_unban_ip", ip=ban['dst_ip']),
+                        callback_data=f"ban_center_unban:{ban['server_ip']}:{ban['client_ip']}:{ban['port']}:{ban['protocol']}"
+                    )
+                ])
+            else:
+                kb_buttons.append([
+                    InlineKeyboardButton(
+                        text=_("ban_center", "btn_unban_ip", ip=ban['dst_ip']),
+                        callback_data=f"ban_center_unban:{ban['server_ip']}:{ban['dst_ip']}"
+                    )
+                ])
             
     if banned_keys:
         for key in banned_keys:
@@ -198,13 +251,22 @@ async def process_ban_center_unban(callback: CallbackQuery):
         server_ip = parts[1]
         dst_ip = parts[2]
         
+        is_port_ban = len(parts) >= 5
+        if is_port_ban:
+            port = int(parts[3])
+            proto = parts[4]
+            
         success = False
         desc = ""
         
         await callback.answer(_("ban_center", "unban_in_progress"), show_alert=False)
         
         if server_ip == 'router':
-            success, desc = await unban_router_ip(dst_ip)
+            if is_port_ban:
+                from modules.router.router import unban_router_port
+                success, desc = await unban_router_port(dst_ip, port, proto)
+            else:
+                success, desc = await unban_router_ip(dst_ip)
         elif server_ip == 'local':
             success, desc = await unban_local_ip(dst_ip)
         else:

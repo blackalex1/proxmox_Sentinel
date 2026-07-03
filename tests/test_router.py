@@ -435,6 +435,93 @@ async def test_reconcile_router_bans():
         settings.trusted_admin_ips = original_trusted
 
 
+@pytest.mark.asyncio
+async def test_get_router_clients():
+    from modules.router.router import get_router_clients
+    from core.config import settings
+    
+    original_ssh = settings.router_monitor_enable
+    settings.router_monitor_enable = True
+    
+    simulated_stdout = (
+        "1622328335 00:11:22:33:44:55 192.168.1.15 MyPhone *\n"
+        "1622328336 00:11:22:33:44:66 192.168.1.16 * 01:00:11:22:33:44:66\n"
+        "===ARP===\n"
+        "IP address       HW type     Flags       HW address            Mask     Device\n"
+        "192.168.1.15     0x1         0x2         00:11:22:33:44:55     *        br-lan\n"
+        "192.168.1.17     0x1         0x2         00:11:22:33:44:77     *        br-lan\n"
+    )
+    
+    try:
+        with patch("modules.router.router.run_router_ssh_cmd", AsyncMock(return_value=(True, simulated_stdout, ""))) as mock_run:
+            clients = await get_router_clients()
+            assert len(clients) == 3
+            
+            # Check parsing
+            c1 = next(c for c in clients if c['ip'] == "192.168.1.15")
+            assert c1['hostname'] == "MyPhone"
+            assert c1['mac'] == "00:11:22:33:44:55"
+            assert c1['active'] is True
+            
+            # Check parsing unknown host in DHCP
+            c2 = next(c for c in clients if c['ip'] == "192.168.1.16")
+            assert c2['hostname'] == "Неизвестно"
+            assert c2['mac'] == "00:11:22:33:44:66"
+            
+            # Check parsing ARP-only device
+            c3 = next(c for c in clients if c['ip'] == "192.168.1.17")
+            assert c3['hostname'] == "Неизвестно"
+            assert c3['mac'] == "00:11:22:33:44:77"
+            assert c3['active'] is True
+    finally:
+        settings.router_monitor_enable = original_ssh
+
+
+@pytest.mark.asyncio
+async def test_ban_unban_router_port():
+    from modules.router.router import ban_router_port, unban_router_port
+    from core.config import settings
+    from core.db import execute_read_one
+    
+    original_ssh = settings.router_monitor_enable
+    original_type = settings.router_type
+    
+    settings.router_monitor_enable = True
+    settings.router_type = "openwrt"
+    
+    try:
+        # Mock SSH cmd run
+        with patch("modules.router.router.run_router_ssh_cmd", AsyncMock(return_value=(True, "OK", ""))) as mock_run:
+            # 1. Ban port
+            success, desc = await ban_router_port("192.168.1.100", 80, proto="tcp", delay=3600, reason="Test")
+            assert success is True
+            assert "nftables" in desc or "iptables" in desc or "заблокирован" in desc.lower()
+            
+            # Check database entry
+            row = await execute_read_one(
+                "SELECT * FROM temp_port_bans WHERE client_ip = ? AND port = ?",
+                ("192.168.1.100", 80)
+            )
+            assert row is not None
+            assert row['protocol'] == "tcp"
+            assert row['reason'] == "Test"
+            
+            # 2. Unban port
+            success, desc = await unban_router_port("192.168.1.100", 80, proto="tcp")
+            assert success is True
+            
+            # Check database removal
+            row = await execute_read_one(
+                "SELECT * FROM temp_port_bans WHERE client_ip = ? AND port = ?",
+                ("192.168.1.100", 80)
+            )
+            assert row is None
+    finally:
+        settings.router_monitor_enable = original_ssh
+        settings.router_type = original_type
+
+
+
 
 
 

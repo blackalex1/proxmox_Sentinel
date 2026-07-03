@@ -94,6 +94,18 @@ def init_db():
             """)
             conn.execute("CREATE INDEX IF NOT EXISTS idx_approved_ips_username ON approved_ips (username);")
             
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS temp_port_bans (
+                    server_ip TEXT,
+                    client_ip TEXT,
+                    port INTEGER,
+                    protocol TEXT DEFAULT 'tcp',
+                    expire_time TEXT,
+                    reason TEXT DEFAULT 'Вручную',
+                    PRIMARY KEY (server_ip, client_ip, port, protocol)
+                );
+            """)
+            
         logging.info("database_database_tables_successfully_verified_created_with")
         
         # Миграция из JSON файла при первом запуске
