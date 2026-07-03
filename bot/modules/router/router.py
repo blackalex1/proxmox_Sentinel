@@ -171,8 +171,15 @@ async def get_router_clients():
         return []
     
     import re
-    # Запрашиваем DHCP leases и ARP-таблицу роутера
-    cmd = "cat /tmp/dhcp.leases 2>/dev/null; echo '===ARP==='; cat /proc/net/arp 2>/dev/null || arp -an 2>/dev/null; true"
+    # Запрашиваем DHCP leases, ARP-таблицу и DHCP bindings (для Keenetic)
+    cmd = (
+        "cat /tmp/dhcp.leases 2>/dev/null; "
+        "echo '===ARP==='; "
+        "cat /proc/net/arp 2>/dev/null || arp -an 2>/dev/null; "
+        "echo '===KEENETIC==='; "
+        "ndmc -c 'show ip dhcp bindings' 2>/dev/null; "
+        "true"
+    )
     ok, stdout, stderr = await run_router_ssh_cmd(cmd)
     if not ok:
         logging.error(f"Failed to fetch router clients: {stderr}")
@@ -180,23 +187,29 @@ async def get_router_clients():
         
     clients = {} # ip -> {ip, mac, hostname, active}
     
+    # Делим вывод на части
     parts_str = stdout.split('===ARP===')
     dhcp_part = parts_str[0]
-    arp_part = parts_str[1] if len(parts_str) > 1 else ""
+    remaining_part = parts_str[1] if len(parts_str) > 1 else ""
     
-    # 1. Парсим DHCP leases
+    arp_parts = remaining_part.split('===KEENETIC===')
+    arp_part = arp_parts[0]
+    keenetic_part = arp_parts[1] if len(arp_parts) > 1 else ""
+    
+    # 1. Парсим DHCP leases (OpenWrt)
     for line in dhcp_part.splitlines():
         line = line.strip()
         if not line:
             continue
         tokens = line.split()
         if len(tokens) >= 4:
-            # format: timestamp mac ip hostname client_id
             mac = tokens[1].lower()
             ip = tokens[2]
             hostname = tokens[3]
             if hostname == '*':
                 hostname = 'Неизвестно'
+            if ip.startswith("169.254.") or ip == "0.0.0.0":
+                continue
             clients[ip] = {
                 'ip': ip,
                 'mac': mac,
@@ -204,19 +217,52 @@ async def get_router_clients():
                 'active': False
             }
             
-    # 2. Парсим ARP-таблицу
+    # 2. Парсим Keenetic DHCP bindings
+    if keenetic_part:
+        lease_blocks = keenetic_part.split("lease:")
+        for block in lease_blocks:
+            lines = block.splitlines()
+            ip = None
+            mac = None
+            hostname = None
+            for line in lines:
+                line = line.strip()
+                if line.startswith("ip:"):
+                    ip = line.split(":", 1)[1].strip()
+                elif line.startswith("mac:"):
+                    mac = line.split(":", 1)[1].strip().lower()
+                elif line.startswith("hostname:"):
+                    hostname = line.split(":", 1)[1].strip()
+                elif line.startswith("name:") and not hostname:
+                    hostname = line.split(":", 1)[1].strip()
+                    
+            if ip and mac:
+                if ip.startswith("169.254.") or ip == "0.0.0.0":
+                    continue
+                if not hostname or hostname == "*":
+                    hostname = 'Неизвестно'
+                clients[ip] = {
+                    'ip': ip,
+                    'mac': mac,
+                    'hostname': hostname,
+                    'active': False
+                }
+            
+    # 3. Парсим ARP-таблицу
     for line in arp_part.splitlines():
         line = line.strip()
         if not line or "IP address" in line:
             continue
         tokens = line.split()
         if len(tokens) >= 4 and ':' in tokens[3]:
-            # /proc/net/arp format: IP HWtype Flags HWaddress Mask Device
             ip = tokens[0]
             mac = tokens[3].lower()
             flags = tokens[2]
             is_active = flags != "0x0"
             
+            if ip.startswith("169.254.") or ip == "0.0.0.0":
+                continue
+                
             if ip in clients:
                 clients[ip]['active'] = is_active
                 if not clients[ip]['mac']:
@@ -229,13 +275,15 @@ async def get_router_clients():
                     'active': is_active
                 }
         else:
-            # arp -an format: ? (192.168.1.15) at 00:11:22:33:44:55 [ether] on br-lan
             match = re.search(r'\((.*?)\) at (.*?) ', line)
             if match:
                 ip = match.group(1)
                 mac = match.group(2).lower()
                 is_active = "<incomplete>" not in line
                 
+                if ip.startswith("169.254.") or ip == "0.0.0.0":
+                    continue
+                    
                 if ip in clients:
                     clients[ip]['active'] = is_active
                     if not clients[ip]['mac']:
