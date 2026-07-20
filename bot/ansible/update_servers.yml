@@ -6,26 +6,25 @@
   tasks:
 
     - name: Update apt cache
-      shell: |
-        DEBIAN_FRONTEND=noninteractive apt-get update
-      changed_when: false
+      apt:
+        update_cache: yes
+        lock_timeout: 300
 
     - name: Full upgrade
-      shell: |
-        DEBIAN_FRONTEND=noninteractive \
-        apt-get -y \
-        -o Dpkg::Options::="--force-confdef" \
-        -o Dpkg::Options::="--force-confold" \
-        dist-upgrade
-      register: upgrade_result
+      apt:
+        upgrade: dist
+        dpkg_options: 'force-confdef,force-confold'
+        lock_timeout: 300
 
     - name: Autoremove unused packages
-      shell: |
-        DEBIAN_FRONTEND=noninteractive apt-get -y autoremove --purge
+      apt:
+        autoremove: yes
+        lock_timeout: 300
 
     - name: Autoclean apt cache
-      shell: |
-        apt-get autoclean
+      apt:
+        autoclean: yes
+        lock_timeout: 300
 
     - name: Check if reboot required
       stat:
@@ -36,3 +35,4 @@
       debug:
         msg: "Reboot required on {{ inventory_hostname }}"
       when: reboot_required.stat.exists
+
