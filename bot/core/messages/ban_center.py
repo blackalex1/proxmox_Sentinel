@@ -4,14 +4,14 @@
 import html
 from core.messages.i18n import _
 
-def get_ban_center_table(active_bans, banned_keys, banned_login_ips=None):
+def get_ban_center_table(active_bans, banned_keys, banned_login_ips=None, banned_panel_clients=None):
     rows = []
     rows.append('<table border="1" style="border-collapse: collapse; width: 100%;">')
     rows.append('  <tr style="background-color: #1e1e2e; color: #ffffff;">')
     rows.append(f'    <th colspan="4" style="padding: 8px; text-align: center;"><b>{_("ban_center", "ban_center_title")}</b></th>')
     rows.append('  </tr>')
     
-    if not active_bans and not banned_keys and not banned_login_ips:
+    if not active_bans and not banned_keys and not banned_login_ips and not banned_panel_clients:
         rows.append(_("ban_center", "ban_center_empty"))
     else:
         if active_bans:
@@ -72,6 +72,25 @@ def get_ban_center_table(active_bans, banned_keys, banned_login_ips=None):
                 rows.append(f'    <td style="padding: 8px;"><code>{html.escape(item["ip"])}</code></td>')
                 rows.append(f'    <td style="padding: 8px;">{html.escape(item["panel_name"])}</td>')
                 rows.append(f'    <td colspan="2" style="padding: 8px; color: #f38ba8;">{html.escape(reason)}</td>')
+                rows.append('  </tr>')
+                
+        if banned_panel_clients:
+            rows.append('  <tr style="background-color: #2b2b36; color: #ffffff;">')
+            rows.append(f'    <td colspan="4" style="padding: 6px;"><b>{_("ban_center", "banned_panel_clients_header")}</b></td>')
+            rows.append('  </tr>')
+            rows.append('  <tr style="background-color: #3b3b4f; color: #ffffff;">')
+            rows.append(f'    <td style="padding: 6px; width: 35%;"><b>{_("ban_center", "col_client")}</b></td>')
+            rows.append(f'    <td style="padding: 6px; width: 20%;"><b>{_("ban_center", "col_panel")}</b></td>')
+            rows.append(f'    <td style="padding: 6px; width: 25%;"><b>{_("ban_center", "col_inbound")}</b></td>')
+            rows.append(f'    <td style="padding: 6px; width: 20%;"><b>{_("ban_center", "col_reason")}</b></td>')
+            rows.append('  </tr>')
+            
+            for client_item in banned_panel_clients:
+                rows.append('  <tr>')
+                rows.append(f'    <td style="padding: 8px;"><code>{html.escape(client_item["email"])}</code></td>')
+                rows.append(f'    <td style="padding: 8px;">{html.escape(client_item["panel_name"])}</td>')
+                rows.append(f'    <td style="padding: 8px;">{html.escape(client_item["inbound_remark"])}</td>')
+                rows.append(f'    <td style="padding: 8px; color: #f38ba8;">{html.escape(client_item["reason"])}</td>')
                 rows.append('  </tr>')
                 
     rows.append('</table>')

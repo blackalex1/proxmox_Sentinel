@@ -76,21 +76,35 @@ class LogTailer:
 
     async def _run_file(self):
         try:
-            # Если файл еще не создан, ждем его появления
-            while self.running and not os.path.exists(self.source):
-                await asyncio.sleep(5)
-            
-            if not self.running:
-                return
+            while self.running:
+                # Если файл еще не создан, ждем его появления
+                while self.running and not os.path.exists(self.source):
+                    await asyncio.sleep(5)
+                
+                if not self.running:
+                    return
 
-            with open(self.source, 'r', encoding='utf-8', errors='ignore') as f:
-                f.seek(0, os.SEEK_END)
-                while self.running:
-                    line = f.readline()
-                    if not line:
-                        await asyncio.sleep(1)
-                        continue
-                    await self._trigger_callback(line)
+                try:
+                    with open(self.source, 'r', encoding='utf-8', errors='ignore') as f:
+                        f.seek(0, os.SEEK_END)
+                        current_ino = os.stat(self.source).st_ino if os.path.exists(self.source) else None
+                        while self.running:
+                            line = f.readline()
+                            if not line:
+                                await asyncio.sleep(1)
+                                if os.path.exists(self.source):
+                                    try:
+                                        st = os.stat(self.source)
+                                        if (current_ino and st.st_ino != current_ino) or (st.st_size < f.tell()):
+                                            logging.info("logtailer_log_rotation_detected", self.source)
+                                            break
+                                    except Exception:
+                                        pass
+                                continue
+                            await self._trigger_callback(line)
+                except (IOError, OSError) as open_err:
+                    logging.warning("logtailer_file_read_warning", self.source, open_err)
+                    await asyncio.sleep(2)
         except asyncio.CancelledError:
             pass
         except Exception as e:

@@ -15,6 +15,7 @@ translation = {
     "shutdown_btn": "🔌 Мягко выключить",
     "stop_btn": "🛑 Убить (Stop)",
     "reboot_btn": "🔄 Перезагрузить",
+    "reboot_host_btn": "🔄 Перезагрузить Хост",
     "start_btn": "▶️ Запустить",
     "auth_logs_btn": "🔒 Логи входа",
     "ports_traffic_btn": "🌐 Трафик портов",
@@ -23,6 +24,10 @@ translation = {
     "back_to_vm_btn": "🔙 Назад к ВМ",
     "refresh_traffic_btn": "🔄 Обновить активность",
     "back_to_panel_btn": "🔙 Назад к панели",
+    "confirm_host_reboot_title": "⚠️ <b>ВНИМАНИЕ! Перезагрузка хоста {node_name}</b>\n\nВы действительно хотите перезагрузить гипервизор <b>{node_name}</b>?\n<i>Это приведет к остановке всех запущенных на нем виртуальных машин и контейнеров!</i>",
+    "confirm_host_reboot_yes": "⚠️ Да, перезагрузить хост!",
+    "confirm_host_reboot_cancel": "❌ Отмена",
+    "host_reboot_initiated": "⏳ Запрос на перезагрузку хоста {node_name} отправлен!",
     
     # VM / Node status cards
     "status_host_title": "💻 <b>Хост Proxmox VE ({node_name})</b>\n\n",

@@ -155,14 +155,40 @@ async def render_ban_center(message_or_query) -> tuple[str, InlineKeyboardMarkup
             logging.error(f"Error fetching banned login IPs from panel {panel.name}: {e}")
         return []
 
+    banned_panel_clients = []
+    
+    async def fetch_panel_banned_clients(p_key, panel):
+        try:
+            success, res = await panel.request("GET", "api/security/banned-clients")
+            if success and res.get("success"):
+                clients = res.get("banned_clients", [])
+                result = []
+                for item in clients:
+                    result.append({
+                        "email": item.get("email"),
+                        "inbound_id": item.get("inbound_id"),
+                        "inbound_remark": item.get("inbound_remark", "Inbound"),
+                        "reason": item.get("reason", "Заблокирован"),
+                        "panel_name": panel.name,
+                        "panel_key": p_key
+                    })
+                return result
+        except Exception as e:
+            logging.error(f"Error fetching banned clients from panel {panel.name}: {e}")
+        return []
+
     if spectre_manager.panels:
         tasks = [fetch_panel_bans(p_key, p) for p_key, p in spectre_manager.panels.items()]
+        tasks_c = [fetch_panel_banned_clients(p_key, p) for p_key, p in spectre_manager.panels.items()]
         results = await asyncio.gather(*tasks)
+        results_c = await asyncio.gather(*tasks_c)
         for r in results:
             banned_login_ips.extend(r)
+        for r in results_c:
+            banned_panel_clients.extend(r)
 
     from core.messages import get_ban_center_table
-    text = get_ban_center_table(active_bans, banned_keys, banned_login_ips)
+    text = get_ban_center_table(active_bans, banned_keys, banned_login_ips, banned_panel_clients)
     
     kb_buttons = []
     
@@ -191,6 +217,15 @@ async def render_ban_center(message_or_query) -> tuple[str, InlineKeyboardMarkup
                 InlineKeyboardButton(
                     text=_("ban_center", "btn_unban_key", fp=short_fp),
                     callback_data=f"ban_center_unbankey:{key['id']}"
+                )
+            ])
+
+    if banned_panel_clients:
+        for c in banned_panel_clients:
+            kb_buttons.append([
+                InlineKeyboardButton(
+                    text=_("ban_center", "btn_unban_pclient", email=c['email']),
+                    callback_data=f"ban_center_unban_pclient:{c['panel_key']}:{c['email']}"
                 )
             ])
             
@@ -300,6 +335,48 @@ async def process_ban_center_unban(callback: CallbackQuery):
     except Exception as e:
         logging.error("ban_center_exception_during_manual_unban", e)
         await callback.answer(_("ban_center", "unban_failed_alert", desc=str(e)), show_alert=True)
+
+@router.callback_query(F.data.startswith("ban_center_unban_pclient:"))
+async def process_unban_panel_client(callback: CallbackQuery):
+    try:
+        parts = callback.data.split(":", 2)
+        if len(parts) < 3:
+            await callback.answer(_("ban_center", "invalid_callback_err"), show_alert=True)
+            return
+            
+        p_key = parts[1]
+        email = parts[2]
+        
+        await callback.answer(_("ban_center", "pclient_unban_in_progress", email=email), show_alert=False)
+        
+        from core.spectre_client import spectre_manager
+        panel = spectre_manager.panels.get(p_key)
+        if not panel:
+            await callback.answer(f"Панель {p_key} не найдена", show_alert=True)
+            return
+            
+        success, res = await panel.request("POST", "api/security/unban-client", json={"email": email})
+        if success and res.get("success"):
+            await callback.answer(_("ban_center", "pclient_unban_success_alert", email=email, panel_name=panel.name), show_alert=True)
+        else:
+            err_desc = res.get("msg", "Unknown error") if isinstance(res, dict) else str(res)
+            await callback.answer(_("ban_center", "pclient_unban_failed_alert", email=email, desc=err_desc), show_alert=True)
+            
+        text, reply_markup = await render_ban_center(callback)
+        try:
+            from modules.proxmox.monitor.utils import edit_rich_message
+            await edit_rich_message(
+                chat_id=callback.message.chat.id,
+                message_id=callback.message.message_id,
+                text=text,
+                parse_mode="HTML",
+                reply_markup=reply_markup
+            )
+        except Exception:
+            pass
+    except Exception as e:
+        logging.error(f"ban_center_exception_during_pclient_unban: {e}")
+        await callback.answer(_("ban_center", "pclient_unban_failed_alert", email="", desc=str(e)), show_alert=True)
 
 def get_unban_key_cmd(keys_path: str, key_body: str) -> str:
     import shlex

@@ -95,6 +95,14 @@ class ProxmoxClient:
             logging.error("error_obtaining_status_for_node", node_name, e)
             return {}
 
+    def reboot_node(self, node_name):
+        if not self.proxmox: return None
+        try:
+            return self.proxmox.nodes(node_name).status.post(command='reboot')
+        except Exception as e:
+            logging.error(f"error_rebooting_node {node_name}: {e}")
+            raise
+
     def clone_vm(self, node_name, vm_id, new_id, new_name, is_lxc=False):
         vm_type = 'lxc' if is_lxc else 'qemu'
         return getattr(self.proxmox.nodes(node_name), vm_type)(vm_id).clone.post(

@@ -51,6 +51,7 @@ def get_vm_control_keyboard(node_name: str, vmid: str, vm_type: str, is_running:
         buttons.append([
             InlineKeyboardButton(text=_("proxmox", "wl_ips_btn"), callback_data="wl_view:local")
         ])
+        buttons.append([InlineKeyboardButton(text=_("proxmox", "reboot_host_btn"), callback_data=f"cmd_reboot_host_confirm_{node_name}")])
         buttons.append([InlineKeyboardButton(text=_("proxmox", "refresh_status_btn"), callback_data=f"vm_{node_name}_{vmid}_host")])
         buttons.append([InlineKeyboardButton(text=_("proxmox", "back_to_vms_btn"), callback_data=f"node_{node_name}")])
         return InlineKeyboardMarkup(inline_keyboard=buttons)

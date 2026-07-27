@@ -135,3 +135,37 @@ async def process_vm_control(callback: CallbackQuery):
             await callback.answer(_("proxmox", "error_cmd", err_msg=err_msg), show_alert=True)
         except Exception:
             pass
+
+@router.callback_query(F.data.startswith("cmd_reboot_host_confirm_"))
+async def process_host_reboot_confirm(callback: CallbackQuery):
+    try:
+        node_name = callback.data.split("cmd_reboot_host_confirm_")[1]
+        from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+        kb = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text=_("proxmox", "confirm_host_reboot_yes"), callback_data=f"cmd_reboot_host_exec_{node_name}")],
+            [InlineKeyboardButton(text=_("proxmox", "confirm_host_reboot_cancel"), callback_data=f"vm_{node_name}_0_host")]
+        ])
+        await callback.message.edit_text(
+            _("proxmox", "confirm_host_reboot_title", node_name=node_name),
+            parse_mode="HTML",
+            reply_markup=kb
+        )
+    except Exception as e:
+        err_msg = str(e)[:120]
+        try:
+            await callback.answer(_("proxmox", "error", err_msg=err_msg), show_alert=True)
+        except Exception:
+            pass
+
+@router.callback_query(F.data.startswith("cmd_reboot_host_exec_"))
+async def process_host_reboot_exec(callback: CallbackQuery):
+    try:
+        node_name = callback.data.split("cmd_reboot_host_exec_")[1]
+        await callback.answer(_("proxmox", "host_reboot_initiated", node_name=node_name), show_alert=True)
+        proxmox.reboot_node(node_name)
+    except Exception as e:
+        err_msg = str(e)[:120]
+        try:
+            await callback.answer(_("proxmox", "error_cmd", err_msg=err_msg), show_alert=True)
+        except Exception:
+            pass
