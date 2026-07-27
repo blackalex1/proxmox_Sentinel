@@ -4,7 +4,10 @@ translation = {
     "active_bans_header": "👤 Активные временные блокировки IP",
     "banned_keys_header": "🔑 Заблокированные SSH-ключи",
     "banned_login_ips_header": "🛡 Блокировки входа (Failed Logins)",
+    "banned_panel_clients_header": "🚫 Заблокированные клиенты панелей",
     "col_panel": "Панель",
+    "col_client": "Клиент",
+    "col_inbound": "Инбаунд",
     
     # Active IP table headers
     "col_ip": "IP-адрес",
@@ -27,6 +30,7 @@ translation = {
     # Buttons
     "btn_unban_ip": "🔓 Разблокировать {ip}",
     "btn_unban_key": "🔓 Восстановить ключ (...{fp})",
+    "btn_unban_pclient": "🔓 Разблокировать {email}",
 
     # Alerts and error messages
     "load_err": "❌ Ошибка при загрузке Центра блокировок.",
@@ -41,6 +45,9 @@ translation = {
     "invalid_lxc_id_err": "Неверный ID LXC.",
     "restore_key_success_alert": "🟢 SSH-ключ успешно восстановлен!",
     "restore_key_failed_alert": "❌ Ошибка восстановления: {desc}",
+    "pclient_unban_in_progress": "⏳ Разблокировка клиента {email}...",
+    "pclient_unban_success_alert": "🟢 Клиент {email} успешно разблокирован на панели {panel_name}!",
+    "pclient_unban_failed_alert": "❌ Ошибка разблокировки клиента {email}: {desc}",
 
     # CLI / Slash commands
     "unban_login_ip_help": "🟢 <b>Разблокировка IP входа:</b>\nИспользуйте команду: <code>/unban_login_ip &lt;ip&gt;</code>",

@@ -15,6 +15,7 @@ translation = {
     "shutdown_btn": "🔌 Graceful Shutdown",
     "stop_btn": "🛑 Stop VM",
     "reboot_btn": "🔄 Reboot VM",
+    "reboot_host_btn": "🔄 Reboot Host",
     "start_btn": "▶️ Start VM",
     "auth_logs_btn": "🔒 Login Logs",
     "ports_traffic_btn": "🌐 Port Traffic",
@@ -23,6 +24,10 @@ translation = {
     "back_to_vm_btn": "🔙 Back to VM",
     "refresh_traffic_btn": "🔄 Refresh Activity",
     "back_to_panel_btn": "🔙 Back to Panel",
+    "confirm_host_reboot_title": "⚠️ <b>WARNING! Host Reboot ({node_name})</b>\n\nAre you sure you want to reboot hypervisor <b>{node_name}</b>?\n<i>This will stop all running VMs and LXC containers on this host!</i>",
+    "confirm_host_reboot_yes": "⚠️ Yes, Reboot Host!",
+    "confirm_host_reboot_cancel": "❌ Cancel",
+    "host_reboot_initiated": "⏳ Host reboot request sent for {node_name}!",
     
     # VM / Node status cards
     "status_host_title": "💻 <b>Proxmox VE Host ({node_name})</b>\n\n",

@@ -4,7 +4,10 @@ translation = {
     "active_bans_header": "👤 Active Temporary IP Blocks",
     "banned_keys_header": "🔑 Banned SSH Keys",
     "banned_login_ips_header": "🛡 Failed Login Blocks",
+    "banned_panel_clients_header": "🚫 Banned Panel Clients",
     "col_panel": "Panel",
+    "col_client": "Client",
+    "col_inbound": "Inbound",
     
     # Active IP table headers
     "col_ip": "IP Address",
@@ -27,6 +30,7 @@ translation = {
     # Buttons
     "btn_unban_ip": "🔓 Unblock {ip}",
     "btn_unban_key": "🔓 Restore key (...{fp})",
+    "btn_unban_pclient": "🔓 Unban {email}",
 
     # Alerts and error messages
     "load_err": "❌ Error loading Ban Center.",
@@ -41,6 +45,9 @@ translation = {
     "invalid_lxc_id_err": "Invalid LXC ID.",
     "restore_key_success_alert": "🟢 SSH key successfully restored!",
     "restore_key_failed_alert": "❌ Error restoring key: {desc}",
+    "pclient_unban_in_progress": "⏳ Unbanning client {email}...",
+    "pclient_unban_success_alert": "🟢 Client {email} successfully unbanned on panel {panel_name}!",
+    "pclient_unban_failed_alert": "❌ Error unbanning client {email}: {desc}",
 
     # CLI / Slash commands
     "unban_login_ip_help": "🟢 <b>Unban Login IP:</b>\nUse command: <code>/unban_login_ip &lt;ip&gt;</code>",

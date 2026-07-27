@@ -168,6 +168,18 @@ async def monitor_panel_audit_logs():
                     logs.sort(key=lambda x: x["id"])
                     
                     prev_max_id = last_log_ids.get(p_key, 0)
+                    
+                    # Детекция сброса/очистки логов на панели (когда текущие ID в панели меньше сохраненного чекпоинта)
+                    max_available_id = logs[-1]["id"]
+                    min_available_id = logs[0]["id"]
+                    if prev_max_id > max_available_id:
+                        logging.warning(f"[Audit Monitor] Log ID reset detected on panel {panel.name} (prev_max={prev_max_id}, max_in_panel={max_available_id}). Resetting checkpoint.")
+                        prev_max_id = max(0, min_available_id - 1)
+                    elif prev_max_id < min_available_id - 1 and len(logs) >= 100:
+                        # Пропуск большого гэпа логов при длинном простое, подтягиваемся к первой доступной записи
+                        logging.warning(f"[Audit Monitor] Large gap detected for panel {panel.name} (prev_max={prev_max_id}, min_in_panel={min_available_id}). Catching up.")
+                        prev_max_id = min_available_id - 1
+
                     new_max_id = prev_max_id
                     
                     for log in logs:

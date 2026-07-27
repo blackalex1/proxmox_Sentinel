@@ -221,7 +221,7 @@ async def process_hysteria_audit_event(panel, action, client_ip, log_timestamp, 
         
     key = (panel_name, username, protocol)
     now_time = time.time()
-    is_too_old = (now_time - log_timestamp) > 180.0
+    is_too_old = (now_time - log_timestamp) > 600.0
     
     try:
         timestamp_str = datetime.datetime.fromtimestamp(log_timestamp).strftime("%H:%M:%S")
