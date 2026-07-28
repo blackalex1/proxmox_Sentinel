@@ -322,3 +322,76 @@ async def cb_tg_2fa_cancel_block(callback: CallbackQuery):
         reply_markup=kb
     )
     await callback.answer(_("spectre", "tg_2fa_block_cancelled_alert"))
+
+
+@router.callback_query(F.data.startswith("block_ip:"))
+async def cb_block_ip(callback: CallbackQuery):
+    """
+    Handles '❌ Запретить и заблокировать' callback:
+    Format: block_ip:<panel_name>:<username>:<ip>
+    """
+    parts = callback.data.split(":", 3)
+    if len(parts) < 4:
+        await callback.answer("Ошибка формата данных", show_alert=True)
+        return
+        
+    panel_name = parts[1]
+    username = parts[2]
+    ip = parts[3]
+    
+    panel = None
+    for p in spectre_manager.panels.values():
+        if p.name == panel_name:
+            panel = p
+            break
+            
+    if not panel and spectre_manager.panels:
+        panel = list(spectre_manager.panels.values())[0]
+        
+    if not panel:
+        await callback.answer("Панель управления не найдена", show_alert=True)
+        return
+        
+    success, res = await panel.request("POST", "/api/security/block-ip", json={"ip": ip, "email": username})
+    
+    if success and res.get("success"):
+        new_text = (
+            f"🛑 <b>Соединение с IP заблокировано!</b>\n\n"
+            f"👤 <b>Пользователь:</b> <code>{username}</code>\n"
+            f"📍 <b>IP адрес:</b> <code>{ip}</code>\n\n"
+            f"<i>IP занесен в черный список файрвола, активные соединения на всех ядрах (Xray, Hysteria 2, Sing-box) принудительно сброшены.</i>"
+        )
+        await callback.message.edit_text(new_text, parse_mode="HTML")
+        await callback.answer("IP-адрес успешно заблокирован!", show_alert=True)
+    else:
+        err = res.get("msg") if isinstance(res, dict) else "Ошибка запроса"
+        await callback.answer(f"Не удалось заблокировать IP: {err}", show_alert=True)
+
+
+@router.callback_query(F.data.startswith("approve_ip:"))
+async def cb_approve_ip(callback: CallbackQuery):
+    """
+    Handles '✅ Разрешить' callback:
+    Format: approve_ip:<username>:<ip>
+    """
+    parts = callback.data.split(":", 2)
+    if len(parts) < 3:
+        await callback.answer("Ошибка формата данных", show_alert=True)
+        return
+        
+    username = parts[1]
+    ip = parts[2]
+    
+    # Notify panels that IP is trusted
+    for panel in spectre_manager.panels.values():
+        await panel.request("POST", "/api/security/allow-ip", json={"ip": ip, "email": username})
+        
+    new_text = (
+        f"✅ <b>Соединение разрешено</b>\n\n"
+        f"👤 <b>Пользователь:</b> <code>{username}</code>\n"
+        f"📍 <b>IP адрес:</b> <code>{ip}</code>\n\n"
+        f"<i>IP-адрес подтвержден как доверенный.</i>"
+    )
+    await callback.message.edit_text(new_text, parse_mode="HTML")
+    await callback.answer("Соединение разрешено")
+

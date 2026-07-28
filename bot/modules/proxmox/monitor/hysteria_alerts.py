@@ -208,7 +208,7 @@ async def process_hysteria_audit_event(panel, action, client_ip, log_timestamp, 
     duration_str = details.get("duration", _("spectre", "history_unknown"))
     
     panel_name = panel.name
-    protocol = "Xray" if "xray" in action else "Hysteria"
+    protocol = "Xray" if "xray" in action else ("Sing-box" if "singbox" in action else "Hysteria")
     
     # Получаем актуальный совокупный трафик из базы панели
     tx, rx = await get_traffic_from_api(panel, username)
@@ -230,7 +230,7 @@ async def process_hysteria_audit_event(panel, action, client_ip, log_timestamp, 
 
     card = active_activity_cards.get(key)
     
-    if action in ("xray_connect", "hysteria_connect"):
+    if action in ("xray_connect", "hysteria_connect", "singbox_connect"):
         session_id = None
         # Записываем событие подключения в SQLite БД
         try:
@@ -253,7 +253,10 @@ async def process_hysteria_audit_event(panel, action, client_ip, log_timestamp, 
                     alert_text = get_new_ip_alert(protocol, panel_name, username, client_ip, timestamp_str, history, geoip_info=geoip_info)
                     from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
                     kb = InlineKeyboardMarkup(inline_keyboard=[
-                        [InlineKeyboardButton(text=_("spectre", "btn_approve_ip"), callback_data=f"approve_ip:{username}:{client_ip}")]
+                        [
+                            InlineKeyboardButton(text=_("spectre", "btn_approve_ip", "✅ Разрешить"), callback_data=f"approve_ip:{username}:{client_ip}"),
+                            InlineKeyboardButton(text=_("spectre", "btn_block_ip", "❌ Запретить и заблокировать"), callback_data=f"block_ip:{panel_name}:{username}:{client_ip}")
+                        ]
                     ])
                     from .utils import send_rich_message
                     for admin_id in settings.admin_ids:
