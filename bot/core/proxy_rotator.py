@@ -61,9 +61,9 @@ class SocksProxyRotator:
         logger.info("scraping_completed_total_unique_proxies_found", len(self.cached_proxies))
         return self.cached_proxies
 
-    async def test_proxy_alive(self, proxy_url, timeout=3.0, verbose=False):
+    async def test_proxy_alive(self, proxy_url, timeout=6.0, verbose=False):
         """
-        Проверяет доступность api.telegram.org через указанный прокси.
+        Проверяет доступность api.telegram.org или резервного эндпоинта через указанный прокси.
         Возвращает (is_alive, latency)
         """
         # Извлекаем хост и порт прокси для динамического белого списка
@@ -98,20 +98,26 @@ class SocksProxyRotator:
             except Exception:
                 pass
 
-        url = "https://api.telegram.org"
+        test_urls = ["https://api.telegram.org", "https://cp.cloudflare.com/generate_204"]
         start = time.monotonic()
+        
         try:
             connector = ProxyConnector.from_url(proxy_url, rdns=True)
-            # Настраиваем короткий таймаут для быстрой проверки
             client_timeout = aiohttp.ClientTimeout(total=timeout)
             async with aiohttp.ClientSession(connector=connector, timeout=client_timeout) as session:
-                async with session.get(url) as response:
-                    if response.status == 200:
-                        latency = (time.monotonic() - start) * 1000
-                        return True, latency
-                    else:
+                for test_url in test_urls:
+                    try:
+                        async with session.get(test_url) as response:
+                            if response.status in (200, 204):
+                                latency = (time.monotonic() - start) * 1000
+                                return True, latency
+                            else:
+                                if verbose:
+                                    logger.warning("proxy_monitor_neozhidannyy_status-kod_pri_proverke", response.status, proxy_url)
+                    except Exception as err:
                         if verbose:
-                            logger.warning("proxy_monitor_neozhidannyy_status-kod_pri_proverke", response.status, proxy_url)
+                            logger.warning("proxy_monitor_check_failed", proxy_url, err)
+                        continue
         except Exception as e:
             if verbose:
                 logger.warning("proxy_monitor_check_failed", proxy_url, e)
@@ -237,15 +243,15 @@ async def proxy_monitor_loop(bot, primary_proxy, session_kwargs, start_active_pr
             
             # 1. Проверяем работоспособность текущего активного прокси
             if active_proxy:
-                is_alive, _ = await proxy_rotator.test_proxy_alive(active_proxy, timeout=4.0, verbose=False)
+                is_alive, _ = await proxy_rotator.test_proxy_alive(active_proxy, timeout=6.0, verbose=False)
                 if not is_alive:
                     logging.warning("proxy_monitor_first_check_proxy_failed_performing_retries", active_proxy)
                     
-                    # Пробуем еще 2 раза быстро с паузой 2 секунды
+                    # Пробуем еще 3 раза с паузой 3 секунды (всего 4 проверки)
                     retry_success = False
-                    for attempt in range(1, 3):
-                        await asyncio.sleep(2.0)
-                        is_alive_retry, _ = await proxy_rotator.test_proxy_alive(active_proxy, timeout=4.0, verbose=False)
+                    for attempt in range(1, 4):
+                        await asyncio.sleep(3.0)
+                        is_alive_retry, _ = await proxy_rotator.test_proxy_alive(active_proxy, timeout=6.0, verbose=False)
                         if is_alive_retry:
                             logging.info("proxy_monitor_recovered_attempt", active_proxy, attempt + 1)
                             retry_success = True
@@ -254,12 +260,12 @@ async def proxy_monitor_loop(bot, primary_proxy, session_kwargs, start_active_pr
                     if not retry_success:
                         logging.warning("proxy_monitor_current_active_proxy_has_completely_stopped", active_proxy)
                         
-                        # Перед началом поиска резервных прокси пробуем подождать еще 2 секунды и проверить основной —
-                        # вдруг это был очень короткий сбой
+                        # Перед началом поиска резервных прокси пробуем подождать еще 5 секунд и проверить основной —
+                        # вдруг это был очень короткий сетевой фриз
                         if not using_fallback and primary_proxy:
                             logging.info("proxy_monitor_waiting_2_seconds_to_reconnect")
-                            await asyncio.sleep(2.0)
-                            is_alive_last_chance, _ = await proxy_rotator.test_proxy_alive(primary_proxy, timeout=4.0, verbose=False)
+                            await asyncio.sleep(5.0)
+                            is_alive_last_chance, _ = await proxy_rotator.test_proxy_alive(primary_proxy, timeout=6.0, verbose=False)
                             if is_alive_last_chance:
                                 logging.info("proxy_monitor_main_proxy_recovered_after_a")
                                 continue
@@ -289,12 +295,12 @@ async def proxy_monitor_loop(bot, primary_proxy, session_kwargs, start_active_pr
                 if now - last_primary_check >= 15:
                     last_primary_check = now
                     logging.info("proxy_monitor_checking_availability_main_proxy", primary_proxy)
-                    primary_alive, _ = await proxy_rotator.test_proxy_alive(primary_proxy, timeout=4.0, verbose=False)
+                    primary_alive, _ = await proxy_rotator.test_proxy_alive(primary_proxy, timeout=6.0, verbose=False)
                     if not primary_alive:
-                        # Пробуем еще 2 раза быстро с паузой 2 секунды
+                        # Пробуем еще 2 раза с паузой 2 секунды
                         for attempt in range(2):
                             await asyncio.sleep(2.0)
-                            primary_alive, _ = await proxy_rotator.test_proxy_alive(primary_proxy, timeout=4.0, verbose=False)
+                            primary_alive, _ = await proxy_rotator.test_proxy_alive(primary_proxy, timeout=6.0, verbose=False)
                             if primary_alive:
                                 break
                                 
