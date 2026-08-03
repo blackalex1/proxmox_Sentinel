@@ -4,6 +4,24 @@
 from core.messages.i18n import _
 from core.config import settings
 
+def _build_auth_geo_rows(geoip_info):
+    if not geoip_info:
+        return ""
+    geo_str = geoip_info
+    isp_str = ""
+    if " (" in geoip_info and geoip_info.endswith(")"):
+        geo_str, isp_str = geoip_info.rsplit(" (", 1)
+        isp_str = isp_str.rstrip(")")
+
+    is_en = settings.bot_language.lower() == "en"
+    geo_label = "🗺️ Geo" if is_en else "🗺️ Гео"
+    isp_label = "🏢 ISP" if is_en else "🏢 Провайдер"
+
+    rows = f"| **{geo_label}** | `{geo_str}` |\n"
+    if isp_str:
+        rows += f"| **{isp_label}** | `{isp_str}` |\n"
+    return rows
+
 def get_vps_ssh_login_alert(ip, username, client_ip, auth_method, key_name, fingerprint, timestamp, security_warning_str, line, geoip_info=None):
     key_info = ""
     if auth_method == "publickey" and fingerprint:
@@ -18,12 +36,7 @@ def get_vps_ssh_login_alert(ip, username, client_ip, auth_method, key_name, fing
         security_aside = f"\n> {security_warning_str}\n"
 
     raw_line = line.strip()
-    geo_row = ""
-    if geoip_info:
-        if settings.bot_language.lower() == "en":
-            geo_row = f"| **🗺️ Geo** | `{geoip_info}` |\n"
-        else:
-            geo_row = f"| **🗺️ Гео** | `{geoip_info}` |\n"
+    geo_row = _build_auth_geo_rows(geoip_info)
 
     return _(
         "auth", "vps_ssh_login_alert",
@@ -39,12 +52,7 @@ def get_pve_web_login_alert(target_str, user, timestamp, line):
     )
 
 def get_pve_web_fail_alert(target_str, user, ip, reason, timestamp, line, geoip_info=None):
-    geo_row = ""
-    if geoip_info:
-        if settings.bot_language.lower() == "en":
-            geo_row = f"| **🗺️ Geo** | `{geoip_info}` |\n"
-        else:
-            geo_row = f"| **🗺️ Гео** | `{geoip_info}` |\n"
+    geo_row = _build_auth_geo_rows(geoip_info)
             
     return _(
         "auth", "pve_web_fail_alert",
@@ -60,12 +68,7 @@ def get_ssh_login_alert(title_str, emoji_str, target_str, user, ip, method, fing
         else:
             key_row = f"| **🔑 Использован ключ** | `{fingerprint}` |\n"
             
-    geo_row = ""
-    if geoip_info:
-        if settings.bot_language.lower() == "en":
-            geo_row = f"| **🗺️ Geo** | `{geoip_info}` |\n"
-        else:
-            geo_row = f"| **🗺️ Гео** | `{geoip_info}` |\n"
+    geo_row = _build_auth_geo_rows(geoip_info)
             
     return _(
         "auth", "ssh_login_alert",
@@ -75,12 +78,7 @@ def get_ssh_login_alert(title_str, emoji_str, target_str, user, ip, method, fing
     )
 
 def get_ssh_fail_alert(title_str, emoji_str, target_str, user, ip, method_ru, timestamp, line, geoip_info=None):
-    geo_row = ""
-    if geoip_info:
-        if settings.bot_language.lower() == "en":
-            geo_row = f"| **🗺️ Geo** | `{geoip_info}` |\n"
-        else:
-            geo_row = f"| **🗺️ Гео** | `{geoip_info}` |\n"
+    geo_row = _build_auth_geo_rows(geoip_info)
             
     return _(
         "auth", "ssh_fail_alert",

@@ -146,7 +146,8 @@ def convert_rich_html_to_standard(html):
     html = re.sub(r'<cite[^>]*>', '\n— ', html)
     html = re.sub(r'</cite>', '', html)
     
-    # Convert <br/> to newline
+    # Convert <hr/> to divider and <br/> to newline
+    html = re.sub(r'<hr\s*/?>', '\n⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯\n', html)
     html = re.sub(r'<br\s*/?>', '\n', html)
     
     # For tables, extract rows and clean up
@@ -382,7 +383,7 @@ async def get_geoip_info(ip: str) -> str:
         
     try:
         import aiohttp
-        url = f"http://ip-api.com/json/{ip}"
+        url = f"http://ip-api.com/json/{ip}?fields=status,country,city,isp,org"
         session = await bot.session.create_session()
         async with session.get(url, timeout=3.0) as response:
             if response.status == 200:
@@ -390,15 +391,18 @@ async def get_geoip_info(ip: str) -> str:
                 if data.get("status") == "success":
                     country = data.get("country", "")
                     city = data.get("city", "")
-                    org = data.get("org", "")
+                    isp = data.get("isp") or data.get("org") or ""
                     geo_parts = []
                     if country:
                         geo_parts.append(country)
                     if city:
                         geo_parts.append(city)
-                    if org:
-                        geo_parts.append(f"ISP: {org}")
-                    return " - ".join(geo_parts) if geo_parts else "Определено"
+                    geo_str = " - ".join(geo_parts) if geo_parts else ""
+                    if isp:
+                        if geo_str:
+                            return f"{geo_str} ({isp})"
+                        return isp
+                    return geo_str or "Определено"
     except Exception as e:
         logging.warning("geoip_failed_to_obtain_data_for", ip, e)
     return "Неизвестно"
