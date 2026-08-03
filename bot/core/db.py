@@ -368,7 +368,7 @@ async def sync_approved_ips_to_panels():
         active_emails = set()
         
         for c in all_clients:
-            email = c.get("email")
+            email = c.get("email") or (c.get("client") or {}).get("email")
             p_name = c.get("panel_name")
             if email and p_name:
                 active_emails.add(email)
