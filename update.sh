@@ -16,7 +16,15 @@ echo "===================================================="
 
 # 1. Pull latest updates from Git
 echo "[+] Pulling latest updates from Git..."
+OLD_HEAD=$(git rev-parse HEAD 2>/dev/null)
 if git fetch origin main && git reset --hard origin/main; then
+    NEW_HEAD=$(git rev-parse HEAD 2>/dev/null)
+    if [ "$OLD_HEAD" != "$NEW_HEAD" ] && [ -n "$OLD_HEAD" ]; then
+        echo "[+] Changes pulled:"
+        git diff --stat "$OLD_HEAD" "$NEW_HEAD"
+    else
+        echo "[+] Already up to date."
+    fi
     echo "[+] Git update completed successfully."
 else
     echo "[!] Git update failed. If you have local changes, stash them or resolve conflicts."
