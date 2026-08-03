@@ -6,6 +6,24 @@ import datetime
 from core.messages.i18n import _
 from core.config import settings
 
+def _build_geo_rows(geoip_info):
+    if not geoip_info:
+        return ""
+    geo_str = geoip_info
+    isp_str = ""
+    if " (" in geoip_info and geoip_info.endswith(")"):
+        geo_str, isp_str = geoip_info.rsplit(" (", 1)
+        isp_str = isp_str.rstrip(")")
+
+    is_en = settings.bot_language.lower() == "en"
+    geo_label = "🗺️ Geo" if is_en else "🗺️ Гео"
+    isp_label = "🏢 ISP" if is_en else "🏢 Провайдер"
+
+    rows = f'  <tr>\n    <td style="padding: 8px;"><b>{geo_label}</b></td>\n    <td style="padding: 8px;"><code>{html.escape(geo_str)}</code></td>\n  </tr>\n'
+    if isp_str:
+        rows += f'  <tr>\n    <td style="padding: 8px;"><b>{isp_label}</b></td>\n    <td style="padding: 8px;"><code>{html.escape(isp_str)}</code></td>\n  </tr>\n'
+    return rows
+
 def get_new_ip_alert(protocol, panel_name, username, client_ip, timestamp_str, history_list, geoip_info=None):
     history_lines = []
     for h in history_list:
@@ -16,12 +34,7 @@ def get_new_ip_alert(protocol, panel_name, username, client_ip, timestamp_str, h
         history_lines.append(f"• `{h['ip']}` ({time_formatted}) — {h['duration']}")
     history_text = "\n".join(history_lines) if history_lines else _("spectre", "history_empty")
 
-    geo_row = ""
-    if geoip_info:
-        if settings.bot_language.lower() == "en":
-            geo_row = f'  <tr>\n    <td style="padding: 8px;"><b>🗺️ Geo</b></td>\n    <td style="padding: 8px;"><code>{html.escape(geoip_info)}</code></td>\n  </tr>\n'
-        else:
-            geo_row = f'  <tr>\n    <td style="padding: 8px;"><b>🗺️ Гео</b></td>\n    <td style="padding: 8px;"><code>{html.escape(geoip_info)}</code></td>\n  </tr>\n'
+    geo_row = _build_geo_rows(geoip_info)
             
     return _(
         "spectre", "new_ip_alert",
@@ -55,12 +68,7 @@ def get_session_activity_card(protocol, panel_name, username, download_bytes, up
     )
 
 def get_client_disconnected_alert(protocol, panel_name, username, client_ip, timestamp_str, geoip_info=None):
-    geo_row = ""
-    if geoip_info:
-        if settings.bot_language.lower() == "en":
-            geo_row = f'  <tr>\n    <td style="padding: 8px;"><b>🗺️ Geo</b></td>\n    <td style="padding: 8px;"><code>{html.escape(geoip_info)}</code></td>\n  </tr>\n'
-        else:
-            geo_row = f'  <tr>\n    <td style="padding: 8px;"><b>🗺️ Гео</b></td>\n    <td style="padding: 8px;"><code>{html.escape(geoip_info)}</code></td>\n  </tr>\n'
+    geo_row = _build_geo_rows(geoip_info)
             
     return _(
         "spectre", "client_disconnected_alert",
@@ -75,12 +83,7 @@ def get_ips_autoblock_alert_audit(panel_name, email, details, time_str):
     )
 
 def get_login_success_alert(panel_name, username, ip, details, time_str, geoip_info=None):
-    geo_row = ""
-    if geoip_info:
-        if settings.bot_language.lower() == "en":
-            geo_row = f'  <tr>\n    <td style="padding: 8px;"><b>🗺️ Geo</b></td>\n    <td style="padding: 8px;"><code>{html.escape(geoip_info)}</code></td>\n  </tr>\n'
-        else:
-            geo_row = f'  <tr>\n    <td style="padding: 8px;"><b>🗺️ Гео</b></td>\n    <td style="padding: 8px;"><code>{html.escape(geoip_info)}</code></td>\n  </tr>\n'
+    geo_row = _build_geo_rows(geoip_info)
             
     return _(
         "spectre", "login_success_alert",
@@ -89,12 +92,7 @@ def get_login_success_alert(panel_name, username, ip, details, time_str, geoip_i
     )
 
 def get_spectre_2fa_alert(panel_name, username, client_ip, time_str, geoip_info=None):
-    geo_row = ""
-    if geoip_info:
-        if settings.bot_language.lower() == "en":
-            geo_row = f'  <tr>\n    <td style="padding: 8px;"><b>🗺️ Geo</b></td>\n    <td style="padding: 8px;"><code>{html.escape(geoip_info)}</code></td>\n  </tr>\n'
-        else:
-            geo_row = f'  <tr>\n    <td style="padding: 8px;"><b>🗺️ Гео</b></td>\n    <td style="padding: 8px;"><code>{html.escape(geoip_info)}</code></td>\n  </tr>\n'
+    geo_row = _build_geo_rows(geoip_info)
             
     return _(
         "spectre", "spectre_2fa_alert",

@@ -114,7 +114,7 @@ def clean_html_for_telegram(text: str) -> str:
     # 2. Линия hr -> разделитель
     text = re.sub(r'<hr\s*/?>', '⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯\n', text)
     
-    # 3. Табличные теги: парсим двухколоночные строки с разделителем |
+    # 3. Табличные теги: парсим двухколоночные строки с разделителем :
     def clean_tr(match):
         row_content = match.group(1)
         # Находим все теги th/td в строке
@@ -122,13 +122,13 @@ def clean_html_for_telegram(text: str) -> str:
         if len(cols) == 2:
             val1 = re.sub(r'\s+', ' ', cols[0]).strip()
             val2 = re.sub(r'\s+', ' ', cols[1]).strip()
-            return f"{val1} | {val2}\n"
+            return f"\n{val1}: {val2}"
         elif cols:
             vals = [re.sub(r'\s+', ' ', c).strip() for c in cols]
-            return " | ".join(vals) + "\n"
+            return "\n" + " - ".join(vals)
         return ""
 
-    text = re.sub(r'\s*<tr\b[^>]*>(.*?)</tr>\s*', clean_tr, text, flags=re.DOTALL)
+    text = re.sub(r'<tr\b[^>]*>(.*?)</tr>', clean_tr, text, flags=re.DOTALL)
     text = re.sub(r'</?table[^>]*>', '', text)
     
     # 4. Коллапсирующие блоки details/summary
