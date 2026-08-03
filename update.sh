@@ -16,10 +16,10 @@ echo "===================================================="
 
 # 1. Pull latest updates from Git
 echo "[+] Pulling latest updates from Git..."
-if git pull; then
-    echo "[+] Git pull completed successfully."
+if git fetch origin main && git reset --hard origin/main; then
+    echo "[+] Git update completed successfully."
 else
-    echo "[!] Git pull failed. If you have local changes, stash them or resolve conflicts."
+    echo "[!] Git update failed. If you have local changes, stash them or resolve conflicts."
 fi
 
 # 2. Update Python virtual environment dependencies
