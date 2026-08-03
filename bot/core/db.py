@@ -343,12 +343,17 @@ async def sync_approved_ips_to_panels():
         if not rows:
             return
 
+        synced_count = 0
         for username, ip in rows:
             for panel in spectre_manager.panels.values():
                 try:
-                    await panel.request("POST", "/api/security/allow-ip", json={"ip": ip, "email": username})
+                    res_ok, res = await panel.request("POST", "/api/security/allow-ip", json={"ip": ip, "email": username})
+                    if res_ok and isinstance(res, dict) and res.get("success"):
+                        synced_count += 1
                 except Exception as e:
                     logging.error(f"Error syncing approved IP {ip} for {username} to panel {panel.name}: {e}")
+        if synced_count > 0:
+            logging.info(f"[IP Sync] Успешно синхронизировано {synced_count} одобренных IP на панели управления.")
     except Exception as e:
         logging.error(f"Error in sync_approved_ips_to_panels: {e}")
 
