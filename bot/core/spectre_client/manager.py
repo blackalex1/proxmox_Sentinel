@@ -264,6 +264,12 @@ class SpectreClientManager:
         async with self._lock:
             self.panels = new_panels
         logging.info("spectre_discovery_autodiscovery_completed_found_panels", len(self.panels))
+        if self.panels:
+            try:
+                from core.db import sync_approved_ips_to_panels
+                asyncio.create_task(sync_approved_ips_to_panels())
+            except Exception as e:
+                logging.error(f"Error triggering sync_approved_ips_to_panels after discovery: {e}")
         
     async def start_discovery_loop(self):
         """Фоновый периодический запуск поиска новых панелей раз в 5 минут."""
