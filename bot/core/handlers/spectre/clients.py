@@ -395,3 +395,39 @@ async def cb_approve_ip(callback: CallbackQuery):
     await callback.message.edit_text(new_text, parse_mode="HTML")
     await callback.answer("Соединение разрешено")
 
+
+@router.message(Command("allow_ip"))
+async def cmd_allow_ip_controller(message: types.Message):
+    """
+    Command /allow_ip <email> <ip> to approve an IP for a client via controller bot.
+    """
+    args = message.text.split(maxsplit=2)
+    if len(args) < 2:
+        await message.reply(
+            "<b>Использование:</b> <code>/allow_ip &lt;email&gt; &lt;ip&gt;</code>\n"
+            "Пример: <code>/allow_ip Den_double_v2 188.134.67.205</code>",
+            parse_mode="HTML"
+        )
+        return
+        
+    username = args[1].strip()
+    ip = args[2].strip() if len(args) > 2 else ""
+    
+    if not spectre_manager.panels:
+        await message.reply("❌ Панели управления не подключены к контроллеру.")
+        return
+        
+    success_count = 0
+    for panel in spectre_manager.panels.values():
+        res_ok, res = await panel.request("POST", "/api/security/allow-ip", json={"ip": ip, "email": username})
+        if res_ok and isinstance(res, dict) and res.get("success"):
+            success_count += 1
+            
+    if success_count > 0:
+        await message.reply(
+            f"✅ <b>IP {ip or 'cleared'} успешно привязан/одобрен для <code>{username}</code>!</b>",
+            parse_mode="HTML"
+        )
+    else:
+        await message.reply("❌ Не удалось обновить разрешенные IP на панелях.")
+

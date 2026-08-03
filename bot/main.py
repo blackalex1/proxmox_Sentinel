@@ -214,6 +214,10 @@ async def main():
     from core.outbox import outbox_sender_loop
     asyncio.create_task(outbox_sender_loop(bot), name="outbox_sender_loop")
         
+    # Синхронизация одобренных IP базы бота с панелями Spectre Panel
+    from core.db import sync_approved_ips_to_panels
+    asyncio.create_task(sync_approved_ips_to_panels(), name="sync_approved_ips_to_panels")
+
     # Запуск пулинга
     try:
         try:

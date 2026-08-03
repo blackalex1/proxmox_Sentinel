@@ -84,6 +84,10 @@ async def handle_traffic_log_line(line):
                 except Exception as e:
                     logging.error("traffic_monitor_error_checking_active_proxy_checks", e)
 
+                if not is_bot and settings.router_monitor_enable and settings.router_ssh_host and dst == settings.router_ssh_host and dpt == settings.router_ssh_port:
+                    is_bot = True
+                    logging.debug("traffic_monitor_match_found_for_router_ssh_host", dst, dpt)
+
                 # Вносим кратковременную задержку для устранения гонки при установлении сессии
                 # (так как логирование трафика ОС опережает завершение хэндшейка asyncssh/ansible)
                 if not is_bot and (dpt == settings.router_ssh_port or dpt == 22):
