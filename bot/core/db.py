@@ -93,6 +93,7 @@ def init_db():
                 );
             """)
             conn.execute("CREATE INDEX IF NOT EXISTS idx_approved_ips_username ON approved_ips (username);")
+            conn.execute("DELETE FROM approved_ips WHERE ip = 'ip' OR (ip NOT LIKE '%.%' AND ip NOT LIKE '%:%');")
             
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS temp_port_bans (
@@ -282,8 +283,28 @@ async def is_whitelisted(node: str, ip: Optional[str] = None, port: Optional[int
     return False
 
 
+import ipaddress
+
+def is_valid_ip_or_cidr(val: str) -> bool:
+    val = (val or "").strip()
+    if not val or val == "ip":
+        return False
+    try:
+        ipaddress.ip_address(val)
+        return True
+    except ValueError:
+        pass
+    try:
+        ipaddress.ip_network(val, strict=False)
+        return True
+    except ValueError:
+        pass
+    return False
+
 async def is_ip_approved(username: str, ip: str) -> bool:
     """Проверяет, одобрен ли IP для пользователя."""
+    if not is_valid_ip_or_cidr(ip):
+        return False
     row = await execute_read_one(
         "SELECT 1 FROM approved_ips WHERE username = ? AND ip = ?",
         (username, ip)
@@ -292,14 +313,23 @@ async def is_ip_approved(username: str, ip: str) -> bool:
 
 
 async def approve_ip(username: str, ip: str) -> bool:
-    """Добавляет IP в список одобренных для пользователя и синхронизирует с Spectre Panel."""
+    """Добавляет IP в список одобренных для пользователя и синхронизирует ТОЛЬКО с теми панелями, где заведен данный клиент."""
+    if not is_valid_ip_or_cidr(ip):
+        logging.warning(f"Invalid IP '{ip}' passed to approve_ip for {username}")
+        return False
     res = await execute_write(
         "INSERT OR IGNORE INTO approved_ips (username, ip) VALUES (?, ?)",
         (username, ip)
     )
     try:
         from core.spectre_client import spectre_manager
-        for panel in spectre_manager.panels.values():
+        found_clients = await spectre_manager.search_client_all(username)
+        target_panel_names = {c.get("panel_name") for c in found_clients if c.get("panel_name")}
+        
+        # Если клиент найден конкретно на определенных панелях — берем только их, иначе синхронизируем на все
+        target_panels = [p for p in spectre_manager.panels.values() if not target_panel_names or p.name in target_panel_names]
+        
+        for panel in target_panels:
             await panel.request("POST", "/api/security/allow-ip", json={"ip": ip, "email": username})
     except Exception as e:
         logging.error(f"Error syncing allow-ip to panel: {e}")
@@ -310,13 +340,15 @@ async def cleanup_orphaned_approved_ips(active_emails: set) -> int:
     """Удаляет из базы данных бота (approved_ips) удаленных пользователей, которых больше нет на панелях."""
     if not active_emails:
         return 0
+    # Приводим к нижнему регистру для надежной сверки
+    active_emails_lower = {e.lower() for e in active_emails}
     rows = await execute_read_all("SELECT DISTINCT username FROM approved_ips")
     if not rows:
         return 0
     deleted_count = 0
     for row in rows:
         username = row[0]
-        if username not in active_emails:
+        if username.lower() not in active_emails_lower:
             await execute_write("DELETE FROM approved_ips WHERE username = ?", (username,))
             deleted_count += 1
             logging.info(f"[Cleanup] Removed orphaned approved_ips for deleted user: {username}")
@@ -324,28 +356,45 @@ async def cleanup_orphaned_approved_ips(active_emails: set) -> int:
 
 
 async def sync_approved_ips_to_panels():
-    """Синхронизирует одобренные IP с панелями и очищает устаревшие записи удаленных клиентов."""
+    """Синхронизирует одобренные IP с панелями (только на тех панелях, где клиент заведен) и очищает мусор."""
     try:
         from core.spectre_client import spectre_manager
         if not spectre_manager.panels:
             return
 
-        # 1. Получаем список всех существующих клиентов со всех подключенных панелей
+        # 1. Получаем список всех существующих клиентов со всех панелей с привязкой к панели
         all_clients = await spectre_manager.search_client_all("")
-        active_emails = {item.get("email") for item in all_clients if item.get("email")}
+        client_panels_map = {}
+        active_emails = set()
+        
+        for c in all_clients:
+            email = c.get("email")
+            p_name = c.get("panel_name")
+            if email and p_name:
+                active_emails.add(email)
+                for p in spectre_manager.panels.values():
+                    if p.name == p_name:
+                        client_panels_map.setdefault(email.lower(), set()).add(p)
 
         # 2. Очищаем устаревший мусор (удаленных клиентов) из базы бота
         if active_emails:
             await cleanup_orphaned_approved_ips(active_emails)
 
-        # 3. Синхронизируем оставшиеся одобренные IP на панели
+        # 3. Синхронизируем оставшиеся одобренные IP ТОЛЬКО на те панели, где этот клиент реально заведен!
         rows = await execute_read_all("SELECT username, ip FROM approved_ips")
         if not rows:
             return
 
         synced_count = 0
         for username, ip in rows:
-            for panel in spectre_manager.panels.values():
+            if not is_valid_ip_or_cidr(ip):
+                continue
+            target_panels = client_panels_map.get(username.lower(), set())
+            # Если карту привязок еще не составили или панель не определена, перестраховываемся
+            if not target_panels:
+                target_panels = set(spectre_manager.panels.values())
+
+            for panel in target_panels:
                 try:
                     res_ok, res = await panel.request("POST", "/api/security/allow-ip", json={"ip": ip, "email": username})
                     if res_ok and isinstance(res, dict) and res.get("success"):
@@ -353,7 +402,7 @@ async def sync_approved_ips_to_panels():
                 except Exception as e:
                     logging.error(f"Error syncing approved IP {ip} for {username} to panel {panel.name}: {e}")
         if synced_count > 0:
-            logging.info(f"[IP Sync] Успешно синхронизировано {synced_count} одобренных IP на панели управления.")
+            logging.info(f"[IP Sync] Успешно синхронизировано {synced_count} одобренных IP адресов на нужные панели управления.")
     except Exception as e:
         logging.error(f"Error in sync_approved_ips_to_panels: {e}")
 

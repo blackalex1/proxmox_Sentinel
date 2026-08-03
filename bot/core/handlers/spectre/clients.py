@@ -405,7 +405,7 @@ async def cmd_allow_ip_controller(message: types.Message):
     if len(args) < 2:
         await message.reply(
             "<b>Использование:</b> <code>/allow_ip &lt;email&gt; &lt;ip&gt;</code>\n"
-            "Пример: <code>/allow_ip Den_double_v2 188.134.67.205</code>",
+            "Пример: <code>/allow_ip Den_double_v2 198.51.100.1</code>",
             parse_mode="HTML"
         )
         return
