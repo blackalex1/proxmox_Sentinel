@@ -292,11 +292,65 @@ async def is_ip_approved(username: str, ip: str) -> bool:
 
 
 async def approve_ip(username: str, ip: str) -> bool:
-    """Добавляет IP в список одобренных для пользователя."""
-    return await execute_write(
+    """Добавляет IP в список одобренных для пользователя и синхронизирует с Spectre Panel."""
+    res = await execute_write(
         "INSERT OR IGNORE INTO approved_ips (username, ip) VALUES (?, ?)",
         (username, ip)
     )
+    try:
+        from core.spectre_client import spectre_manager
+        for panel in spectre_manager.panels.values():
+            await panel.request("POST", "/api/security/allow-ip", json={"ip": ip, "email": username})
+    except Exception as e:
+        logging.error(f"Error syncing allow-ip to panel: {e}")
+    return res
+
+
+async def cleanup_orphaned_approved_ips(active_emails: set) -> int:
+    """Удаляет из базы данных бота (approved_ips) удаленных пользователей, которых больше нет на панелях."""
+    if not active_emails:
+        return 0
+    rows = await execute_read_all("SELECT DISTINCT username FROM approved_ips")
+    if not rows:
+        return 0
+    deleted_count = 0
+    for row in rows:
+        username = row[0]
+        if username not in active_emails:
+            await execute_write("DELETE FROM approved_ips WHERE username = ?", (username,))
+            deleted_count += 1
+            logging.info(f"[Cleanup] Removed orphaned approved_ips for deleted user: {username}")
+    return deleted_count
+
+
+async def sync_approved_ips_to_panels():
+    """Синхронизирует одобренные IP с панелями и очищает устаревшие записи удаленных клиентов."""
+    try:
+        from core.spectre_client import spectre_manager
+        if not spectre_manager.panels:
+            return
+
+        # 1. Получаем список всех существующих клиентов со всех подключенных панелей
+        all_clients = await spectre_manager.search_client_all("")
+        active_emails = {item.get("email") for item in all_clients if item.get("email")}
+
+        # 2. Очищаем устаревший мусор (удаленных клиентов) из базы бота
+        if active_emails:
+            await cleanup_orphaned_approved_ips(active_emails)
+
+        # 3. Синхронизируем оставшиеся одобренные IP на панели
+        rows = await execute_read_all("SELECT username, ip FROM approved_ips")
+        if not rows:
+            return
+
+        for username, ip in rows:
+            for panel in spectre_manager.panels.values():
+                try:
+                    await panel.request("POST", "/api/security/allow-ip", json={"ip": ip, "email": username})
+                except Exception as e:
+                    logging.error(f"Error syncing approved IP {ip} for {username} to panel {panel.name}: {e}")
+    except Exception as e:
+        logging.error(f"Error in sync_approved_ips_to_panels: {e}")
 
 
 async def save_vpn_connect(username: str, ip: str, connect_time_str: str, tx: int, rx: int) -> str:
