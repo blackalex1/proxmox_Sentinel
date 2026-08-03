@@ -347,8 +347,8 @@ async def cleanup_orphaned_approved_ips(active_emails: set) -> int:
         return 0
     deleted_count = 0
     for row in rows:
-        username = row[0]
-        if username.lower() not in active_emails_lower:
+        username = row.get("username") if isinstance(row, dict) else row[0]
+        if username and username.lower() not in active_emails_lower:
             await execute_write("DELETE FROM approved_ips WHERE username = ?", (username,))
             deleted_count += 1
             logging.info(f"[Cleanup] Removed orphaned approved_ips for deleted user: {username}")
@@ -386,8 +386,10 @@ async def sync_approved_ips_to_panels():
             return
 
         synced_count = 0
-        for username, ip in rows:
-            if not is_valid_ip_or_cidr(ip):
+        for r in rows:
+            username = r.get("username") if isinstance(r, dict) else r[0]
+            ip = r.get("ip") if isinstance(r, dict) else r[1]
+            if not username or not ip or not is_valid_ip_or_cidr(ip):
                 continue
             target_panels = client_panels_map.get(username.lower(), set())
             # Если карту привязок еще не составили или панель не определена, перестраховываемся
