@@ -368,11 +368,11 @@ async def cb_block_ip(callback: CallbackQuery):
         await callback.answer(f"Не удалось заблокировать IP: {err}", show_alert=True)
 
 
-@router.callback_query(F.data.startswith("approve_ip:"))
+@router.callback_query(F.data.startswith("approve_ip:") | F.data.startswith("tg_allow_ip:"))
 async def cb_approve_ip(callback: CallbackQuery):
     """
     Handles '✅ Разрешить' callback:
-    Format: approve_ip:<username>:<ip>
+    Format: approve_ip:<username>:<ip> or tg_allow_ip:<username>:<ip>
     """
     parts = callback.data.split(":", 2)
     if len(parts) < 3:
