@@ -3,10 +3,29 @@ import json
 import asyncio
 import logging
 import time
+import re
+import aiohttp
 from aiogram import Bot
 from aiogram.exceptions import TelegramNetworkError, TelegramAPIError, TelegramRetryAfter
-from aiohttp.client_exceptions import ClientOSError
+from aiohttp.client_exceptions import ClientError, ClientOSError
 from core.config import settings
+
+NETWORK_ERRORS = (
+    TelegramNetworkError,
+    ClientError,
+    ClientOSError,
+    asyncio.TimeoutError,
+    asyncio.IncompleteReadError,
+    OSError,
+)
+
+NETWORK_KEYWORDS = ["connection", "timeout", "reset", "abort", "read", "socks", "proxy", "closed", "eof", "incomplete"]
+
+def is_network_error(exc: Exception) -> bool:
+    if isinstance(exc, NETWORK_ERRORS):
+        return True
+    err_msg = str(exc).lower()
+    return any(x in err_msg for x in NETWORK_KEYWORDS)
 
 logger = logging.getLogger(__name__)
 
@@ -338,7 +357,7 @@ class ResilientOutbox:
                         await bot._original_send_message(chat_id, resilient_text, **kwargs)
                         logger.info("outbox_message_successfully_delivered_queue", chat_id, idx, total_count)
                         await asyncio.sleep(0.5)
-                except (TelegramNetworkError, ClientOSError, asyncio.TimeoutError) as e:
+                except NETWORK_ERRORS as e:
                     # Если всё еще нет сети, прерываем отправку и оставляем это и все последующие сообщения
                     logger.warning("outbox_network_error_sending_message_suspending", chat_id, e)
                     remaining_queue.append(msg)
@@ -511,10 +530,7 @@ class ResilientOutbox:
                 return None
             except Exception as e:
                 # Проверяем, является ли ошибка сетевой
-                is_network = isinstance(e, (TelegramNetworkError, ClientOSError, asyncio.TimeoutError))
-                err_msg = str(e).lower()
-                
-                if is_network or any(x in err_msg for x in ["connection", "timeout", "reset", "abort"]):
+                if is_network_error(e):
                     logger.warning("outbox_network_failure_sending_message_redirecting", chat_id, e)
                     await self.add_message(chat_id, original_text, **original_kwargs)
                     return None
