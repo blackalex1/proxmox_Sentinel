@@ -210,14 +210,17 @@ async def proxy_monitor_loop(bot, primary_proxy, session_kwargs, start_active_pr
     # Если на старте основной прокси не проверен, делаем это здесь
     if start_active_proxy is None and primary_proxy:
         logging.info("proxy_monitor_checking_functionality_of_the_main")
-        is_alive, _ = await proxy_rotator.test_proxy_alive(primary_proxy, timeout=4.0, verbose=False)
-        if not is_alive:
-            # Пробуем еще 2 раза быстро с паузой 2 секунды
-            for attempt in range(2):
+        is_local = "127.0.0.1" in primary_proxy or "localhost" in primary_proxy
+        initial_timeout = 8.0 if is_local else 5.0
+        initial_retries = 5 if is_local else 2
+        
+        is_alive = False
+        for attempt in range(initial_retries):
+            if attempt > 0:
                 await asyncio.sleep(2.0)
-                is_alive, _ = await proxy_rotator.test_proxy_alive(primary_proxy, timeout=4.0, verbose=False)
-                if is_alive:
-                    break
+            is_alive, _ = await proxy_rotator.test_proxy_alive(primary_proxy, timeout=initial_timeout, verbose=False)
+            if is_alive:
+                break
                     
         if not is_alive:
             logging.warning("proxy_monitor_lost_connection_to_my_proxy")
@@ -247,9 +250,10 @@ async def proxy_monitor_loop(bot, primary_proxy, session_kwargs, start_active_pr
                 if not is_alive:
                     logging.warning("proxy_monitor_first_check_proxy_failed_performing_retries", active_proxy)
                     
-                    # Пробуем еще 3 раза с паузой 3 секунды (всего 4 проверки)
+                    is_local = "127.0.0.1" in active_proxy or "localhost" in active_proxy
+                    retry_count = 5 if is_local else 3
                     retry_success = False
-                    for attempt in range(1, 4):
+                    for attempt in range(1, retry_count):
                         await asyncio.sleep(3.0)
                         is_alive_retry, _ = await proxy_rotator.test_proxy_alive(active_proxy, timeout=6.0, verbose=False)
                         if is_alive_retry:
