@@ -160,7 +160,7 @@ class SocksProxyRotator:
                 
                 working_batch = []
                 for idx, (is_working, latency) in enumerate(results):
-                    if is_working:
+                    if is_working and latency <= 3500:
                         p_url = f"socks5://{batch[idx]}"
                         working_batch.append((p_url, latency))
                         
