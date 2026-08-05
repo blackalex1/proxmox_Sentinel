@@ -382,9 +382,9 @@ async def cb_approve_ip(callback: CallbackQuery):
     username = parts[1]
     ip = parts[2]
     
-    # Notify panels that IP is trusted
-    for panel in spectre_manager.panels.values():
-        await panel.request("POST", "/api/security/allow-ip", json={"ip": ip, "email": username})
+    # Save to controller DB approved_ips table and sync to panels
+    from core.db import approve_ip
+    await approve_ip(username, ip)
         
     new_text = (
         f"✅ <b>Соединение разрешено</b>\n\n"

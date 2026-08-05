@@ -404,7 +404,7 @@ async def sync_approved_ips_to_panels():
                 except Exception as e:
                     logging.error(f"Error syncing approved IP {ip} for {username} to panel {panel.name}: {e}")
         if synced_count > 0:
-            logging.info(f"[IP Sync] Успешно синхронизировано {synced_count} одобренных IP адресов на нужные панели управления.")
+            logging.info(f"[IP Sync] Successfully synced {synced_count} approved IP addresses to target panels.")
     except Exception as e:
         logging.error(f"Error in sync_approved_ips_to_panels: {e}")
 

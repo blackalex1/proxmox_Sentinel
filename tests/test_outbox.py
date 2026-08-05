@@ -311,9 +311,9 @@ def test_clean_html_for_telegram_tables():
     cleaned = clean_html_for_telegram(card_html)
     
     # Check that it converted the HTML table to text table rows (supporting both RU/EN locales)
-    assert ("<b>👤 Пользователь</b> | <code>bot</code>" in cleaned) or ("<b>👤 User</b> | <code>bot</code>" in cleaned)
-    assert ("<b>📥 Скачано</b> | <code>859.62 MB</code>" in cleaned) or ("<b>📥 Downloaded</b> | <code>859.62 MB</code>" in cleaned)
-    assert ("<b>📤 Загружено</b> | <code>18.97 GB</code>" in cleaned) or ("<b>📤 Uploaded</b> | <code>18.97 GB</code>" in cleaned)
+    assert ("<b>👤 Пользователь</b>: <code>bot</code>" in cleaned) or ("<b>👤 User</b>: <code>bot</code>" in cleaned) or ("<b>👤 Пользователь</b> | <code>bot</code>" in cleaned) or ("<b>👤 User</b> | <code>bot</code>" in cleaned)
+    assert ("<b>📥 Скачано</b>: <code>859.62 MB</code>" in cleaned) or ("<b>📥 Downloaded</b>: <code>859.62 MB</code>" in cleaned) or ("<b>📥 Скачано</b> | <code>859.62 MB</code>" in cleaned) or ("<b>📥 Downloaded</b> | <code>859.62 MB</code>" in cleaned)
+    assert ("<b>📤 Загружено</b>: <code>18.97 GB</code>" in cleaned) or ("<b>📤 Uploaded</b>: <code>18.97 GB</code>" in cleaned) or ("<b>📤 Загружено</b> | <code>18.97 GB</code>" in cleaned) or ("<b>📤 Uploaded</b> | <code>18.97 GB</code>" in cleaned)
     assert "🟢 [17:46:05] Подключение с 198.51.100.50" in cleaned
     assert "<table" not in cleaned
 
