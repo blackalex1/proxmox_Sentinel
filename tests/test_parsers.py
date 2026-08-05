@@ -167,6 +167,7 @@ async def test_watcher_host_ssh_verification():
 
     # Mock is_local_bot_process to return False
     with patch("modules.proxmox.monitor.traffic.watcher.send_alert_to_admins", AsyncMock()) as mock_alert, \
+         patch("core.config.settings.router_ssh_host", ""), \
          patch("modules.router.monitor.helpers.is_local_bot_process", AsyncMock(return_value=False)), \
          patch("modules.proxmox.monitor.traffic.watcher.get_and_kill_local_or_lxc_process", AsyncMock(return_value=("ssh", 9999))):
         await handle_traffic_log_line(log_line)
