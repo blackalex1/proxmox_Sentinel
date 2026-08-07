@@ -233,9 +233,11 @@ async def test_approved_ips_functionality():
     success = await approve_ip("test_user", "192.168.1.99")
     assert success is True
     
-    # 3. Check again
+    # 3. Check again (and test case insensitivity)
     approved = await is_ip_approved("test_user", "192.168.1.99")
     assert approved is True
+    approved_upper = await is_ip_approved("Test_User", "192.168.1.99")
+    assert approved_upper is True
     
     # 4. Connecting from approved IP should not mark it as new
     sess_id_approved = await save_vpn_connect("test_user", "192.168.1.99", "2026-06-20 12:00:00", 0, 0)

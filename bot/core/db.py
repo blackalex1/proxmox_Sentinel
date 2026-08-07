@@ -302,11 +302,11 @@ def is_valid_ip_or_cidr(val: str) -> bool:
     return False
 
 async def is_ip_approved(username: str, ip: str) -> bool:
-    """Проверяет, одобрен ли IP для пользователя."""
+    """Проверяет, одобрен ли IP для пользователя (без учета регистра имени пользователя)."""
     if not is_valid_ip_or_cidr(ip):
         return False
     row = await execute_read_one(
-        "SELECT 1 FROM approved_ips WHERE username = ? AND ip = ?",
+        "SELECT 1 FROM approved_ips WHERE LOWER(username) = LOWER(?) AND ip = ?",
         (username, ip)
     )
     return row is not None
@@ -356,7 +356,7 @@ async def cleanup_orphaned_approved_ips(active_emails: set) -> int:
 
 
 async def sync_approved_ips_to_panels():
-    """Синхронизирует одобренные IP с панелями (только на тех панелях, где клиент заведен) и очищает мусор."""
+    """Синхронизирует одобренные IP с панелями (двусторонняя синхронизация) и очищает мусор."""
     try:
         from core.spectre_client import spectre_manager
         if not spectre_manager.panels:
@@ -368,13 +368,26 @@ async def sync_approved_ips_to_panels():
         active_emails = set()
         
         for c in all_clients:
-            email = c.get("email") or (c.get("client") or {}).get("email")
+            c_info = c.get("client") or {}
+            email = c.get("email") or c_info.get("email")
             p_name = c.get("panel_name")
-            if email and p_name:
+            if email:
                 active_emails.add(email)
-                for p in spectre_manager.panels.values():
-                    if p.name == p_name:
-                        client_panels_map.setdefault(email.lower(), set()).add(p)
+                if p_name:
+                    for p in spectre_manager.panels.values():
+                        if p.name == p_name:
+                            client_panels_map.setdefault(email.lower(), set()).add(p)
+                
+                # Импортируем allowed_ips с панели в локальную базу бота
+                allowed_ips_str = c_info.get("allowed_ips") or c_info.get("allowedIps") or ""
+                if allowed_ips_str:
+                    for panel_ip in allowed_ips_str.split(","):
+                        panel_ip = panel_ip.strip()
+                        if panel_ip and is_valid_ip_or_cidr(panel_ip):
+                            await execute_write(
+                                "INSERT OR IGNORE INTO approved_ips (username, ip) VALUES (?, ?)",
+                                (email, panel_ip)
+                            )
 
         # 2. Очищаем устаревший мусор (удаленных клиентов) из базы бота
         if active_emails:

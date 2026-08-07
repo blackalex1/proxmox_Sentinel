@@ -417,6 +417,9 @@ async def cmd_allow_ip_controller(message: types.Message):
         await message.reply("❌ Панели управления не подключены к контроллеру.")
         return
         
+    from core.db import approve_ip
+    await approve_ip(username, ip)
+
     success_count = 0
     for panel in spectre_manager.panels.values():
         res_ok, res = await panel.request("POST", "/api/security/allow-ip", json={"ip": ip, "email": username})
