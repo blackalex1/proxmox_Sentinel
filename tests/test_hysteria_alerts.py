@@ -105,3 +105,67 @@ async def test_check_and_send_card_delayed_active():
         
         # Clean up
         active_activity_cards.pop(key, None)
+
+
+@pytest.mark.asyncio
+async def test_singbox_connect_new_ip_alert():
+    from modules.proxmox.monitor.hysteria_alerts import process_hysteria_audit_event, active_activity_cards
+    import json
+    
+    mock_panel = AsyncMock()
+    mock_panel.name = "Proxmox-Singbox-Node"
+    
+    details_payload = json.dumps({
+        "username": "test_user_alpha",
+        "duration": "0 сек"
+    })
+    
+    mock_send = AsyncMock(return_value=AsyncMock(message_id=777))
+    mock_history = [{"ip": "198.51.100.10", "timestamp": 1234567, "duration": "10 мин"}]
+    
+    with patch("core.db.save_vpn_connect", AsyncMock(return_value="sess_sb_123")) as mock_save, \
+         patch("modules.proxmox.monitor.hysteria_alerts.check_new_ip_and_get_history", AsyncMock(return_value=(True, mock_history))) as mock_chk, \
+         patch("modules.proxmox.monitor.utils.get_geoip_info", AsyncMock(return_value="🇳🇱 Нидерланды, Амстердам")), \
+         patch("modules.proxmox.monitor.utils.send_rich_message", mock_send), \
+         patch("modules.proxmox.monitor.hysteria_alerts.get_traffic_from_api", AsyncMock(return_value=(500, 1000))), \
+         patch("modules.proxmox.monitor.hysteria_alerts.check_and_send_card_delayed", AsyncMock()):
+        
+        import time
+        await process_hysteria_audit_event(
+            panel=mock_panel,
+            action="singbox_connect",
+            client_ip="203.0.113.88",
+            log_timestamp=time.time(),
+            details_str=details_payload
+        )
+        
+        # Verify save_vpn_connect was called with Sing-box user and client IP
+        mock_save.assert_called_once()
+        args = mock_save.call_args[0]
+        assert args[0] == "test_user_alpha"
+        assert args[1] == "203.0.113.88"
+        
+        # Verify new IP check was invoked
+        mock_chk.assert_called_once_with("test_user_alpha", "203.0.113.88", "sess_sb_123")
+        
+        # Verify admin alert message was sent with buttons
+        assert mock_send.called
+        call_kwargs = mock_send.call_args.kwargs
+        call_args = mock_send.call_args[0]
+        alert_text = call_args[1] if len(call_args) > 1 else call_kwargs.get("text", "")
+        reply_markup = call_kwargs.get("reply_markup") or (call_args[2] if len(call_args) > 2 else None)
+        
+        assert "Sing-box" in alert_text or "singbox" in alert_text.lower()
+        assert "test_user_alpha" in alert_text
+        assert "203.0.113.88" in alert_text
+        assert reply_markup is not None
+        
+        # Verify callback data buttons
+        buttons_data = [btn.callback_data for row in reply_markup.inline_keyboard for btn in row]
+        assert any("approve_ip:test_user_alpha:203.0.113.88" in b for b in buttons_data)
+        assert any("block_ip:Proxmox-Singbox-Node:test_user_alpha:203.0.113.88" in b for b in buttons_data)
+        
+        # Clean up card state
+        key = ("Proxmox-Singbox-Node", "test_user_alpha", "Sing-box")
+        active_activity_cards.pop(key, None)
+
