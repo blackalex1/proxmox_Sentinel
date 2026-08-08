@@ -400,32 +400,59 @@ translation = {
     "qr_code_caption": "QR Code {protocol} ({index})",
     "lookup_error": "❌ Search error occurred: {error}",
     "unbanning_tunnel_hint": "👇 You can unblock tunnel manually in one click:",
-    "unbanning_tunnel_progress": "⏳ Unblocking tunnel...",
+    "unbanning_tunnel_progress": "⏳ <i>Unblocking tunnel across all connected nodes...</i>",
     "manual_unban_success_details": (
-        "{original_text}\n\n✅ <b>Tunnel successfully unblocked manually!</b>\n"
-        "📋 <b>Unblock Details:</b>\n{details}\n"
-        "🕒 Time: <code>{timestamp}</code>"
+        "{original_text}\n\n"
+        "━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        "🟢 <b>Tunnel successfully unblocked manually!</b>\n\n"
+        "📋 <b>Details by node and panel:</b>\n"
+        "{details}\n\n"
+        "🕒 <i>Execution time:</i> <code>{timestamp}</code> • <i>Status:</i> 🟢 <b>Active</b>"
     ),
     "manual_unban_failed_details": (
-        "{original_text}\n\n⚠️ <b>Tunnel unblocked with errors:</b>\n"
-        "📋 <b>Unblock Details:</b>\n{details}\n"
-        "🕒 Time: <code>{timestamp}</code>"
+        "{original_text}\n\n"
+        "━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        "⚠️ <b>Tunnel unblocked with warnings:</b>\n\n"
+        "📋 <b>Details by node and panel:</b>\n"
+        "{details}\n\n"
+        "🕒 <i>Execution time:</i> <code>{timestamp}</code>"
     ),
-    "manual_unban_error": "{original_text}\n\n❌ <b>Unblocking error:</b> <code>{error}</code>",
+    "manual_unban_error": (
+        "{original_text}\n\n"
+        "━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        "❌ <b>Error unblocking tunnel:</b>\n"
+        "<code>{error}</code>"
+    ),
     "ban_help": "🛑 <b>Block Client:</b>\nUse command: <code>/ban &lt;email&gt;</code>",
-    "ban_progress": "⏳ Blocking client <code>{email}</code> on all panels...",
+    "ban_progress": "⏳ <i>Blocking client <code>{email}</code> on all target panels...</i>",
     "ban_status_success": "🟢 Blocked",
     "ban_status_error": "🔴 Error",
-    "ban_success_results": "✅ <b>Results of blocking client <code>{email}</code>:</b>\n{details}",
-    "ban_failed_results": "❌ <b>Failed to block client <code>{email}</code>:</b>\n{details}",
-    "ban_error": "❌ Error occurred while blocking: {error}",
+    "ban_success_results": (
+        "🛑 <b>Client <code>{email}</code> successfully blocked!</b>\n\n"
+        "📋 <b>Details by panel:</b>\n"
+        "{details}"
+    ),
+    "ban_failed_results": (
+        "❌ <b>Failed to block client <code>{email}</code>:</b>\n\n"
+        "📋 <b>Details by panel:</b>\n"
+        "{details}"
+    ),
+    "ban_error": "❌ <b>Error occurred while blocking:</b> <code>{error}</code>",
     "unban_help": "🟢 <b>Unblock Client:</b>\nUse command: <code>/unban &lt;email&gt;</code>",
-    "unban_progress": "⏳ Unblocking client <code>{email}</code> on all panels...",
+    "unban_progress": "⏳ <i>Unblocking client <code>{email}</code> on all available panels...</i>",
     "unban_status_success": "🟢 Unblocked",
     "unban_status_error": "🔴 Error",
-    "unban_success_results": "✅ <b>Results of unblocking client <code>{email}</code>:</b>\n{details}",
-    "unban_failed_results": "❌ <b>Failed to unblock client <code>{email}</code>:</b>\n{details}",
-    "unban_error": "❌ Error occurred while unblocking: {error}",
+    "unban_success_results": (
+        "🟢 <b>Client <code>{email}</code> successfully unblocked!</b>\n\n"
+        "📋 <b>Details by panel:</b>\n"
+        "{details}"
+    ),
+    "unban_failed_results": (
+        "❌ <b>Failed to unblock client <code>{email}</code>:</b>\n\n"
+        "📋 <b>Details by panel:</b>\n"
+        "{details}"
+    ),
+    "unban_error": "❌ <b>Error occurred while unblocking:</b> <code>{error}</code>",
     "tg_2fa_approved": "✅ <b>Access successfully allowed.</b>",
     "tg_2fa_blocked": "🛑 <b>IP address blocked.</b>",
     "tg_2fa_error": "❌ Error: {error}",

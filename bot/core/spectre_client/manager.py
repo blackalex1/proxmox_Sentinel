@@ -534,20 +534,20 @@ class SpectreClientManager:
             if success:
                 success_count += 1
                 if action == "ban":
-                    status_text = "🟢 Заблокирован"
+                    status_text = "🟢 <b>Заблокирован</b>"
                 elif action == "unban":
-                    status_text = "🟢 Разблокирован"
+                    status_text = "🟢 <b>Разблокирован</b>"
                 else:
-                    status_text = "🟢 Успешно"
-                formatted_details.append(f"  • {panel_name}: {status_text} ({msg})")
+                    status_text = "🟢 <b>Успешно</b>"
+                formatted_details.append(f"  • <b>{panel_name}</b>: {status_text} <i>({msg})</i>")
             elif is_not_found:
                 not_found_count += 1
-                status_text = "⚪ Не требуется"
-                formatted_details.append(f"  • {panel_name}: {status_text} (Клиент отсутствует)")
+                status_text = "⚪ <b>Не требуется</b>"
+                formatted_details.append(f"  • <b>{panel_name}</b>: {status_text} <i>(Клиент отсутствует)</i>")
             else:
                 failure_count += 1
-                status_text = "🔴 Ошибка"
-                formatted_details.append(f"  • {panel_name}: {status_text} ({msg})")
+                status_text = "🔴 <b>Ошибка</b>"
+                formatted_details.append(f"  • <b>{panel_name}</b>: {status_text} <i>({msg})</i>")
                 
         # Общий успех: хотя бы один реальный успех и отсутствие реальных ошибок
         overall_success = (success_count > 0) and (failure_count == 0)
