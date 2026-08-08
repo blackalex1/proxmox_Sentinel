@@ -110,7 +110,9 @@ async def investigate_and_resolve_remote_attack(server, dst_ip, dpt, tunnel_emai
     
     # 2. Ищем виновника в Xray на всех панелях напрямую в их логах
     inbound_tag = None
-    for p in spectre_manager.panels.values():
+    lxc_panels = [p for p in spectre_manager.panels.values() if p.source_type == 'lxc']
+    other_panels = [p for p in spectre_manager.panels.values() if p.source_type != 'lxc']
+    for p in (lxc_panels + other_panels):
         res_conn = await spectre_manager.get_client_by_connection(
             client_ip=None,
             dst_ip=dst_ip,

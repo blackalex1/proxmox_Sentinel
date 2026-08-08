@@ -231,5 +231,46 @@ async def test_watcher_lxc_inbound_ssh_verification():
         settings.proxmox_host = original_host
 
 
+def test_log_parser_extended_window():
+    from core.spectre_client.log_parser import find_email_and_ip_in_xray_log, find_email_in_hysteria_log
+    import datetime
+
+    # Сэмулируем логи 45 секунд назад
+    old_time = (datetime.datetime.now() - datetime.timedelta(seconds=45)).strftime("%Y/%m/%d %H:%M:%S")
+    xray_log_lines = [
+        f"{old_time} [info] 192.168.1.100:54321 accepted tcp:13.251.130.193:22 [VLESS-TCP >> direct] email: attacker@xray.com"
+    ]
+
+    res = find_email_and_ip_in_xray_log(xray_log_lines, client_ip=None, dst_ip="13.251.130.193", dst_port=22)
+    assert res is not None
+    email, ip, tag = res
+    assert email == "attacker@xray.com"
+    assert tag == "VLESS-TCP >> direct"
+
+    # Hysteria log test 45s ago
+    h_time = (datetime.datetime.now() - datetime.timedelta(seconds=45)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    hysteria_log_lines = [
+        f'{{"time":"{h_time}","id":"tunnel_user","reqAddr":"13.251.130.193:22"}}'
+    ]
+    h_email = find_email_in_hysteria_log(hysteria_log_lines, dst_ip="13.251.130.193", dst_port=22)
+    assert h_email == "tunnel_user"
+
+
+def test_log_parser_bracketed_ip():
+    from core.spectre_client.log_parser import find_email_and_ip_in_xray_log
+    import datetime
+
+    now_str = datetime.datetime.now().strftime("%Y/%m/%d %H:%M:%S")
+    lines = [
+        f"{now_str} [info] 10.0.0.5:12345 accepted tcp:[13.251.130.193]:22 email: bad_user@domain.com"
+    ]
+
+    res = find_email_and_ip_in_xray_log(lines, client_ip=None, dst_ip="13.251.130.193", dst_port=22)
+    assert res is not None
+    email, ip, tag = res
+    assert email == "bad_user@domain.com"
+
+
+
 
 

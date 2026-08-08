@@ -64,6 +64,7 @@ async def test_discover_panels():
     with patch("modules.proxmox.api.proxmox", mock_proxmox), \
          patch("asyncio.create_subprocess_exec", return_value=mock_proc), \
          patch("core.config.settings.proxmox_host", "192.168.1.100:8006"), \
+         patch("core.config.settings.remote_monitor_enable", True), \
          patch("core.config.settings.remote_servers", [mock_server]), \
          patch("core.spectre_client.manager.probe_panel_url", AsyncMock(side_effect=lambda ip, port: f"http://{ip}:{port}")), \
          patch("modules.proxmox.monitor.remote.ssh.run_remote_ssh_cmd", AsyncMock(return_value=(
