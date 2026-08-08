@@ -297,6 +297,39 @@ class SpectreClientManager:
                     lines = stdout.decode('utf-8', errors='ignore').splitlines()
             except Exception as e:
                 logging.error(f"Failed to read local LXC log {log_path} for {panel.name}: {e}")
+                
+            # Fallback 1: Docker exec inside spectre-panel container on LXC
+            if not lines:
+                try:
+                    cmd = ["pct", "exec", str(panel.identifier), "--", "docker", "exec", "spectre-panel", "tail", "-n", "5000", log_path]
+                    proc = await asyncio.create_subprocess_exec(
+                        *cmd,
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.DEVNULL
+                    )
+                    stdout, _ = await proc.communicate()
+                    if proc.returncode == 0 and stdout:
+                        lines = stdout.decode('utf-8', errors='ignore').splitlines()
+                except Exception as e:
+                    logging.debug(f"Docker exec fallback failed for LXC {panel.name}: {e}")
+
+            # Fallback 2: journalctl for systemd services
+            if not lines:
+                service_unit = "xray" if "xray" in log_path.lower() else ("hysteria" if "hysteria" in log_path.lower() else "sing-box" if "sing" in log_path.lower() else None)
+                if service_unit:
+                    try:
+                        cmd = ["pct", "exec", str(panel.identifier), "--", "journalctl", "-u", service_unit, "-n", "5000", "--no-pager"]
+                        proc = await asyncio.create_subprocess_exec(
+                            *cmd,
+                            stdout=asyncio.subprocess.PIPE,
+                            stderr=asyncio.subprocess.DEVNULL
+                        )
+                        stdout, _ = await proc.communicate()
+                        if proc.returncode == 0:
+                            lines = stdout.decode('utf-8', errors='ignore').splitlines()
+                    except Exception as e:
+                        logging.debug(f"Journalctl fallback failed for LXC {panel.name} ({service_unit}): {e}")
+
         elif panel.source_type == 'vps':
             server = next((s for s in settings.remote_servers if s.get('ip') == panel.identifier), None)
             if server:
@@ -305,6 +338,16 @@ class SpectreClientManager:
                     success, stdout, _ = await run_remote_ssh_cmd(server, ["tail", "-n", "5000", log_path])
                     if success and stdout:
                         lines = stdout.splitlines()
+                    else:
+                        d_success, d_stdout, _ = await run_remote_ssh_cmd(server, [f"docker exec spectre-panel tail -n 5000 {log_path}"])
+                        if d_success and d_stdout:
+                            lines = d_stdout.splitlines()
+                        else:
+                            service_unit = "hysteria" if "hysteria" in log_path.lower() else ("xray" if "xray" in log_path.lower() else None)
+                            if service_unit:
+                                j_success, j_stdout, _ = await run_remote_ssh_cmd(server, [f"journalctl -u {service_unit} -n 5000 --no-pager"])
+                                if j_success and j_stdout:
+                                    lines = j_stdout.splitlines()
                 except Exception as e:
                     logging.error(f"Failed to read remote VPS log {log_path} for {panel.name}: {e}")
         return lines
@@ -313,7 +356,7 @@ class SpectreClientManager:
         from .log_parser import find_email_in_hysteria_log, find_client_ip_for_email_in_hysteria_log, find_email_and_ip_in_xray_log
         
         # 1. Hysteria logs search
-        hysteria_paths = ["/var/log/hysteria.log"]
+        hysteria_paths = ["/var/log/hysteria.log", "/app/bin/hysteria.log"]
         if panel.env_path:
             base_dir = panel.env_path.replace("/config/.env", "")
             hysteria_paths.append(f"{base_dir}/bin/hysteria.log")
@@ -326,11 +369,12 @@ class SpectreClientManager:
                     real_client_ip = find_client_ip_for_email_in_hysteria_log(lines, email)
                     return email, "hysteria", real_client_ip, "Hysteria2"
                     
-        # 2. Xray logs search
-        xray_paths = ["/var/log/xray/access.log", "/var/log/xray/error.log"]
+        # 2. Xray / Singbox logs search
+        xray_paths = ["/var/log/xray/access.log", "/var/log/xray/error.log", "/app/bin/xray.log", "/app/bin/singbox.log"]
         if panel.env_path:
             base_dir = panel.env_path.replace("/config/.env", "")
             xray_paths.append(f"{base_dir}/bin/xray.log")
+            xray_paths.append(f"{base_dir}/bin/singbox.log")
             
         for path in xray_paths:
             lines = await self._read_log_lines(panel, path)

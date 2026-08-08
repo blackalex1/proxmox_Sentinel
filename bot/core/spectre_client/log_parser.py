@@ -55,7 +55,7 @@ def parse_hysteria_timestamp(line: str) -> Optional[datetime.datetime]:
         pass
     return None
 
-def find_email_in_hysteria_log(lines: List[str], dst_ip: Optional[str], dst_port: int) -> Optional[str]:
+def find_email_in_hysteria_log(lines: List[str], dst_ip: Optional[str], dst_port: int, max_age_sec: int = 300) -> Optional[str]:
     dst_port_str = f":{dst_port}"
     now_local = datetime.datetime.now()
     now_utc = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
@@ -66,7 +66,7 @@ def find_email_in_hysteria_log(lines: List[str], dst_ip: Optional[str], dst_port
         if log_time:
             diff_local = abs((now_local - log_time).total_seconds())
             diff_utc = abs((now_utc - log_time).total_seconds())
-            if diff_local > 12 and diff_utc > 12:
+            if diff_local > max_age_sec and diff_utc > max_age_sec:
                 continue
             
         if dst_port_str not in line:
@@ -100,7 +100,7 @@ def find_email_in_hysteria_log(lines: List[str], dst_ip: Optional[str], dst_port
         if log_time:
             diff_local = abs((now_local - log_time).total_seconds())
             diff_utc = abs((now_utc - log_time).total_seconds())
-            if diff_local > 12 and diff_utc > 12:
+            if diff_local > max_age_sec and diff_utc > max_age_sec:
                 continue
             
         if dst_port_str not in line:
@@ -114,13 +114,13 @@ def find_email_in_hysteria_log(lines: List[str], dst_ip: Optional[str], dst_port
                 data = json.loads(json_match.group(1))
                 req_val = data.get("reqAddr") or data.get("req")
                 if req_val and ":" in req_val:
-                    dest_host = req_val.split(":")[0]
+                    dest_host = req_val.split(":")[0].strip("[]")
             except Exception:
                 pass
         if not dest_host:
             match_dest = re.search(r"->\s*(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}):\d+", line)
             if match_dest:
-                dest_host = match_dest.group(1)
+                dest_host = match_dest.group(1).strip("[]")
                 
         if dest_host and dst_ip and re.match(r"^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$", dest_host):
             if dest_host != dst_ip:
@@ -141,7 +141,7 @@ def find_email_in_hysteria_log(lines: List[str], dst_ip: Optional[str], dst_port
             
     return None
 
-def find_client_ip_for_email_in_hysteria_log(lines: List[str], email: str) -> Optional[str]:
+def find_client_ip_for_email_in_hysteria_log(lines: List[str], email: str, max_age_sec: int = 600) -> Optional[str]:
     now_local = datetime.datetime.now()
     now_utc = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
     for line in reversed(lines):
@@ -149,7 +149,7 @@ def find_client_ip_for_email_in_hysteria_log(lines: List[str], email: str) -> Op
         if log_time:
             diff_local = abs((now_local - log_time).total_seconds())
             diff_utc = abs((now_utc - log_time).total_seconds())
-            if diff_local > 300 and diff_utc > 300:
+            if diff_local > max_age_sec and diff_utc > max_age_sec:
                 continue
             
         json_match = re.search(r'(\{.*\})', line)
@@ -170,7 +170,7 @@ def find_client_ip_for_email_in_hysteria_log(lines: List[str], email: str) -> Op
                     return match.group(1)
     return None
 
-def find_email_and_ip_in_xray_log(lines: List[str], client_ip: Optional[str], dst_ip: Optional[str], dst_port: int) -> Optional[Tuple[str, Optional[str], Optional[str]]]:
+def find_email_and_ip_in_xray_log(lines: List[str], client_ip: Optional[str], dst_ip: Optional[str], dst_port: int, max_age_sec: int = 300) -> Optional[Tuple[str, Optional[str], Optional[str]]]:
     dst_port_str = f":{dst_port}"
     now_local = datetime.datetime.now()
     now_utc = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
@@ -181,7 +181,7 @@ def find_email_and_ip_in_xray_log(lines: List[str], client_ip: Optional[str], ds
         if log_time:
             diff_local = abs((now_local - log_time).total_seconds())
             diff_utc = abs((now_utc - log_time).total_seconds())
-            if diff_local > 12 and diff_utc > 12:
+            if diff_local > max_age_sec and diff_utc > max_age_sec:
                 continue
             
         if "email:" not in line:
@@ -204,7 +204,7 @@ def find_email_and_ip_in_xray_log(lines: List[str], client_ip: Optional[str], ds
         if log_time:
             diff_local = abs((now_local - log_time).total_seconds())
             diff_utc = abs((now_utc - log_time).total_seconds())
-            if diff_local > 12 and diff_utc > 12:
+            if diff_local > max_age_sec and diff_utc > max_age_sec:
                 continue
             
         if "email:" not in line:
@@ -213,7 +213,7 @@ def find_email_and_ip_in_xray_log(lines: List[str], client_ip: Optional[str], ds
             # Verify destination IP to prevent false port-only match on different IP
             match_dest = re.search(r"accepted\s+(?:tcp|udp):([^:]+):", line)
             if match_dest:
-                dest_host = match_dest.group(1)
+                dest_host = match_dest.group(1).strip("[]")
                 if dst_ip and re.match(r"^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$", dest_host):
                     if dest_host != dst_ip:
                         continue
@@ -228,3 +228,4 @@ def find_email_and_ip_in_xray_log(lines: List[str], client_ip: Optional[str], ds
                 return email, ip, inbound_tag
                 
     return None
+
