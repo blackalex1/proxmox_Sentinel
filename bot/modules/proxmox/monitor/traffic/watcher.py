@@ -186,9 +186,11 @@ async def handle_traffic_log_line(line):
             real_client_ip = None
             xray_client_email = None
             inbound_tag = None
-            if vmid == settings.vpn_vmid and not is_local and direction == 'OUT':
-                # Пауза 1.2 секунды, чтобы conntrack обновился и Xray успел сбросить буфер в access.log
-                await asyncio.sleep(1.2)
+            from core.spectre_client import spectre_manager
+            is_panel_container = (vmid == settings.vpn_vmid or spectre_manager.get_panel_by_vmid(int(vmid)) is not None)
+            if is_panel_container and not is_local and direction == 'OUT':
+                # Пауза 1.0 секунды, чтобы conntrack обновился и ядро сбросило буфер в singbox/xray/hysteria.log
+                await asyncio.sleep(1.0)
                 real_client_ip = find_real_vpn_client_ip(proto, src, dst, spt, dpt)
                 xray_client_email, inbound_tag = await find_xray_client_email(vmid, dst, dpt, real_client_ip)
 
@@ -211,26 +213,17 @@ async def handle_traffic_log_line(line):
                 desc_with_client += f" (Реальный IP VPN-клиента: {real_client_ip})"
             
             if xray_client_email:
-                client_info += f"\n👤 <b>Пользователь VPN (Spectre/Xray):</b> <code>{xray_client_email}</code>\n"
+                client_info += f"\n👤 <b>Пользователь VPN (Spectre/Xray/Sing-box):</b> <code>{xray_client_email}</code>\n"
                 desc_with_client += f" (Клиент: {xray_client_email})"
                 
-                # Авто-блокировка вредоносного клиента при критической угрозе
-                if risk_level == 'CRITICAL':
-                    from core.spectre_client import spectre_manager
-                    lxc_panel = spectre_manager.get_panel_by_vmid(int(vmid))
-                    if lxc_panel:
-                        success, res = await lxc_panel.request("POST", "/api/security/disable-client", data={"email": xray_client_email})
-                        if success and "already blocked" in res.get("msg", "").lower():
-                            logging.info("Client %s is already blocked, skipping duplicate alert", xray_client_email)
-                            return
-                        block_res = [(lxc_panel.name, success and res.get("success", False), res.get("msg", "OK"))]
-                    else:
-                        block_res = await spectre_manager.disable_client_everywhere(xray_client_email)
-                        all_already_blocked = len(block_res) > 0 and all("already blocked" in item[2].lower() or "not found" in item[2].lower() for item in block_res)
-                        if all_already_blocked:
-                            logging.info("Client %s is already blocked everywhere, skipping duplicate alert", xray_client_email)
-                            return
-                        
+                # Авто-блокировка вредоносного клиента при критической угрозе или атаке на чувствительные порты
+                if risk_level == 'CRITICAL' or dpt in settings.monitor_lxc_ports_sensitive:
+                    block_res = await spectre_manager.disable_client_everywhere(xray_client_email)
+                    all_already_blocked = len(block_res) > 0 and all("already blocked" in item[2].lower() or "not found" in item[2].lower() for item in block_res)
+                    if all_already_blocked:
+                        logging.info("Client %s is already blocked everywhere, skipping duplicate alert", xray_client_email)
+                        return
+                    
                     _, block_details = spectre_manager.parse_action_results(block_res, action="ban")
                     block_details_str = "\n".join(block_details)
                     client_info += f"\n🚨 <b>Статус авто-блокировки аккаунта:</b>\n{block_details_str}\n"
