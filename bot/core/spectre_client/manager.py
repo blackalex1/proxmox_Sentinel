@@ -360,6 +360,7 @@ class SpectreClientManager:
         if panel.env_path:
             base_dir = panel.env_path.replace("/config/.env", "")
             hysteria_paths.append(f"{base_dir}/bin/hysteria.log")
+            hysteria_paths.append(f"{base_dir}/hysteria.log")
             
         for path in hysteria_paths:
             lines = await self._read_log_lines(panel, path)
@@ -375,6 +376,8 @@ class SpectreClientManager:
             base_dir = panel.env_path.replace("/config/.env", "")
             xray_paths.append(f"{base_dir}/bin/xray.log")
             xray_paths.append(f"{base_dir}/bin/singbox.log")
+            xray_paths.append(f"{base_dir}/xray.log")
+            xray_paths.append(f"{base_dir}/singbox.log")
             
         for path in xray_paths:
             lines = await self._read_log_lines(panel, path)

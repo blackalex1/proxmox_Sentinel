@@ -105,36 +105,44 @@ async def find_xray_client_email(vmid, dst_ip, dpt, client_ip=None):
     except Exception as e:
         logging.error("error_calling_spectre_panel_api", e)
 
-    # 2. Резервный метод (поиск в xray.log Spectre Panel напрямую в LXC)
+    # 2. Резервный метод прямого поиска в логах Xray / Singbox / Hysteria 2 в LXC
     if platform.system() != 'Linux':
         return None, None
     try:
-        target_conn = f"{dst_ip}:{dpt}"
-        # Возможные пути к бинарной папке и логу Xray в LXC контейнере
+        from core.spectre_client.log_parser import find_email_and_ip_in_xray_log, find_email_in_hysteria_log
         log_paths = [
-            "/opt/spectre-panel/bin/xray.log",
+            "/home/alex/Spectre-panel/bin/singbox.log",
+            "/home/alex/Spectre-panel/bin/xray.log",
+            "/home/alex/Spectre-panel/bin/hysteria.log",
+            "/root/Spectre-panel/bin/singbox.log",
             "/root/Spectre-panel/bin/xray.log",
-            "/home/spectre-panel/bin/xray.log",
+            "/root/Spectre-panel/bin/hysteria.log",
+            "/opt/spectre-panel/bin/singbox.log",
+            "/opt/spectre-panel/bin/xray.log",
+            "/opt/spectre-panel/bin/hysteria.log",
+            "/app/bin/singbox.log",
             "/app/bin/xray.log",
-            "/opt/Spectre-panel/bin/xray.log"
+            "/app/bin/hysteria.log",
+            "/var/log/xray/access.log",
+            "/var/log/hysteria.log"
         ]
         
         for path in log_paths:
-            cmd = ["pct", "exec", str(vmid), "--", "tail", "-n", "100", path]
-            # Запускаем в треде, чтобы не блокировать асинхронный цикл
+            cmd = ["pct", "exec", str(vmid), "--", "tail", "-n", "300", path]
             def run_sync():
                 return subprocess.run(cmd, capture_output=True, text=True, timeout=2)
             res = await asyncio.to_thread(run_sync)
             if res.returncode == 0 and res.stdout:
                 lines = res.stdout.splitlines()
-                for line in reversed(lines):
-                    if target_conn in line and "email:" in line:
-                        match = re.search(r"email:\s*(\S+)", line)
-                        if match:
-                            email = match.group(1)
-                            match_tag = re.search(r"accepted\s+(?:tcp|udp):\S+\s+\[([^\]]+)\]", line)
-                            inbound_tag = match_tag.group(1) if match_tag else None
-                            return email, inbound_tag
+                if "hysteria" in path:
+                    email = find_email_in_hysteria_log(lines, dst_ip, dpt)
+                    if email:
+                        return email, "Hysteria2"
+                else:
+                    xres = find_email_and_ip_in_xray_log(lines, client_ip, dst_ip, dpt)
+                    if xres:
+                        email, ip, inbound_tag = xres
+                        return email, inbound_tag or "sing-box"
                             
     except Exception as e:
         logging.error("error_backup_searching_xray_client_email_in", e)
