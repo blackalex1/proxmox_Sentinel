@@ -175,25 +175,31 @@ def find_email_and_ip_in_xray_log(lines: List[str], client_ip: Optional[str], ds
     now_utc = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
     
     def extract_email_and_ip(line: str) -> Optional[Tuple[str, Optional[str], Optional[str]]]:
-        # 1. email: ...
-        match_email = re.search(r"email:\s*(\S+)", line)
+        # 1. sing-box format: inbound/vless[inbound-8]: [test_client_alpha] inbound connection to 198.51.100.22:22
+        match_email = re.search(r"(?:inbound/[^:]+|inbound[^:]*):\s*\[([a-zA-Z0-9_\.\-]+)\]\s+inbound connection to", line)
         if not match_email:
-            # 2. accepted tcp:... [inbound >> outbound] username
+            # 2. [test_client_alpha] inbound connection to ...
+            match_email = re.search(r"\[([a-zA-Z0-9_\.\-]+)\]\s+inbound connection to", line)
+        if not match_email:
+            # 3. email: ...
+            match_email = re.search(r"email:\s*(\S+)", line)
+        if not match_email:
+            # 4. accepted tcp:... [inbound >> outbound] username
             match_email = re.search(r"accepted\s+(?:tcp|udp):\S+\s+\[[^\]]+\]\s+([a-zA-Z0-9_\.\-]+)", line)
         if not match_email:
-            # 3. [user: ...] or user: ... or username: ...
+            # 5. [user: ...] or user: ... or username: ...
             match_email = re.search(r"(?:user|username|clientUser|auth_user):\s*([^\s,\]]+)", line)
         if not match_email:
-            # 4. JSON "user": "..." or "id": "..." or "email": "..."
+            # 6. JSON "user": "..." or "id": "..." or "email": "..."
             match_email = re.search(r'"(?:user|username|id|email|auth)"\s*:\s*"([^"]+)"', line)
         if not match_email:
-            # 5. [inbound-tag] inbound connection to ... from ... [username]
+            # 7. inbound connection to ... from ... [username]
             match_email = re.search(r"inbound connection\s+.*?\s+\[([a-zA-Z0-9_\.\-]+)\]", line)
         if not match_email:
-            # 6. sing-box [user@domain.com] or [username] tag at the end
+            # 8. sing-box [user@domain.com] or [username] tag at the end
             match_email = re.search(r"\[([a-zA-Z0-9_\.\-]+@[a-zA-Z0-9_\.\-]+|[a-zA-Z0-9_\.\-]+)\]\s*$", line)
         if not match_email:
-            # 7. Generic email pattern
+            # 9. Generic email pattern
             match_email = re.search(r"([a-zA-Z0-9_\.\-]+@[a-zA-Z0-9_\.\-]+)", line)
             
         if match_email:

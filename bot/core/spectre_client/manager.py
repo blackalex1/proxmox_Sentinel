@@ -90,6 +90,8 @@ class SpectreClientManager:
         logging.info("spectre_discovery_starting_panel_autodiscovery")
         new_panels = {}
         candidate_paths = [
+            "/home/alex/panel/config/.env",
+            "/home/alex/Spectre-panel/config/.env",
             "/opt/vpn_panel/config/.env",
             "/opt/spectre-panel/config/.env",
             "/root/Spectre-panel/config/.env",
