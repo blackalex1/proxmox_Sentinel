@@ -3,6 +3,7 @@ import platform
 import subprocess
 import re
 import logging
+import asyncio
 # No imports from utils for detect_xui_service
 
 def find_real_vpn_client_ip(proto, container_ip, dst_ip, sport, dpt):

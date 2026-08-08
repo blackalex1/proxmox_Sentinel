@@ -8,7 +8,11 @@ import subprocess
 from pathlib import Path
 from core.spectre_client.log_parser import find_email_and_ip_in_xray_log, find_email_in_hysteria_log
 
-SINGBOX_BIN = Path(r"c:\Users\black\PycharmProjects\panel + bot\Spectre-panel\bin\sing-box.exe")
+CANDIDATE_PATHS = [
+    Path(r"c:\Users\black\PycharmProjects\panel\bin\sing-box.exe"),
+    Path(r"c:\Users\black\PycharmProjects\panel + bot\Spectre-panel\bin\sing-box.exe"),
+]
+SINGBOX_BIN = next((p for p in CANDIDATE_PATHS if p.exists()), CANDIDATE_PATHS[0])
 
 
 @pytest.mark.asyncio
