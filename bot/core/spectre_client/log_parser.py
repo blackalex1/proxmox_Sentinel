@@ -175,6 +175,35 @@ def find_email_and_ip_in_xray_log(lines: List[str], client_ip: Optional[str], ds
     now_local = datetime.datetime.now()
     now_utc = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
     
+    def extract_email_and_ip(line: str) -> Optional[Tuple[str, Optional[str], Optional[str]]]:
+        # 1. email: ...
+        match_email = re.search(r"email:\s*(\S+)", line)
+        if not match_email:
+            # 2. [user: ...] or user: ... or username: ...
+            match_email = re.search(r"(?:user|username|clientUser|auth_user):\s*([^\s,\]]+)", line)
+        if not match_email:
+            # 3. JSON "user": "..." or "id": "..." or "email": "..."
+            match_email = re.search(r'"(?:user|username|id|email|auth)"\s*:\s*"([^"]+)"', line)
+        if not match_email:
+            # 4. sing-box [user@domain.com] or [username] tag at the end
+            match_email = re.search(r"\[([a-zA-Z0-9_\.\-]+@[a-zA-Z0-9_\.\-]+|[a-zA-Z0-9_\.\-]+)\]\s*$", line)
+        if not match_email:
+            # 5. Generic email pattern
+            match_email = re.search(r"([a-zA-Z0-9_\.\-]+@[a-zA-Z0-9_\.\-]+)", line)
+            
+        if match_email:
+            email = match_email.group(1).strip("[]'\"")
+            match_ip = re.search(r"(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}):\d+\s+(?:accepted|inbound connection)", line)
+            if not match_ip:
+                match_ip = re.search(r"from\s+(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})", line)
+            ip = match_ip.group(1) if match_ip else client_ip
+            match_tag = re.search(r"(?:accepted|connection)\s+(?:tcp|udp):\S+\s+\[([^\]]+)\]", line)
+            if not match_tag:
+                match_tag = re.search(r"\[([^\]]+)\]\s+inbound connection", line)
+            inbound_tag = match_tag.group(1) if match_tag else "proxy"
+            return email, ip, inbound_tag
+        return None
+    
     # Pass 1: Match port and IP/client_ip (main search)
     for line in reversed(lines):
         log_time = parse_xray_timestamp(line)
@@ -184,19 +213,11 @@ def find_email_and_ip_in_xray_log(lines: List[str], client_ip: Optional[str], ds
             if diff_local > max_age_sec and diff_utc > max_age_sec:
                 continue
             
-        if "email:" not in line:
-            continue
-            
         if dst_port_str in line:
-            if (dst_ip and dst_ip in line) or (client_ip and client_ip in line):
-                match_email = re.search(r"email:\s*(\S+)", line)
-                if match_email:
-                    email = match_email.group(1)
-                    match_ip = re.search(r"(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}):\d+\s+accepted", line)
-                    ip = match_ip.group(1) if match_ip else None
-                    match_tag = re.search(r"accepted\s+(?:tcp|udp):\S+\s+\[([^\]]+)\]", line)
-                    inbound_tag = match_tag.group(1) if match_tag else None
-                    return email, ip, inbound_tag
+            if (dst_ip and dst_ip in line) or (client_ip and client_ip in line) or not dst_ip:
+                res = extract_email_and_ip(line)
+                if res:
+                    return res
                     
     # Pass 2: Match port only (fallback search with destination IP verification)
     for line in reversed(lines):
@@ -207,25 +228,18 @@ def find_email_and_ip_in_xray_log(lines: List[str], client_ip: Optional[str], ds
             if diff_local > max_age_sec and diff_utc > max_age_sec:
                 continue
             
-        if "email:" not in line:
-            continue
         if dst_port_str in line:
             # Verify destination IP to prevent false port-only match on different IP
-            match_dest = re.search(r"accepted\s+(?:tcp|udp):([^:]+):", line)
+            match_dest = re.search(r"(?:accepted|connection)\s+(?:tcp|udp):([^:]+):", line)
             if match_dest:
                 dest_host = match_dest.group(1).strip("[]")
                 if dst_ip and re.match(r"^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$", dest_host):
                     if dest_host != dst_ip:
                         continue
                         
-            match_email = re.search(r"email:\s*(\S+)", line)
-            if match_email:
-                email = match_email.group(1)
-                match_ip = re.search(r"(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}):\d+\s+accepted", line)
-                ip = match_ip.group(1) if match_ip else None
-                match_tag = re.search(r"accepted\s+(?:tcp|udp):\S+\s+\[([^\]]+)\]", line)
-                inbound_tag = match_tag.group(1) if match_tag else None
-                return email, ip, inbound_tag
+            res = extract_email_and_ip(line)
+            if res:
+                return res
                 
     return None
 

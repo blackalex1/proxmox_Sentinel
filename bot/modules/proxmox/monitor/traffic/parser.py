@@ -87,7 +87,7 @@ def classify_connection(event):
                 if is_whitelisted:
                     return ('INFO', 'VPN-транзит (Безопасный OUT)', f'Пересылка безопасного веб-трафика VPN-клиента на порт {dpt}')
                 elif is_sensitive:
-                    return ('WARNING', f'⚠️ VPN-клиент: запрос на sensitive порт :{dpt}', f'Внимание: Подключенный VPN-клиент инициировал исходящий запрос к чувствительному порту {dpt} внешней сети ({dst})')
+                    return ('CRITICAL', f'🚨 VPN-клиент: атака на sensitive порт :{dpt}', f'ОПАСНОСТЬ: Подключенный VPN-клиент инициировал исходящую атаку / брутфорс на чувствительный порт {dpt} внешней сети ({dst})')
                 else:
                     if is_private_ip(dst):
                         return ('INFO', 'VPN-транзит (Локальный OUT)', f'Локальный запрос VPN-клиента на порт {dpt} внутри подсети')
