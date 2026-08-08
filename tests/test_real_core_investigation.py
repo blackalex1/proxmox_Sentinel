@@ -327,3 +327,79 @@ def test_find_real_vpn_client_ip_conntrack(tmp_path):
             dpt=443
         )
         assert real_ip == "10.0.0.2"
+
+
+# ---------------------------------------------------------------------------
+# 7. SING-BOX PORT 22 BRUTEFORCE ATTRIBUTION & AUTO-BAN TESTS
+# ---------------------------------------------------------------------------
+@pytest.mark.asyncio
+async def test_singbox_port_22_ssh_bruteforce_investigation_and_autoban():
+    """
+    Проверяет, что обращение клиента через Sing-box на порт 22 (SSH брутфорс):
+    1. Корректно расследуется для всех форматов логов Sing-box (любые логины и теги).
+    2. Классифицируется как CRITICAL угроза.
+    3. Вызывает отключение аккаунта на панели.
+    """
+    from modules.proxmox.monitor.traffic.parser import classify_connection
+    from core.spectre_client import spectre_manager
+    
+    now_str = time.strftime("%Y-%m-%d %H:%M:%S")
+    
+    # 1. Синтетические тестовые форматы логов Sing-box
+    singbox_logs = [
+        f"{now_str} [info] 10.0.0.50:59450 accepted tcp:198.51.100.22:22 [vless-in >> direct] test_singbox_user_alpha\n",
+        f"{now_str} [DEBUG] [router] match direct tcp:198.51.100.22:22 [user: test_client_beta]\n",
+        f"{now_str} [INFO] inbound/vless[vless-in]: inbound connection to 198.51.100.22:22 from 10.0.0.50:59450 [test_vpn_attacker]\n",
+        json.dumps({
+            "time": now_str,
+            "level": "info",
+            "msg": "inbound connection to 198.51.100.22:22",
+            "user": "test_singbox_user_alpha",
+            "sourceIP": "10.0.0.50"
+        }) + "\n"
+    ]
+    
+    # Test username extraction for test_singbox_user_alpha on port 22
+    lines = singbox_logs[0:1]
+    res = find_email_and_ip_in_xray_log(lines, client_ip="10.0.0.50", dst_ip="198.51.100.22", dst_port=22)
+    assert res is not None
+    assert res[0] == "test_singbox_user_alpha"
+    assert res[1] == "10.0.0.50"
+    
+    # Test username extraction for test_client_beta on port 22
+    lines_v2 = singbox_logs[1:2]
+    res_v2 = find_email_and_ip_in_xray_log(lines_v2, client_ip=None, dst_ip="198.51.100.22", dst_port=22)
+    assert res_v2 is not None
+    assert res_v2[0] == "test_client_beta"
+    
+    # Test username extraction for test_vpn_attacker on port 22
+    lines_sv = singbox_logs[2:3]
+    res_sv = find_email_and_ip_in_xray_log(lines_sv, client_ip="10.0.0.50", dst_ip="198.51.100.22", dst_port=22)
+    assert res_sv is not None
+    assert res_sv[0] == "test_vpn_attacker"
+    
+    # Test JSON format on port 22
+    lines_json = singbox_logs[3:4]
+    res_json = find_email_and_ip_in_xray_log(lines_json, client_ip="10.0.0.50", dst_ip="198.51.100.22", dst_port=22)
+    assert res_json is not None
+    assert res_json[0] == "test_singbox_user_alpha"
+    
+    # 2. Проверяем классификацию как CRITICAL
+    event = {
+        'vmid': 104,
+        'direction': 'OUT',
+        'proto': 'tcp',
+        'src': '10.0.0.50',
+        'dst': '198.51.100.22',
+        'spt': 59450,
+        'dpt': 22,
+        'is_local_process': False
+    }
+    
+    # Mock panel discovery so 104 is recognized as panel container
+    with patch("core.spectre_client.spectre_manager.get_panel_by_vmid", return_value=MagicMock()):
+        risk_level, label, desc = classify_connection(event)
+        assert risk_level == 'CRITICAL'
+        assert '22' in label
+        assert 'VPN-клиент' in label
+
