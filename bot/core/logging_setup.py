@@ -56,6 +56,16 @@ def setup_logging():
         datefmt='%Y-%m-%d %H:%M:%S'
     )
 
+    # Определяем уровень логирования из настроек или DEBUG по умолчанию
+    target_level = logging.DEBUG
+    try:
+        from core.config import settings
+        level_str = getattr(settings, "log_level", "DEBUG")
+        if isinstance(level_str, str):
+            target_level = getattr(logging, level_str.upper(), logging.DEBUG)
+    except Exception:
+        target_level = logging.DEBUG
+
     # 1. Общий ротируемый файловый хэндлер (макс 10 МБ на файл, храним до 5 бэкапов)
     file_handler = RotatingFileHandler(
         log_file,
@@ -64,7 +74,7 @@ def setup_logging():
         encoding='utf-8'
     )
     file_handler.setFormatter(log_formatter)
-    file_handler.setLevel(logging.INFO)
+    file_handler.setLevel(target_level)
 
     # 2. Выделенный ротируемый файловый хэндлер для ВАРНИНГОВ и АЛЕРТОВ (макс 50 МБ на файл)
     # Записывает логи уровней WARNING, ERROR и CRITICAL
@@ -80,11 +90,11 @@ def setup_logging():
     # 3. Консольный хэндлер
     console_handler = logging.StreamHandler()
     console_handler.setFormatter(log_formatter)
-    console_handler.setLevel(logging.INFO)
+    console_handler.setLevel(target_level)
 
     # Настраиваем корневой логгер
     root_logger = logging.getLogger()
-    root_logger.setLevel(logging.INFO)
+    root_logger.setLevel(target_level)
     
     # Очищаем старые хэндлеры, чтобы избежать дублирования записей при перезапуске
     root_logger.handlers = []

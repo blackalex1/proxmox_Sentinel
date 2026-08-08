@@ -400,32 +400,59 @@ translation = {
     "qr_code_caption": "QR-код {protocol} ({index})",
     "lookup_error": "❌ Произошла ошибка при поиске: {error}",
     "unbanning_tunnel_hint": "👇 Вы можете разблокировать туннель вручную в один клик:",
-    "unbanning_tunnel_progress": "⏳ Выполняется разблокировка туннеля...",
+    "unbanning_tunnel_progress": "⏳ <i>Выполняется разблокировка туннеля на всех связанных нодах...</i>",
     "manual_unban_success_details": (
-        "{original_text}\n\n✅ <b>Туннель успешно разблокирован вручную!</b>\n"
-        "📋 <b>Детали разблокировки:</b>\n{details}\n"
-        "🕒 Время: <code>{timestamp}</code>"
+        "{original_text}\n\n"
+        "━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        "🟢 <b>Туннель успешно разблокирован вручную!</b>\n\n"
+        "📋 <b>Детализация по нодам и панелям:</b>\n"
+        "{details}\n\n"
+        "🕒 <i>Время выполнения:</i> <code>{timestamp}</code> • <i>Статус:</i> 🟢 <b>Активен</b>"
     ),
     "manual_unban_failed_details": (
-        "{original_text}\n\n⚠️ <b>Туннель разблокирован с ошибками:</b>\n"
-        "📋 <b>Детали разблокировки:</b>\n{details}\n"
-        "🕒 Время: <code>{timestamp}</code>"
+        "{original_text}\n\n"
+        "━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        "⚠️ <b>Туннель разблокирован с предупреждениями:</b>\n\n"
+        "📋 <b>Детализация по нодам и панелям:</b>\n"
+        "{details}\n\n"
+        "🕒 <i>Время выполнения:</i> <code>{timestamp}</code>"
     ),
-    "manual_unban_error": "{original_text}\n\n❌ <b>Ошибка при разблокировке:</b> <code>{error}</code>",
+    "manual_unban_error": (
+        "{original_text}\n\n"
+        "━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        "❌ <b>Ошибка при разблокировке туннеля:</b>\n"
+        "<code>{error}</code>"
+    ),
     "ban_help": "🛑 <b>Блокировка клиента:</b>\nИспользуйте команду: <code>/ban &lt;email&gt;</code>",
-    "ban_progress": "⏳ Блокировка клиента <code>{email}</code> на всех панелях...",
+    "ban_progress": "⏳ <i>Блокировка клиента <code>{email}</code> на всех целевых панелях...</i>",
     "ban_status_success": "🟢 Заблокирован",
     "ban_status_error": "🔴 Ошибка",
-    "ban_success_results": "✅ <b>Результаты блокировки клиента <code>{email}</code>:</b>\n{details}",
-    "ban_failed_results": "❌ <b>Не удалось заблокировать клиента <code>{email}</code>:</b>\n{details}",
-    "ban_error": "❌ Произошла ошибка при блокировке: {error}",
+    "ban_success_results": (
+        "🛑 <b>Клиент <code>{email}</code> успешно заблокирован!</b>\n\n"
+        "📋 <b>Детализация по панелям:</b>\n"
+        "{details}"
+    ),
+    "ban_failed_results": (
+        "❌ <b>Не удалось заблокировать клиента <code>{email}</code>:</b>\n\n"
+        "📋 <b>Детализация по панелям:</b>\n"
+        "{details}"
+    ),
+    "ban_error": "❌ <b>Произошла ошибка при блокировке:</b> <code>{error}</code>",
     "unban_help": "🟢 <b>Разблокировка клиента:</b>\nИспользуйте команду: <code>/unban &lt;email&gt;</code>",
-    "unban_progress": "⏳ Разблокировка клиента <code>{email}</code> на всех исполняемых панелях...",
+    "unban_progress": "⏳ <i>Разблокировка клиента <code>{email}</code> на всех доступных панелях...</i>",
     "unban_status_success": "🟢 Разблокирован",
     "unban_status_error": "🔴 Ошибка",
-    "unban_success_results": "✅ <b>Результаты разблокировки клиента <code>{email}</code>:</b>\n{details}",
-    "unban_failed_results": "❌ <b>Не удалось разблокировать клиента <code>{email}</code>:</b>\n{details}",
-    "unban_error": "❌ Произошла ошибка при разблокировке: {error}",
+    "unban_success_results": (
+        "🟢 <b>Клиент <code>{email}</code> успешно разблокирован!</b>\n\n"
+        "📋 <b>Детализация по панелям:</b>\n"
+        "{details}"
+    ),
+    "unban_failed_results": (
+        "❌ <b>Не удалось разблокировать клиента <code>{email}</code>:</b>\n\n"
+        "📋 <b>Детализация по панелям:</b>\n"
+        "{details}"
+    ),
+    "unban_error": "❌ <b>Произошла ошибка при разблокировке:</b> <code>{error}</code>",
     "tg_2fa_approved": "✅ <b>Вход успешно разрешен.</b>",
     "tg_2fa_blocked": "🛑 <b>IP-адрес заблокирован.</b>",
     "tg_2fa_error": "❌ Ошибка: {error}",
