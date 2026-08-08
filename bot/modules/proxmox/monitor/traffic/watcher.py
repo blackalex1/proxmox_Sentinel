@@ -218,6 +218,17 @@ async def handle_traffic_log_line(line):
                 
                 # Авто-блокировка вредоносного клиента при критической угрозе или атаке на чувствительные порты
                 if risk_level == 'CRITICAL' or dpt in settings.monitor_lxc_ports_sensitive:
+                    if vmid != 0:
+                        try:
+                            proc_drop = await asyncio.create_subprocess_exec(
+                                "pct", "exec", str(vmid), "--", "curl", "-s", "-X", "DELETE", "http://127.0.0.1:9090/connections",
+                                stdout=asyncio.subprocess.DEVNULL,
+                                stderr=asyncio.subprocess.DEVNULL
+                            )
+                            await asyncio.wait_for(proc_drop.wait(), timeout=2.0)
+                        except Exception:
+                            pass
+                            
                     block_res = await spectre_manager.disable_client_everywhere(xray_client_email)
                     all_already_blocked = len(block_res) > 0 and all("already blocked" in item[2].lower() or "not found" in item[2].lower() for item in block_res)
                     if all_already_blocked:
