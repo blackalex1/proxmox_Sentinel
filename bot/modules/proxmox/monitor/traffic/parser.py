@@ -11,6 +11,17 @@ def find_kernel_log_path():
             return p
     return None
 
+def is_vpn_vmid(vmid: int) -> bool:
+    if vmid == settings.vpn_vmid:
+        return True
+    try:
+        from core.spectre_client import spectre_manager
+        if spectre_manager.get_panel_by_vmid(int(vmid)) is not None:
+            return True
+    except Exception:
+        pass
+    return False
+
 def classify_connection(event):
     """
     Классифицирует сетевое подключение по уровню угрозы и типу.
@@ -51,8 +62,8 @@ def classify_connection(event):
                 return ('CRITICAL', f'🚨 Исходящий запрос Хоста на sensitive порт :{dpt}', f'КРИТИЧЕСКИЙ РИСК: Хост Proxmox VE обратился к чувствительному порту {dpt} внешнего узла {dst}!')
         return ('INFO', 'Трафик Хоста', f'Соединение с Хостом на порт {dpt}')
 
-    # 1. Проверяем, является ли это контейнером с VPN
-    if vmid == settings.vpn_vmid:
+    # 1. Проверяем, является ли это контейнером с VPN / Spectre Panel
+    if is_vpn_vmid(vmid):
         is_local = event.get('is_local_process', False)
         
         if direction == 'IN':
