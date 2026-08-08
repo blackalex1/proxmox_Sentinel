@@ -353,6 +353,17 @@ class SpectreClientManager:
         return lines
 
     async def _get_client_from_panel_logs(self, panel: SpectrePanelInstance, client_ip: Optional[str], dst_ip: Optional[str], port: int) -> Optional[Tuple[str, str, Optional[str], Optional[str]]]:
+        # 0. Сначала опрашиваем сам быстрый API панели
+        try:
+            success, res_api = await panel.request("GET", "/api/security/client-by-connection", params={"client_ip": client_ip or "", "dst_ip": dst_ip or "", "port": port})
+            if success and res_api.get("success") and res_api.get("email"):
+                email = res_api.get("email")
+                source = res_api.get("source", "proxy")
+                real_client_ip = res_api.get("client_ip", client_ip)
+                return email, source, real_client_ip, source
+        except Exception as e:
+            logging.debug(f"API client-by-connection fallback for {panel.name}: {e}")
+            
         from .log_parser import find_email_in_hysteria_log, find_client_ip_for_email_in_hysteria_log, find_email_and_ip_in_xray_log
         
         # 1. Hysteria logs search
