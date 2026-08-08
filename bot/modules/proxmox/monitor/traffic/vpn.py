@@ -111,19 +111,35 @@ async def find_xray_client_email(vmid, dst_ip, dpt, client_ip=None):
     try:
         from core.spectre_client.log_parser import find_email_and_ip_in_xray_log, find_email_in_hysteria_log
         log_paths = [
+            "/home/alex/panel/bin/singbox.log",
+            "/home/alex/panel/bin/xray.log",
+            "/home/alex/panel/bin/hysteria.log",
+            "/home/alex/panel/singbox.log",
+            "/home/alex/panel/xray.log",
+            "/home/alex/panel/hysteria.log",
             "/home/alex/Spectre-panel/bin/singbox.log",
             "/home/alex/Spectre-panel/bin/xray.log",
             "/home/alex/Spectre-panel/bin/hysteria.log",
-            "/root/Spectre-panel/bin/singbox.log",
-            "/root/Spectre-panel/bin/xray.log",
-            "/root/Spectre-panel/bin/hysteria.log",
+            "/home/alex/Spectre-panel/singbox.log",
+            "/home/alex/Spectre-panel/xray.log",
+            "/home/alex/Spectre-panel/hysteria.log",
             "/opt/spectre-panel/bin/singbox.log",
             "/opt/spectre-panel/bin/xray.log",
             "/opt/spectre-panel/bin/hysteria.log",
+            "/opt/spectre-panel/singbox.log",
+            "/opt/spectre-panel/xray.log",
+            "/opt/spectre-panel/hysteria.log",
+            "/root/panel/bin/singbox.log",
+            "/root/panel/bin/xray.log",
+            "/root/panel/bin/hysteria.log",
+            "/root/Spectre-panel/bin/singbox.log",
+            "/root/Spectre-panel/bin/xray.log",
+            "/root/Spectre-panel/bin/hysteria.log",
             "/app/bin/singbox.log",
             "/app/bin/xray.log",
             "/app/bin/hysteria.log",
             "/var/log/xray/access.log",
+            "/var/log/singbox.log",
             "/var/log/hysteria.log"
         ]
         
