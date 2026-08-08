@@ -398,6 +398,25 @@ class SpectreClientManager:
                     email, ip, inbound_tag = res
                     return email, "xray", ip, inbound_tag
                     
+        # 3. Clash API query (for active / recent sing-box connections)
+        if panel.source_type == 'lxc':
+            try:
+                cmd = ["pct", "exec", str(panel.identifier), "--", "curl", "-s", "--max-time", "1", "http://127.0.0.1:9090/connections"]
+                proc = await asyncio.create_subprocess_exec(*cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL)
+                stdout, _ = await proc.communicate()
+                if proc.returncode == 0 and stdout:
+                    clash_data = json.loads(stdout.decode('utf-8', errors='ignore'))
+                    for conn in clash_data.get("connections", []):
+                        meta = conn.get("metadata", {})
+                        c_dst = meta.get("destinationIP") or meta.get("host")
+                        c_dpt = meta.get("destinationPort")
+                        if (not dst_ip or c_dst == dst_ip) and str(c_dpt) == str(port):
+                            user = meta.get("inboundUser") or meta.get("user") or conn.get("user")
+                            if user:
+                                return user, "singbox", meta.get("sourceIP", client_ip), meta.get("inboundTag", "sing-box")
+            except Exception as e:
+                logging.debug(f"Clash API query error for LXC {panel.name}: {e}")
+                
         return None
 
     async def get_client_by_connection(self, client_ip: Optional[str], dst_ip: Optional[str], port: int, source_type: str, source_id: str) -> Optional[Tuple[str, SpectrePanelInstance, str, Optional[str], Optional[str]]]:
