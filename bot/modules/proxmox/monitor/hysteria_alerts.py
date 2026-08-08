@@ -306,7 +306,7 @@ async def process_hysteria_audit_event(panel, action, client_ip, log_timestamp, 
             # Start background task to process send/noise checks after delay
             asyncio.create_task(check_and_send_card_delayed(key, session_id))
             
-    elif action in ("xray_disconnect", "hysteria_disconnect"):
+    elif action in ("xray_disconnect", "hysteria_disconnect", "singbox_disconnect"):
         # Записываем событие отключения в SQLite БД
         try:
             from core.db import save_vpn_disconnect
