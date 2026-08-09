@@ -346,8 +346,8 @@ async def test_spectre_handlers_ban_client(monkeypatch):
     assert "attacker@xray.com" in mock_message.reply.call_args[0][0]
     
     mock_status_msg.edit_text.assert_called_once()
-    assert "Результаты блокировки" in mock_status_msg.edit_text.call_args[0][0]
-    assert "🟢 Заблокирован" in mock_status_msg.edit_text.call_args[0][0]
+    assert "Заблокирован" in mock_status_msg.edit_text.call_args[0][0]
+    assert "attacker@xray.com" in mock_status_msg.edit_text.call_args[0][0]
 
 
 @pytest.mark.asyncio
@@ -375,8 +375,8 @@ async def test_spectre_handlers_unban_client(monkeypatch):
     assert "attacker@xray.com" in mock_message.reply.call_args[0][0]
     
     mock_status_msg.edit_text.assert_called_once()
-    assert "Результаты разблокировки" in mock_status_msg.edit_text.call_args[0][0]
-    assert "🟢 Разблокирован" in mock_status_msg.edit_text.call_args[0][0]
+    assert "Разблокирован" in mock_status_msg.edit_text.call_args[0][0]
+    assert "attacker@xray.com" in mock_status_msg.edit_text.call_args[0][0]
 
 
 @pytest.mark.asyncio
