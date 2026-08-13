@@ -187,7 +187,22 @@ async def main():
         from aiogram.client.session.aiohttp import AiohttpSession
         
         if primary_proxy_endpoint:
-            is_alive, _ = await proxy_rotator.test_proxy_alive(primary_proxy_endpoint, timeout=4.0, verbose=True)
+            is_local = "127.0.0.1" in primary_proxy_endpoint or "localhost" in primary_proxy_endpoint
+            init_retries = 5 if is_local else 2
+            init_timeout = 8.0 if is_local else 4.0
+
+            is_alive = False
+            for attempt in range(init_retries):
+                if attempt > 0:
+                    await asyncio.sleep(2.0)
+                is_alive, _ = await proxy_rotator.test_proxy_alive(
+                    primary_proxy_endpoint,
+                    timeout=init_timeout,
+                    verbose=(attempt == init_retries - 1)
+                )
+                if is_alive:
+                    break
+
             if not is_alive:
                 logging.warning("proxy_monitor_lost_connection_to_my_proxy")
                 new_proxy = await proxy_rotator.get_working_proxy()
@@ -218,13 +233,27 @@ async def main():
     from core.db import sync_approved_ips_to_panels
     asyncio.create_task(sync_approved_ips_to_panels(), name="sync_approved_ips_to_panels")
 
-    # Запуск пулинга
+    # Запуск пулинга с авто-восстановлением при сетевых сбоях
+    from aiogram.exceptions import TelegramNetworkError
+    from aiohttp.client_exceptions import ClientOSError
+
     try:
-        try:
-            await bot.delete_webhook(drop_pending_updates=True)
-        except Exception as e:
-            logging.error("error_deleting_webhook", e)
-        await dp.start_polling(bot)
+        while True:
+            try:
+                try:
+                    await bot.delete_webhook(drop_pending_updates=True)
+                except Exception as e:
+                    logging.error("error_deleting_webhook", e)
+                await dp.start_polling(bot)
+                break
+            except (TelegramNetworkError, ClientOSError, asyncio.TimeoutError, ConnectionResetError) as net_err:
+                logging.warning("polling_network_error_reconnecting", net_err)
+                await asyncio.sleep(5)
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                logging.error("polling_unexpected_error_reconnecting", e)
+                await asyncio.sleep(5)
     finally:
         logging.info("stopping_all_background_services")
         current_task = asyncio.current_task()
