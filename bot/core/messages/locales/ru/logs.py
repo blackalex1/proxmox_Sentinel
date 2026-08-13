@@ -196,6 +196,8 @@ translation = {
     "outbox_message_successfully_edited_as_rich": "[Outbox] Сообщение для %s (ID сообщения: %s) успешно отредактировано как Rich Message (%s/%s).",
     "outbox_message_successfully_edited_queue": "[Outbox] Сообщение для %s (ID сообщения: %s) успешно отредактировано (%s/%s).",
     "outbox_network_failure_editing_message_redirecting": "[Outbox] Сбой сети при редактировании сообщения для %s (ID сообщения: %s) (%s). Перенаправляем в исходящую очередь...",
+    "polling_network_error_reconnecting": "[Polling Loop] Сетевой сбой при пуллинге Telegram (%s). Повторная попытка через 5 секунд...",
+    "polling_unexpected_error_reconnecting": "[Polling Loop] Непредвиденная ошибка при пуллинге Telegram (%s). Повторная попытка через 5 секунд...",
     "port_traffic_monitoring_is_only_available_on": "Трафик портов: Мониторинг доступен только на Linux.",
     "private_key_successfully_copied_from_to": "Приватный ключ успешно скопирован из %s в %s",
     "checking_proxy_batch_items": "Проверка батча прокси #%s (%s шт)...",

@@ -196,6 +196,8 @@ translation = {
     "outbox_message_successfully_edited_as_rich": "[Outbox] Message for %s (Message ID: %s) successfully edited as Rich Message (%s/%s).",
     "outbox_message_successfully_edited_queue": "[Outbox] Message for %s (Message ID: %s) successfully edited (%s/%s).",
     "outbox_network_failure_editing_message_redirecting": "[Outbox] Network failure editing message for %s (Message ID: %s) (%s). Redirecting to outbox queue...",
+    "polling_network_error_reconnecting": "[Polling Loop] Network error during Telegram polling (%s). Retrying in 5 seconds...",
+    "polling_unexpected_error_reconnecting": "[Polling Loop] Unexpected error during Telegram polling (%s). Retrying in 5 seconds...",
     "port_traffic_monitoring_is_only_available_on": "Port traffic: Monitoring is only available on Linux.",
     "private_key_successfully_copied_from_to": "Private key successfully copied from %s to %s",
     "checking_proxy_batch_items": "Checking proxy batch #%s (%s items)...",
