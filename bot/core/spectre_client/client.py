@@ -28,7 +28,7 @@ async def probe_panel_url(ip: str, port: str) -> str:
     """
     connector = aiohttp.TCPConnector(ssl=False)
     async with aiohttp.ClientSession(connector=connector) as session:
-        for proto in ["https", "http"]:
+        for proto in ["http", "https"]:
             url = f"{proto}://{ip}:{port}"
             try:
                 async with session.get(url, timeout=2) as response:
@@ -38,7 +38,7 @@ async def probe_panel_url(ip: str, port: str) -> str:
                 continue
             except Exception:
                 continue
-    return f"https://{ip}:{port}"
+    return f"http://{ip}:{port}"
 
 
 def normalize_url(url: str) -> Optional[Tuple[str, int]]:
@@ -101,6 +101,28 @@ class SpectrePanelInstance:
                         text = await response.text()
                         logging.warning("spectre_api_error", self.name, response.status, text[:200])
                         return False, {"error": f"HTTP {response.status}", "details": text}
+        except (aiohttp.ClientConnectorError, aiohttp.ClientSSLError, aiohttp.ServerDisconnectedError) as e:
+            # Резервная попытка с альтернативным протоколом (http <-> https)
+            alt_scheme = "http" if self.url.startswith("https://") else "https"
+            alt_url = f"{alt_scheme}://{self.url.split('://', 1)[1]}"
+            alt_full_url = f"{alt_url}/{path.lstrip('/')}"
+            try:
+                async with aiohttp.ClientSession(connector=aiohttp.TCPConnector(ssl=False)) as alt_session:
+                    async with alt_session.request(method, alt_full_url, headers=headers, timeout=5, **kwargs) as response:
+                        if response.status == 200:
+                            self.url = alt_url
+                            try:
+                                return True, await response.json()
+                            except Exception:
+                                text = await response.text()
+                                try:
+                                    return True, json.loads(text)
+                                except Exception:
+                                    return True, {"raw_content": text}
+            except Exception:
+                pass
+            logging.error("spectre_api_exception_during_request", self.name, e)
+            return False, {"error": str(e)}
         except Exception as e:
             logging.error("spectre_api_exception_during_request", self.name, e)
             return False, {"error": str(e)}
