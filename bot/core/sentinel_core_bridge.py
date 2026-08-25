@@ -14,6 +14,7 @@ _SENTINEL_LIB_TRIED: bool = False
 
 def _get_sentinel_core_bin() -> str:
     """Finds the sentinel-core binary across standard relative and system paths."""
+    import shutil
     base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # bot/
     project_root = os.path.dirname(base_dir)  # controller/
 
@@ -23,6 +24,9 @@ def _get_sentinel_core_bin() -> str:
     candidate_paths = [
         os.path.join(base_dir, "bin", bin_name),
         os.path.join(project_root, "bin", bin_name),
+        "/usr/local/bin/sentinel-core",
+        "/usr/bin/sentinel-core",
+        "/opt/sentinel-core/bin/sentinel-core",
         os.path.join(os.path.dirname(project_root), "sentinel_core", bin_name),
         os.path.join(os.path.dirname(project_root), "sentinel_core", "dist", bin_name),
         os.path.join(os.path.dirname(project_root), "sentinel_core", "bin", bin_name),
@@ -32,9 +36,18 @@ def _get_sentinel_core_bin() -> str:
 
     for p in candidate_paths:
         if os.path.isfile(p):
+            if os.name != 'nt' and not os.access(p, os.X_OK):
+                try:
+                    os.chmod(p, 0o755)
+                except Exception:
+                    pass
             return p
 
-    return bin_name
+    which_path = shutil.which(bin_name) or shutil.which("sentinel-core")
+    if which_path:
+        return which_path
+
+    return os.path.join(base_dir, "bin", bin_name)
 
 
 def _find_sentinel_core_lib_path() -> Optional[str]:
@@ -55,6 +68,8 @@ def _find_sentinel_core_lib_path() -> Optional[str]:
     candidate_dirs = [
         os.path.join(base_dir, "bin"),
         os.path.join(project_root, "bin"),
+        "/usr/local/lib",
+        "/usr/lib",
         os.path.join(os.path.dirname(project_root), "sentinel_core"),
         os.path.join(os.path.dirname(project_root), "sentinel_core", "bin"),
         os.path.join(os.path.dirname(project_root), "panel", "bin"),
@@ -65,6 +80,7 @@ def _find_sentinel_core_lib_path() -> Optional[str]:
             p = os.path.join(d, name)
             if os.path.isfile(p):
                 return p
+
 
     try:
         from ctypes.util import find_library
@@ -186,7 +202,17 @@ def _ffi_call_json(func_name: str, *args) -> Optional[Any]:
 
 def run_core_command(args: List[str], input_data: Optional[str] = None) -> Dict[str, Any]:
     """Executes sentinel-core CLI with given args and returns parsed JSON output or raw string."""
+    import shutil
     bin_path = _get_sentinel_core_bin()
+    if not os.path.isabs(bin_path) and not os.path.exists(bin_path):
+        which_p = shutil.which(bin_path)
+        if which_p:
+            bin_path = which_p
+
+    if not os.path.exists(bin_path) and not shutil.which(bin_path):
+        logger.debug("sentinel-core binary not found at '%s', skipping command", bin_path)
+        return {"error": f"sentinel-core binary not found at '{bin_path}'"}
+
     cmd = [bin_path] + args
     try:
         proc = subprocess.Popen(
