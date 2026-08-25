@@ -87,17 +87,22 @@ class SpectreClientManager:
         """
         Производит автоматический поиск Spectre Panel на Proxmox LXC и удаленных VPS.
         """
-        logging.info("spectre_discovery_starting_panel_autodiscovery")
+        logging.info("sentinel_discovery_starting_panel_autodiscovery")
         new_panels = {}
         candidate_paths = [
+            "/opt/sentinel-panel/config/.env",
+            "/home/alex/sentinel-panel/config/.env",
             "/home/alex/panel/config/.env",
-            "/home/alex/Spectre-panel/config/.env",
-            "/opt/vpn_panel/config/.env",
-            "/opt/spectre-panel/config/.env",
-            "/root/Spectre-panel/config/.env",
+            "/root/sentinel-panel/config/.env",
+            "/root/Sentinel-panel/config/.env",
             "/root/panel/config/.env",
-            "/home/spectre-panel/config/.env",
+            "/home/sentinel-panel/config/.env",
+            "/opt/vpn_panel/config/.env",
             "/app/config/.env",
+            "/opt/spectre-panel/config/.env",
+            "/home/alex/Spectre-panel/config/.env",
+            "/root/Spectre-panel/config/.env",
+            "/home/spectre-panel/config/.env",
             "/opt/Spectre-panel/config/.env"
         ]
 
@@ -560,3 +565,4 @@ class SpectreClientManager:
 
 
 spectre_manager = SpectreClientManager()
+sentinel_manager = spectre_manager

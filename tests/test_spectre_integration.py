@@ -114,8 +114,9 @@ async def test_spectre_handlers_panel(monkeypatch):
     await cmd_panel(mock_message)
     mock_message.reply.assert_called_once()
     args, kwargs = mock_message.reply.call_args
-    assert "Выберите Spectre Panel" in args[0]
+    assert "Выберите Sentinel Panel" in args[0]
     assert kwargs.get("reply_markup") is not None
+
 
 @pytest.mark.asyncio
 async def test_two_phase_ips_success(monkeypatch):

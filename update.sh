@@ -82,7 +82,21 @@ else
     echo "[!] Virtual environment or requirements.txt not found. Skipping pip install."
 fi
 
-# 3. Restart proxmox-lxc-bot service
+# 3. Update sentinel-core security engine
+echo "[+] Checking and updating sentinel-core engine..."
+if [ -f "bot/fetch_core.sh" ]; then
+    chmod +x "bot/fetch_core.sh"
+    # Pass --auto if not in interactive terminal
+    if [ -t 0 ]; then
+        bash "bot/fetch_core.sh"
+    else
+        bash "bot/fetch_core.sh" --auto
+    fi
+else
+    echo "[!] bot/fetch_core.sh not found. Skipping core update."
+fi
+
+# 4. Restart proxmox-lxc-bot service
 echo "[+] Restarting proxmox-lxc-bot system service..."
 if systemctl is-active --quiet proxmox-lxc-bot; then
     systemctl restart proxmox-lxc-bot

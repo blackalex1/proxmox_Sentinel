@@ -1,7 +1,7 @@
 translation = {
     # Inline buttons
     "btn_proxmox": "🖥️ Proxmox VE",
-    "btn_spectre": "🚀 Spectre VPN Panel",
+    "btn_spectre": "🛡️ Sentinel Panel",
     "btn_ansible": "🛠️ Ansible Playbooks",
     "btn_vpn_history": "📋 VPN Connection History",
     "btn_ban_center": "🛑 Ban Center",
