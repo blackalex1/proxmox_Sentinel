@@ -73,12 +73,12 @@ async def test_3tier_cascade_tier1_success():
     rotator = SocksProxyRotator()
 
     with patch.object(rotator, '_check_vpn_sources', AsyncMock(side_effect=[
-        "socks5://127.0.0.1:10808", # Tier 1 success
+        "socks5://127.0.0.1:10818", # Tier 1 success
         None                        # Tier 2 (should not be reached)
     ])) as mock_vpn, patch.object(rotator, '_check_socks5_sources', AsyncMock(return_value=None)) as mock_socks:
 
         proxy = await rotator.get_working_proxy()
-        assert proxy == "socks5://127.0.0.1:10808"
+        assert proxy == "socks5://127.0.0.1:10818"
         assert mock_vpn.call_count == 1
         mock_socks.assert_not_called()
 
@@ -92,11 +92,11 @@ async def test_3tier_cascade_tier2_fallback():
 
     with patch.object(rotator, '_check_vpn_sources', AsyncMock(side_effect=[
         None,                        # Tier 1 failed
-        "socks5://127.0.0.1:10808"  # Tier 2 success
+        "socks5://127.0.0.1:10818"  # Tier 2 success
     ])) as mock_vpn, patch.object(rotator, '_check_socks5_sources', AsyncMock(return_value=None)) as mock_socks:
 
         proxy = await rotator.get_working_proxy()
-        assert proxy == "socks5://127.0.0.1:10808"
+        assert proxy == "socks5://127.0.0.1:10818"
         assert mock_vpn.call_count == 2
         mock_socks.assert_not_called()
 

@@ -145,7 +145,7 @@ class SocksProxyRotator:
 
         return None, ""
 
-    async def start_or_reload_singbox_tunnel(self, config_json: str, port: int = 10808) -> bool:
+    async def start_or_reload_singbox_tunnel(self, config_json: str, port: int = 10818) -> bool:
         """
         Запускает или обновляет локальный клиентский процесс Sing-box / Xray с failover конфигом.
         """
@@ -175,19 +175,26 @@ class SocksProxyRotator:
             self._singbox_proc = subprocess.Popen(
                 [engine_bin, "run", "-c", cfg_path],
                 stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL
+                stderr=subprocess.PIPE
             )
-            # Wait 0.5s for socket binding
-            await asyncio.sleep(0.5)
+            # Wait 0.8s for socket binding
+            await asyncio.sleep(0.8)
 
             # Test local proxy
             local_url = f"socks5://127.0.0.1:{port}"
-            ok, lat = await self.test_proxy_alive(local_url, timeout=3.0)
+            ok, lat = await self.test_proxy_alive(local_url, timeout=4.0)
             if ok:
                 logger.info("Started local %s failover tunnel on port %d (latency: %.1f ms)", engine_type, port, lat)
                 return True
             else:
-                logger.warning("%s started but port %d failed health probe", engine_type, port)
+                stderr_output = ""
+                if self._singbox_proc and self._singbox_proc.poll() is not None:
+                    try:
+                        _, stderr_bytes = self._singbox_proc.communicate(timeout=1)
+                        stderr_output = stderr_bytes.decode('utf-8', errors='ignore').strip()
+                    except Exception:
+                        pass
+                logger.warning("%s started on port %d but failed health probe. Details: %s", engine_type, port, stderr_output or "timeout")
         except Exception as e:
             logger.error("Failed to start %s tunnel: %s", engine_type, e)
 
@@ -229,7 +236,7 @@ class SocksProxyRotator:
         best = working[0]
         logger.info("%s: %d / %d nodes alive. Best: %s (%.1f ms)", tier_name, len(working), len(uris), best.get("name") or best.get("proxyUrl"), best.get("latencyMs", 0))
 
-        # Формируем ТОП-4 профилей для отказоустойчивой группы Sing-box
+        # Формируем ТОП-4 профилей для отказоустойчивой группы Sing-box на выделенном порту 10818
         top_profiles = []
         for w in working[:4]:
             uri = w.get("proxyUrl")
@@ -239,12 +246,12 @@ class SocksProxyRotator:
                     top_profiles.append(parsed_list[0])
 
         if top_profiles:
-            cfg_json = sentinel_core_bridge.build_failover_client_config(top_profiles, socks_port=10808, http_port=10809)
+            cfg_json = sentinel_core_bridge.build_failover_client_config(top_profiles, socks_port=10818, http_port=10819)
             if cfg_json:
-                tunnel_ok = await self.start_or_reload_singbox_tunnel(cfg_json, port=10808)
+                tunnel_ok = await self.start_or_reload_singbox_tunnel(cfg_json, port=10818)
                 if tunnel_ok:
                     self._last_working_source_tier = tier_name
-                    return "socks5://127.0.0.1:10808"
+                    return "socks5://127.0.0.1:10818"
 
         # Если локальный бинарник sing-box не установлен, но среди лучших есть SOCKS5
         for w in working:
