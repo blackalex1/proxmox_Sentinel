@@ -8,31 +8,55 @@ from .client import SpectrePanelInstance, probe_panel_url, normalize_url, parse_
 logger = logging.getLogger(__name__)
 
 
-async def _discover_panel_config(run_cmd, candidate_paths: List[str]) -> Optional[Tuple[dict, str]]:
+async def _discover_panel_config(run_cmd, candidate_paths: List[str], ip: Optional[str] = None) -> Optional[Tuple[dict, str]]:
     """
     Универсальный процесс поиска файла конфигурации .env на инстансе (LXC или VPS).
     run_cmd - асинхронная функция, принимающая список аргументов команды и возвращающая (success, stdout)
     """
-    # 1. Сначала пробуем получить путь через systemd-сервис spectre-agent
-    service_path = None
-    try:
-        success_svc, stdout_svc = await run_cmd(["systemctl", "show", "-p", "WorkingDirectory", "spectre-agent"])
-        if success_svc and stdout_svc:
-            svc_out = stdout_svc.strip()
-            if svc_out.startswith("WorkingDirectory=") and len(svc_out) > 17:
-                work_dir = svc_out.split("=", 1)[1].strip()
-                if work_dir.endswith("/host") or work_dir.endswith("\\host"):
-                    proj_dir = work_dir[:-5]
-                else:
-                    proj_dir = work_dir
-                service_path = f"{proj_dir.rstrip('/')}/config/.env"
-    except Exception:
-        pass
+    import aiohttp
 
-    # 2. Динамический поиск файлов config/.env с помощью find
+    # 1. Поиск через смонтированные тома запущенных Docker-контейнеров панели
+    docker_mount_paths = []
+    for cname in ["sentinel-panel", "spectre-panel", "panel"]:
+        try:
+            success_d, stdout_d = await run_cmd([
+                "docker", "inspect", cname,
+                "--format", "{{range .Mounts}}{{if eq .Destination \"/app/config\"}}{{.Source}}{{end}}{{end}}"
+            ])
+            if success_d and stdout_d and stdout_d.strip():
+                m_path = stdout_d.strip().rstrip('/')
+                d_path = f"{m_path}/.env"
+                if d_path not in docker_mount_paths:
+                    docker_mount_paths.append(d_path)
+        except Exception:
+            pass
+
+    # 2. Поиск через systemd-сервисы агента и панели
+    service_paths = []
+    for svc_name in ["sentinel-agent", "spectre-agent", "sentinel-panel", "spectre-panel"]:
+        try:
+            success_svc, stdout_svc = await run_cmd(["systemctl", "show", "-p", "WorkingDirectory", svc_name])
+            if success_svc and stdout_svc:
+                svc_out = stdout_svc.strip()
+                if svc_out.startswith("WorkingDirectory=") and len(svc_out) > 17:
+                    work_dir = svc_out.split("=", 1)[1].strip()
+                    if work_dir.endswith("/host") or work_dir.endswith("\\host"):
+                        proj_dir = work_dir[:-5]
+                    else:
+                        proj_dir = work_dir
+                    s_path = f"{proj_dir.rstrip('/')}/config/.env"
+                    if s_path not in service_paths:
+                        service_paths.append(s_path)
+        except Exception:
+            pass
+
+    # 3. Динамический поиск файлов config/.env с помощью find
     detected_paths = []
     try:
-        success_find, stdout_find = await run_cmd(["find", "/opt", "/root", "/home", "/app", "/var", "-maxdepth", "4", "-name", ".env"])
+        success_find, stdout_find = await run_cmd([
+            "find", "/opt", "/root", "/home", "/app", "/var",
+            "-maxdepth", "5", "-name", ".env"
+        ])
         if success_find and stdout_find:
             for found_path in stdout_find.splitlines():
                 found_path = found_path.strip()
@@ -41,24 +65,54 @@ async def _discover_panel_config(run_cmd, candidate_paths: List[str]) -> Optiona
     except Exception:
         pass
 
-    paths_to_check = list(detected_paths)
-    if service_path and service_path not in paths_to_check:
-        paths_to_check.append(service_path)
-    
-    # Если динамические методы не дали результатов, используем резервный список путей
-    if not paths_to_check:
-        paths_to_check = list(candidate_paths)
+    # 4. Формируем единый упорядоченный список путей для проверки
+    paths_to_check = []
+    for p in docker_mount_paths + service_paths + detected_paths + candidate_paths:
+        if p and p not in paths_to_check:
+            paths_to_check.append(p)
 
+    found_configs: List[Tuple[dict, str]] = []
+    seen_keys = set()
     for path in paths_to_check:
         try:
             success, stdout = await run_cmd(["cat", path])
             if success and stdout:
                 config = parse_env_content(stdout)
-                if config.get("PANEL_PORT") and config.get("API_TOKEN"):
-                    return config, path
+                port = config.get("PANEL_PORT")
+                token = config.get("API_TOKEN")
+                if port and token:
+                    sig = (port, token, config.get("PANEL_SECRET_PATH"))
+                    if sig not in seen_keys:
+                        seen_keys.add(sig)
+                        found_configs.append((config, path))
         except Exception:
             pass
-    return None
+
+    if not found_configs:
+        return None
+
+    # Если кандидатов несколько с разными портами и передан IP, проверяем, какой порт реально отвечает по сети
+    unique_ports = {c.get("PANEL_PORT") for c, _ in found_configs if c.get("PANEL_PORT")}
+    if ip and len(unique_ports) > 1:
+        connector = aiohttp.TCPConnector(ssl=False)
+        try:
+            async with aiohttp.ClientSession(connector=connector) as session:
+                for config, path in found_configs:
+                    port = config.get("PANEL_PORT")
+                    if not port:
+                        continue
+                    for proto in ["https", "http"]:
+                        try:
+                            async with session.get(f"{proto}://{ip}:{port}", timeout=1.0) as resp:
+                                if resp.status in (200, 301, 302, 304, 400, 401, 403, 404, 405, 500):
+                                    return config, path
+                        except Exception:
+                            pass
+        except Exception:
+            pass
+
+    # Возвращаем наиболее приоритетный найденный конфиг
+    return found_configs[0]
 
 
 class SpectreClientManager:
@@ -87,7 +141,7 @@ class SpectreClientManager:
         """
         Производит автоматический поиск Spectre Panel на Proxmox LXC и удаленных VPS.
         """
-        logging.info("sentinel_discovery_starting_panel_autodiscovery")
+        logging.info("spectre_discovery_starting_panel_autodiscovery")
         new_panels = {}
         candidate_paths = [
             "/opt/sentinel-panel/config/.env",
@@ -119,41 +173,40 @@ class SpectreClientManager:
                     stdout, _ = await proc.communicate()
                     return proc.returncode == 0, stdout.decode('utf-8', errors='ignore')
 
-                res = await _discover_panel_config(run_lxc_cmd, candidate_paths)
+                from modules.proxmox.api import proxmox
+                ip = proxmox.get_lxc_ip(node_name, vmid)
+                res = await _discover_panel_config(run_lxc_cmd, candidate_paths, ip=ip)
                 if res:
                     config, path = res
                     port = config.get("PANEL_PORT")
                     token = config.get("API_TOKEN")
                     secret_path = config.get("PANEL_SECRET_PATH", "ui")
                     
-                    if port and token:
-                        from modules.proxmox.api import proxmox
-                        ip = proxmox.get_lxc_ip(node_name, vmid)
-                        if ip:
-                            url = await probe_panel_url(ip, port)
-                            # Избегаем дубликатов
-                            is_dup = False
-                            norm_url = normalize_url(url)
-                            for ep in new_panels.values():
-                                norm_ep = normalize_url(ep.url)
-                                if norm_ep and norm_url and norm_ep == norm_url:
-                                    is_dup = True
-                                    break
-                                if ep.url.rstrip('/').lower() == url.rstrip('/').lower():
-                                    is_dup = True
-                                    break
-                            if not is_dup:
-                                key = f"lxc_{vmid}"
-                                new_panels[key] = SpectrePanelInstance(
-                                    name=f"LXC {vmid} ({vm.get('name', 'VPN')})",
-                                    url=url,
-                                    token=token,
-                                    secret_path=secret_path,
-                                    source_type="lxc",
-                                    identifier=str(vmid),
-                                    env_path=path
-                                )
-                                logging.info("spectre_discovery_local_panel_found", new_panels[key].name, url)
+                    if port and token and ip:
+                        url = await probe_panel_url(ip, port)
+                        # Избегаем дубликатов
+                        is_dup = False
+                        norm_url = normalize_url(url)
+                        for ep in new_panels.values():
+                            norm_ep = normalize_url(ep.url)
+                            if norm_ep and norm_url and norm_ep == norm_url:
+                                is_dup = True
+                                break
+                            if ep.url.rstrip('/').lower() == url.rstrip('/').lower():
+                                is_dup = True
+                                break
+                        if not is_dup:
+                            key = f"lxc_{vmid}"
+                            new_panels[key] = SpectrePanelInstance(
+                                name=f"LXC {vmid} ({vm.get('name', 'VPN')})",
+                                url=url,
+                                token=token,
+                                secret_path=secret_path,
+                                source_type="lxc",
+                                identifier=str(vmid),
+                                env_path=path
+                            )
+                            logging.info("spectre_discovery_local_panel_found", new_panels[key].name, url)
             except Exception as e:
                 logging.error("spectre_discovery_error_searching_in_lxc", vmid, e)
 
@@ -165,7 +218,7 @@ class SpectreClientManager:
                     success, stdout, _ = await run_remote_ssh_cmd(server, cmd)
                     return success, stdout
 
-                res = await _discover_panel_config(run_vps_cmd, candidate_paths)
+                res = await _discover_panel_config(run_vps_cmd, candidate_paths, ip=vps_ip)
                 if res:
                     config, path = res
                     port = config.get("PANEL_PORT")
