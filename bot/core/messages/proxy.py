@@ -3,10 +3,10 @@
 
 from core.messages.i18n import _
 
-def get_proxy_switch_alert(primary_proxy, new_proxy):
+def get_proxy_switch_alert(primary_proxy, new_proxy, tier_info="Failover"):
     return _(
         "proxy", "proxy_switch_alert",
-        primary_proxy=primary_proxy, new_proxy=new_proxy
+        primary_proxy=primary_proxy, new_proxy=new_proxy, tier_info=tier_info
     )
 
 def get_proxy_restored_alert(primary_proxy):

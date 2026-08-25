@@ -476,3 +476,174 @@ def ping_host(host: str, port: int = 443, timeout_ms: int = 3000) -> Dict[str, A
     if isinstance(res, dict):
         return res
     return {"success": False, "error": "failed to ping"}
+
+
+def parse_subscription(content: str) -> List[Dict[str, Any]]:
+    """Parses multi-line or base64 subscription into a list of normalized ServerProfiles."""
+    if not content or not content.strip():
+        return []
+
+    try:
+        res = _ffi_call_json("SentinelParseSubscription", content)
+        if isinstance(res, list):
+            return res
+    except Exception as e:
+        logger.debug("FFI SentinelParseSubscription error: %s", e)
+
+    import tempfile
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False, encoding="utf-8") as f:
+        f.write(content)
+        tmp_name = f.name
+
+    try:
+        res = run_core_command(["parse-subscription", "--file", tmp_name])
+        if isinstance(res, list):
+            return res
+    finally:
+        try:
+            os.remove(tmp_name)
+        except Exception:
+            pass
+    return []
+
+
+def check_proxies(
+    proxies: List[str],
+    target_host: str = "api.telegram.org",
+    target_port: int = 443,
+    use_tls: bool = True,
+    timeout_ms: int = 3000,
+    concurrency: int = 64
+) -> List[Dict[str, Any]]:
+    """Checks batch of proxies / VLESS links concurrently with high performance in sentinel-core."""
+    if not proxies:
+        return []
+
+    proxies_json = json.dumps(proxies)
+    try:
+        res = _ffi_call_json(
+            "SentinelBatchCheckProxies",
+            proxies_json,
+            target_host,
+            int(target_port),
+            1 if use_tls else 0,
+            int(timeout_ms),
+            int(concurrency)
+        )
+        if isinstance(res, list):
+            return res
+    except Exception as e:
+        logger.debug("FFI SentinelBatchCheckProxies error: %s", e)
+
+    import tempfile
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False, encoding="utf-8") as f:
+        f.write("\n".join(proxies))
+        tmp_name = f.name
+
+    try:
+        args = [
+            "check-proxies",
+            "--file", tmp_name,
+            "--target", target_host,
+            "--port", str(target_port),
+            "--timeout-ms", str(timeout_ms),
+            "--concurrency", str(concurrency)
+        ]
+        if not use_tls:
+            args.append("--tls=false")
+        res = run_core_command(args)
+        if isinstance(res, list):
+            return res
+    finally:
+        try:
+            os.remove(tmp_name)
+        except Exception:
+            pass
+    return []
+
+
+def find_fastest_proxy(
+    proxies: List[str],
+    target_host: str = "api.telegram.org",
+    target_port: int = 443,
+    use_tls: bool = True,
+    timeout_ms: int = 3000,
+    concurrency: int = 64
+) -> Optional[Dict[str, Any]]:
+    """Finds fastest responsive proxy / VLESS link using sentinel-core batch probing."""
+    if not proxies:
+        return None
+
+    proxies_json = json.dumps(proxies)
+    try:
+        res = _ffi_call_json(
+            "SentinelFindFastestProxy",
+            proxies_json,
+            target_host,
+            int(target_port),
+            1 if use_tls else 0,
+            int(timeout_ms),
+            int(concurrency)
+        )
+        if isinstance(res, dict) and res.get("success"):
+            return res
+    except Exception as e:
+        logger.debug("FFI SentinelFindFastestProxy error: %s", e)
+
+    all_res = check_proxies(proxies, target_host, target_port, use_tls, timeout_ms, concurrency)
+    working = [r for r in all_res if r.get("success")]
+    if working:
+        working.sort(key=lambda x: x.get("latencyMs", 99999))
+        return working[0]
+    return None
+
+
+def build_failover_client_config(
+    profiles: List[Dict[str, Any]],
+    socks_port: int = 10808,
+    http_port: int = 10809,
+    health_url: str = "https://api.telegram.org"
+) -> Optional[str]:
+    """Generates complete Sing-box client JSON config with SOCKS5/HTTP inbound and multi-node failover."""
+    if not profiles:
+        return None
+
+    profiles_json = json.dumps(profiles)
+    try:
+        res = _ffi_call_json(
+            "SentinelBuildFailoverClientConfig",
+            profiles_json,
+            "singbox",
+            int(socks_port),
+            int(http_port),
+            health_url
+        )
+        if isinstance(res, dict) and res.get("configJson"):
+            return res["configJson"]
+    except Exception as e:
+        logger.debug("FFI SentinelBuildFailoverClientConfig error: %s", e)
+
+    import tempfile
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False, encoding="utf-8") as f:
+        f.write(profiles_json)
+        tmp_name = f.name
+
+    try:
+        args = [
+            "build-failover",
+            "--file", tmp_name,
+            "--core", "singbox",
+            "--socks", str(socks_port),
+            "--http", str(http_port),
+            "--url", health_url
+        ]
+        res = run_core_command(args, parse_json=False)
+        if res and isinstance(res, str) and ("inbounds" in res or "outbounds" in res):
+            return res
+    finally:
+        try:
+            os.remove(tmp_name)
+        except Exception:
+            pass
+    return None
+

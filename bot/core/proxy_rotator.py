@@ -1,72 +1,55 @@
 import asyncio
+import json
+import logging
+import os
+import re
+import shutil
+import subprocess
+import sys
 import time
 import urllib.request
-import re
-import logging
+from typing import Optional, List, Dict, Any
+
 import aiohttp
 from aiohttp_socks import ProxyConnector
+
 from core.messages import get_proxy_switch_alert, get_proxy_restored_alert
+from core import sentinel_core_bridge
 
 logger = logging.getLogger(__name__)
 
-# Источники бесплатных списков SOCKS5 прокси
-PROXY_SOURCES = [
+# ТИР 1: Черные списки (Hysteria2, Trojan, VLESS, Shadowsocks)
+BLACK_LIST_SOURCES = [
+    "https://raw.githubusercontent.com/igareck/vpn-configs-for-russia/main/BLACK_SS%2BAll_RUS.txt",
+    "https://raw.githubusercontent.com/igareck/vpn-configs-for-russia/main/BLACK_VLESS_RUS_mobile.txt",
+]
+
+# ТИР 2: Белые списки (VLESS Reality CIDR/SNI)
+WHITE_LIST_SOURCES = [
+    "https://raw.githubusercontent.com/igareck/vpn-configs-for-russia/main/Vless-Reality-White-Lists-Rus-Mobile.txt",
+    "https://raw.githubusercontent.com/igareck/vpn-configs-for-russia/main/Vless-Reality-White-Lists-Rus-Mobile-2.txt",
+]
+
+# ТИР 3: Открытые SOCKS5 прокси (Крайний случай)
+SOCKS5_FALLBACK_SOURCES = [
     "https://raw.githubusercontent.com/TheSpeedX/SOCKS-List/master/socks5.txt",
     "https://api.proxyscrape.com/v2/?request=displayproxies&protocol=socks5&timeout=10000&country=all&ssl=all&anonymity=all"
 ]
+
 
 class SocksProxyRotator:
     def __init__(self):
         self.cached_proxies = []
         self.last_scrape_time = 0
         self.scrape_cooldown = 300  # 5 минут кулдауна между скрапингом
-        
-    async def scrape_proxies(self):
-        """
-        Асинхронно скачивает списки SOCKS5 прокси из различных источников.
-        Сливает их в один уникальный список.
-        """
-        now = time.monotonic()
-        if self.cached_proxies and (now - self.last_scrape_time < self.scrape_cooldown):
-            logger.info("using_cached_proxy_list_scraping_cooldown")
-            return self.cached_proxies
-            
-        logger.info("starting_scraping_fresh_free_socks5_proxy")
-        unique_proxies = set()
-        
-        loop = asyncio.get_running_loop()
-        
-        for url in PROXY_SOURCES:
-            try:
-                logger.info("loading_proxies_source", url)
-                req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'})
-                
-                # Запускаем блокирующее скачивание urllib в пуле потоков
-                content = await loop.run_in_executor(
-                    None, 
-                    lambda: urllib.request.urlopen(req, timeout=8).read().decode('utf-8', errors='ignore')
-                )
-                
-                # Ищем паттерны IP:Port
-                found = re.findall(r'\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\s*:\s*\d{2,5}\b', content)
-                for p in found:
-                    unique_proxies.add(p.strip().replace(" ", ""))
-                    
-                logger.info("successfully_loaded_proxies", len(found), url)
-            except Exception as e:
-                logger.warning("failed_load_proxy_list", url, e)
-                
-        self.cached_proxies = list(unique_proxies)
-        self.last_scrape_time = now
-        logger.info("scraping_completed_total_unique_proxies_found", len(self.cached_proxies))
-        return self.cached_proxies
+        self._singbox_proc: Optional[subprocess.Popen] = None
+        self._last_working_source_tier: str = ""
 
-    async def test_proxy_alive(self, proxy_url, timeout=6.0, verbose=False):
+    async def test_proxy_alive(self, proxy_url: str, timeout: float = 5.0, verbose: bool = False) -> tuple[bool, float]:
         """
         Проверяет доступность api.telegram.org или резервного эндпоинта через указанный прокси.
-        Возвращает (is_alive, latency)
+        Возвращает (is_alive, latency_ms)
         """
-        # Извлекаем хост и порт прокси для динамического белого списка
         proxy_key = None
         try:
             from urllib.parse import urlparse
@@ -82,7 +65,6 @@ class SocksProxyRotator:
                 proxy_host = netloc
                 proxy_port = 1080 if parsed.scheme == 'socks5' else 80
             if proxy_host and proxy_port:
-                # Резолвим имя хоста в IP для точного сопоставления в IPS
                 try:
                     proxy_host_ip = socket.gethostbyname(proxy_host)
                     proxy_key = (proxy_host_ip, proxy_port)
@@ -100,7 +82,7 @@ class SocksProxyRotator:
 
         test_urls = ["https://api.telegram.org", "https://cp.cloudflare.com/generate_204"]
         start = time.monotonic()
-        
+
         try:
             connector = ProxyConnector.from_url(proxy_url, rdns=True)
             client_timeout = aiohttp.ClientTimeout(total=timeout)
@@ -111,9 +93,6 @@ class SocksProxyRotator:
                             if response.status in (200, 204):
                                 latency = (time.monotonic() - start) * 1000
                                 return True, latency
-                            else:
-                                if verbose:
-                                    logger.warning("proxy_monitor_neozhidannyy_status-kod_pri_proverke", response.status, proxy_url)
                     except Exception as err:
                         if verbose:
                             logger.warning("proxy_monitor_check_failed", proxy_url, err)
@@ -130,59 +109,222 @@ class SocksProxyRotator:
                         active_proxy_checks.pop(proxy_key, None)
                 except Exception:
                     pass
-        return False, 0
+        return False, 0.0
 
-    async def get_working_proxy(self, max_to_check=200, batch_size=40):
+    def _find_proxy_engine_bin(self) -> tuple[Optional[str], str]:
+        """Finds sing-box or xray binary across host and bot/bin paths."""
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+        # 1. Check sing-box
+        sb_bin = shutil.which("sing-box") or shutil.which("singbox")
+        if not sb_bin:
+            for candidate in [
+                os.path.join(base_dir, "bin", "sing-box.exe" if sys.platform == "win32" else "sing-box"),
+                "/usr/local/bin/sing-box",
+                "/usr/bin/sing-box"
+            ]:
+                if os.path.isfile(candidate):
+                    sb_bin = candidate
+                    break
+        if sb_bin:
+            return sb_bin, "singbox"
+
+        # 2. Check xray
+        xray_bin = shutil.which("xray") or shutil.which("xray-core")
+        if not xray_bin:
+            for candidate in [
+                os.path.join(base_dir, "bin", "xray.exe" if sys.platform == "win32" else "xray"),
+                "/usr/local/bin/xray",
+                "/usr/bin/xray"
+            ]:
+                if os.path.isfile(candidate):
+                    xray_bin = candidate
+                    break
+        if xray_bin:
+            return xray_bin, "xray"
+
+        return None, ""
+
+    async def start_or_reload_singbox_tunnel(self, config_json: str, port: int = 10808) -> bool:
         """
-        Скачивает списки прокси, проверяет их параллельными батчами
-        и возвращает первый найденный рабочий прокси с минимальной задержкой.
+        Запускает или обновляет локальный клиентский процесс Sing-box / Xray с failover конфигом.
         """
-        proxies = await self.scrape_proxies()
-        if not proxies:
-            logger.error("proxy_lists_empty_cannot_start_rotation")
+        engine_bin, engine_type = self._find_proxy_engine_bin()
+        if not engine_bin:
+            logger.debug("Neither sing-box nor xray binary found on host, using direct node connections")
+            return False
+
+        # Terminate previous process if alive
+        if self._singbox_proc is not None:
+            try:
+                self._singbox_proc.terminate()
+                self._singbox_proc.wait(timeout=2)
+            except Exception:
+                try:
+                    self._singbox_proc.kill()
+                except Exception:
+                    pass
+            self._singbox_proc = None
+
+        cfg_name = f"{engine_type}_failover.json"
+        cfg_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), cfg_name)
+        try:
+            with open(cfg_path, "w", encoding="utf-8") as f:
+                f.write(config_json)
+
+            self._singbox_proc = subprocess.Popen(
+                [engine_bin, "run", "-c", cfg_path],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL
+            )
+            # Wait 0.5s for socket binding
+            await asyncio.sleep(0.5)
+
+            # Test local proxy
+            local_url = f"socks5://127.0.0.1:{port}"
+            ok, lat = await self.test_proxy_alive(local_url, timeout=3.0)
+            if ok:
+                logger.info("Started local %s failover tunnel on port %d (latency: %.1f ms)", engine_type, port, lat)
+                return True
+            else:
+                logger.warning("%s started but port %d failed health probe", engine_type, port)
+        except Exception as e:
+            logger.error("Failed to start %s tunnel: %s", engine_type, e)
+
+        return False
+
+    async def _check_vpn_sources(self, sources: List[str], tier_name: str) -> Optional[str]:
+        """Загружает и проверяет через ядро список VPN-конфигураций."""
+        loop = asyncio.get_running_loop()
+        uris = []
+
+        for url in sources:
+            try:
+                req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'})
+                content = await loop.run_in_executor(
+                    None,
+                    lambda: urllib.request.urlopen(req, timeout=6).read().decode('utf-8', errors='ignore')
+                )
+                for line in content.splitlines():
+                    line = line.strip()
+                    if line and not line.startswith('#') and not line.startswith('//'):
+                        uris.append(line)
+            except Exception as e:
+                logger.warning("Failed to fetch %s source %s: %s", tier_name, url, e)
+
+        if not uris:
             return None
 
-        # Перемешиваем или берем первые max_to_check
-        proxies_to_check = proxies[:max_to_check]
-        logger.info("starting_check_first_proxies", len(proxies_to_check))
+        # Пакетная проверка всех нод через высокопроизводительное Go ядро
+        results = await loop.run_in_executor(
+            None,
+            lambda: sentinel_core_bridge.check_proxies(uris, target_host="api.telegram.org", timeout_ms=2500, concurrency=64)
+        )
+        working = [r for r in results if r.get("success")]
+        if not working:
+            logger.info("%s: checked %d nodes, none responsive", tier_name, len(uris))
+            return None
 
-        async with aiohttp.ClientSession() as session:
-            for i in range(0, len(proxies_to_check), batch_size):
-                batch = proxies_to_check[i:i+batch_size]
-                logger.info("checking_proxy_batch_items", i // batch_size + 1, len(batch))
-                
-                tasks = []
-                for p in batch:
-                    p_url = f"socks5://{p}"
-                    tasks.append(self.test_proxy_alive(p_url))
-                    
-                results = await asyncio.gather(*tasks)
-                
-                working_batch = []
-                for idx, (is_working, latency) in enumerate(results):
-                    if is_working and latency <= 3500:
-                        p_url = f"socks5://{batch[idx]}"
-                        working_batch.append((p_url, latency))
-                        
-                if working_batch:
-                    # Сортируем рабочие прокси по пингу
-                    working_batch.sort(key=lambda x: x[1])
-                    best_proxy, best_ping = working_batch[0]
-                    logger.info("found_working_proxy_ping_ms", best_proxy, best_ping)
-                    return best_proxy
-                    
+        working.sort(key=lambda x: x.get("latencyMs", 99999))
+        best = working[0]
+        logger.info("%s: %d / %d nodes alive. Best: %s (%.1f ms)", tier_name, len(working), len(uris), best.get("name") or best.get("proxyUrl"), best.get("latencyMs", 0))
+
+        # Формируем ТОП-4 профилей для отказоустойчивой группы Sing-box
+        top_profiles = []
+        for w in working[:4]:
+            uri = w.get("proxyUrl")
+            if uri:
+                parsed_list = sentinel_core_bridge.parse_subscription(uri)
+                if parsed_list:
+                    top_profiles.append(parsed_list[0])
+
+        if top_profiles:
+            cfg_json = sentinel_core_bridge.build_failover_client_config(top_profiles, socks_port=10808, http_port=10809)
+            if cfg_json:
+                tunnel_ok = await self.start_or_reload_singbox_tunnel(cfg_json, port=10808)
+                if tunnel_ok:
+                    self._last_working_source_tier = tier_name
+                    return "socks5://127.0.0.1:10808"
+
+        # Если локальный бинарник sing-box не установлен, но среди лучших есть SOCKS5
+        for w in working:
+            if w.get("protocol") == "socks5" or "socks5://" in w.get("proxyUrl", ""):
+                self._last_working_source_tier = tier_name
+                return w.get("proxyUrl")
+
+        return None
+
+    async def _check_socks5_sources(self) -> Optional[str]:
+        """Крайний случай: скрапинг и проверка открытых SOCKS5 списков."""
+        loop = asyncio.get_running_loop()
+        unique_proxies = set()
+
+        for url in SOCKS5_FALLBACK_SOURCES:
+            try:
+                req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+                content = await loop.run_in_executor(
+                    None,
+                    lambda: urllib.request.urlopen(req, timeout=6).read().decode('utf-8', errors='ignore')
+                )
+                found = re.findall(r'\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\s*:\s*\d{2,5}\b', content)
+                for p in found:
+                    unique_proxies.add(f"socks5://{p.strip().replace(' ', '')}")
+            except Exception as e:
+                logger.warning("failed_load_proxy_list", url, e)
+
+        if not unique_proxies:
+            return None
+
+        proxies_list = list(unique_proxies)[:200]
+        results = await loop.run_in_executor(
+            None,
+            lambda: sentinel_core_bridge.check_proxies(proxies_list, target_host="api.telegram.org", timeout_ms=3000, concurrency=64)
+        )
+        working = [r for r in results if r.get("success")]
+        if not working:
+            return None
+
+        working.sort(key=lambda x: x.get("latencyMs", 99999))
+        best_proxy = working[0]["proxyUrl"]
+        self._last_working_source_tier = "Tier 3 (SOCKS5 Public)"
+        logger.info("Tier 3 SOCKS5: found %d working proxies, best: %s (%.1f ms)", len(working), best_proxy, working[0]["latencyMs"])
+        return best_proxy
+
+    async def get_working_proxy(self) -> Optional[str]:
+        """
+        3-Уровневый каскадный поиск рабочего соединения:
+        1. ТИР 1: Черные списки (Hysteria2, Trojan, VLESS, Shadowsocks).
+        2. ТИР 2 (если ТИР 1 пуст): Белые списки (VLESS Reality).
+        3. ТИР 3 (Крайний случай): Парсинг открытых SOCKS5 прокси.
+        """
+        # ТИР 1: Проверяем черные списки
+        logger.info("starting_checking_tier1_black_lists")
+        t1_proxy = await self._check_vpn_sources(BLACK_LIST_SOURCES, tier_name="Tier 1 (Black List)")
+        if t1_proxy:
+            return t1_proxy
+
+        # ТИР 2: Проверяем белые списки
+        logger.info("starting_checking_tier2_white_lists")
+        t2_proxy = await self._check_vpn_sources(WHITE_LIST_SOURCES, tier_name="Tier 2 (White List)")
+        if t2_proxy:
+            return t2_proxy
+
+        # ТИР 3: Крайний случай - парсинг открытых SOCKS5
+        logger.info("starting_checking_tier3_socks5_public")
+        t3_proxy = await self._check_socks5_sources()
+        if t3_proxy:
+            return t3_proxy
+
         logger.error("all_checked_free_proxies_non_working")
         return None
+
 
 # Глобальный экземпляр ротатора
 proxy_rotator = SocksProxyRotator()
 
 
 def safe_swap_bot_session(bot, new_session):
-    """
-    Безопасно заменяет bot.session на новую сессию и асинхронно закрывает старую,
-    предотвращая утечки ресурсов и предупреждения asyncio о незакрытых коннекторах и сессиях.
-    """
+    """Безопасно заменяет bot.session на новую сессию и асинхронно закрывает старую."""
     old_session = bot.session
     bot.session = new_session
     if old_session:
@@ -196,24 +338,22 @@ async def proxy_monitor_loop(bot, primary_proxy, session_kwargs, start_active_pr
     """
     Фоновый мониторинг прокси.
     Каждые 10 секунд проверяет текущий активный прокси.
-    Каждые 2 минуты проверяет доступность основного прокси, если сейчас активен бесплатный (fallback).
+    Каждые 15 секунд проверяет доступность основного прокси, если сейчас активен fallback.
     При необходимости производит бесшовное горячее переключение bot.session.
     """
     from aiogram.client.session.aiohttp import AiohttpSession
-    import logging
-    
-    # Исходное состояние
+
     active_proxy = start_active_proxy if start_active_proxy is not None else primary_proxy
     using_fallback = start_using_fallback
     last_primary_check = time.monotonic()
-    
+
     # Если на старте основной прокси не проверен, делаем это здесь
     if start_active_proxy is None and primary_proxy:
         logging.info("proxy_monitor_checking_functionality_of_the_main")
         is_local = "127.0.0.1" in primary_proxy or "localhost" in primary_proxy
         initial_timeout = 8.0 if is_local else 5.0
         initial_retries = 5 if is_local else 2
-        
+
         is_alive = False
         for attempt in range(initial_retries):
             if attempt > 0:
@@ -221,7 +361,7 @@ async def proxy_monitor_loop(bot, primary_proxy, session_kwargs, start_active_pr
             is_alive, _ = await proxy_rotator.test_proxy_alive(primary_proxy, timeout=initial_timeout, verbose=False)
             if is_alive:
                 break
-                    
+
         if not is_alive:
             logging.warning("proxy_monitor_lost_connection_to_my_proxy")
             new_proxy = await proxy_rotator.get_working_proxy()
@@ -229,27 +369,27 @@ async def proxy_monitor_loop(bot, primary_proxy, session_kwargs, start_active_pr
                 safe_swap_bot_session(bot, AiohttpSession(proxy=new_proxy, **session_kwargs))
                 active_proxy = new_proxy
                 using_fallback = True
-                last_primary_check = time.monotonic() - 15 # Проверить основной при первом шаге цикла
+                last_primary_check = time.monotonic() - 15
                 logging.info("proxy_monitor_successfully_switched_to_free_proxy", new_proxy)
                 from modules.proxmox.monitor.utils import send_alert_to_admins
                 asyncio.create_task(send_alert_to_admins(
-                    get_proxy_switch_alert(primary_proxy, new_proxy)
+                    get_proxy_switch_alert(primary_proxy, new_proxy, tier_info=proxy_rotator._last_working_source_tier or "Failover")
                 ))
             else:
                 logging.error("proxy_monitor_failed_to_find_a_live")
         else:
             logging.info("proxy_monitor_main_proxy_successfully_passed_the")
-            
+
     while True:
         try:
             await asyncio.sleep(10)
-            
+
             # 1. Проверяем работоспособность текущего активного прокси
             if active_proxy:
                 is_alive, _ = await proxy_rotator.test_proxy_alive(active_proxy, timeout=6.0, verbose=False)
                 if not is_alive:
                     logging.warning("proxy_monitor_first_check_proxy_failed_performing_retries", active_proxy)
-                    
+
                     is_local = "127.0.0.1" in active_proxy or "localhost" in active_proxy
                     retry_count = 5 if is_local else 3
                     retry_success = False
@@ -260,12 +400,10 @@ async def proxy_monitor_loop(bot, primary_proxy, session_kwargs, start_active_pr
                             logging.info("proxy_monitor_recovered_attempt", active_proxy, attempt + 1)
                             retry_success = True
                             break
-                            
+
                     if not retry_success:
                         logging.warning("proxy_monitor_current_active_proxy_has_completely_stopped", active_proxy)
-                        
-                        # Перед началом поиска резервных прокси пробуем подождать еще 5 секунд и проверить основной —
-                        # вдруг это был очень короткий сетевой фриз
+
                         if not using_fallback and primary_proxy:
                             logging.info("proxy_monitor_waiting_2_seconds_to_reconnect")
                             await asyncio.sleep(5.0)
@@ -273,27 +411,27 @@ async def proxy_monitor_loop(bot, primary_proxy, session_kwargs, start_active_pr
                             if is_alive_last_chance:
                                 logging.info("proxy_monitor_main_proxy_recovered_after_a")
                                 continue
-                                
+
                         if not using_fallback:
                             logging.warning("proxy_monitor_lost_connection_to_my_proxy")
                         else:
                             logging.warning("proxy_monitor_backup_free_proxy_disconnected_searching")
-                            
+
                         new_proxy = await proxy_rotator.get_working_proxy()
                         if new_proxy:
                             safe_swap_bot_session(bot, AiohttpSession(proxy=new_proxy, **session_kwargs))
                             active_proxy = new_proxy
                             using_fallback = True
-                            last_primary_check = time.monotonic() - 15 # Проверить основной при следующем шаге цикла
+                            last_primary_check = time.monotonic() - 15
                             logging.info("proxy_monitor_successfully_switched_to_new_free", new_proxy)
                             from modules.proxmox.monitor.utils import send_alert_to_admins
                             await send_alert_to_admins(
-                                get_proxy_switch_alert(primary_proxy, new_proxy)
+                                get_proxy_switch_alert(primary_proxy, new_proxy, tier_info=proxy_rotator._last_working_source_tier or "Failover")
                             )
                         else:
                             logging.error("proxy_monitor_failed_to_find_a_working")
-                            
-            # 2. Если мы сейчас на бесплатном прокси, раз в 15 секунд проверяем основной прокси
+
+            # 2. Если мы сейчас на fallback, проверяем доступность основного прокси
             if using_fallback and primary_proxy:
                 now = time.monotonic()
                 if now - last_primary_check >= 15:
@@ -301,13 +439,12 @@ async def proxy_monitor_loop(bot, primary_proxy, session_kwargs, start_active_pr
                     logging.info("proxy_monitor_checking_availability_main_proxy", primary_proxy)
                     primary_alive, _ = await proxy_rotator.test_proxy_alive(primary_proxy, timeout=6.0, verbose=False)
                     if not primary_alive:
-                        # Пробуем еще 2 раза с паузой 2 секунды
                         for attempt in range(2):
                             await asyncio.sleep(2.0)
                             primary_alive, _ = await proxy_rotator.test_proxy_alive(primary_proxy, timeout=6.0, verbose=False)
                             if primary_alive:
                                 break
-                                
+
                     if primary_alive:
                         logging.info("proxy_monitor_my_main_proxy_is_available")
                         safe_swap_bot_session(bot, AiohttpSession(proxy=primary_proxy, **session_kwargs))
@@ -322,4 +459,3 @@ async def proxy_monitor_loop(bot, primary_proxy, session_kwargs, start_active_pr
                         logging.info("proxy_monitor_main_proxy_is_still_unavailable")
         except Exception as e:
             logging.error("proxy_monitor_exception_in_monitoring_loop", e)
-

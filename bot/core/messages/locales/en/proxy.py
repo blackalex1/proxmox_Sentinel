@@ -3,11 +3,12 @@ translation = {
         "# ⚠️ Proxy Switch Alert\n"
         "---\n\n"
         "### ⚠️ [Proxy Monitor] Primary proxy is not responding!\n\n"
-        "🔄 Bot has automatically switched to fallback SOCKS5 connection.\n\n"
+        "🔄 Bot has automatically switched to backup connection channel.\n\n"
         "| Parameter | Value |\n"
         "| :--- | :--- |\n"
         "| **❌ Primary Proxy** | `{primary_proxy}` |\n"
-        "| **🔄 Fallback Proxy** | `{new_proxy}` |\n"
+        "| **🔄 Backup Channel** | `{new_proxy}` |\n"
+        "| **🛡 Failover Tier** | {tier_info} |\n"
     ),
     "proxy_restored_alert": (
         "# ✅ Proxy Restored\n"
