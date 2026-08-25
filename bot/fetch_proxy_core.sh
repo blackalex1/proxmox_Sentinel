@@ -9,6 +9,14 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BIN_DIR="$SCRIPT_DIR/bin"
 AUTO_MODE=0
 
+# Colors for interactive UI
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+CYAN='\033[0;36m'
+RED='\033[0;31m'
+NC='\033[0m'
+
 for arg in "$@"; do
     case "$arg" in
         --auto|-y) AUTO_MODE=1 ;;
@@ -37,15 +45,33 @@ case "$ARCH_RAW" in
     *)              ARCH_SINGBOX="amd64"; ARCH_XRAY="64" ;;
 esac
 
-is_installed=0
-if [ -x "$BIN_DIR/sing-box" ] || [ -f "$BIN_DIR/sing-box.exe" ] || [ -x "$BIN_DIR/xray" ] || [ -f "$BIN_DIR/xray.exe" ]; then
-    is_installed=1
+# 3. Detect current installed versions
+SB_INSTALLED="Не установлено"
+if [ -x "$BIN_DIR/sing-box" ] || [ -f "$BIN_DIR/sing-box.exe" ]; then
+    SB_EXEC="$BIN_DIR/sing-box"
+    [ -f "$BIN_DIR/sing-box.exe" ] && SB_EXEC="$BIN_DIR/sing-box.exe"
+    SB_VER=$("$SB_EXEC" version 2>/dev/null | head -n 1 | awk '{print $3}' || true)
+    if [ -n "$SB_VER" ]; then
+        SB_INSTALLED="Установлено (${SB_VER})"
+    else
+        SB_INSTALLED="Установлено"
+    fi
 fi
 
-echo "[+] Проверка наличия Sing-box / Xray-core в $BIN_DIR..."
+XRAY_INSTALLED="Не установлено"
+if [ -x "$BIN_DIR/xray" ] || [ -f "$BIN_DIR/xray.exe" ]; then
+    XRAY_EXEC="$BIN_DIR/xray"
+    [ -f "$BIN_DIR/xray.exe" ] && XRAY_EXEC="$BIN_DIR/xray.exe"
+    XRAY_VER=$("$XRAY_EXEC" version 2>/dev/null | head -n 1 | awk '{print $2}' || true)
+    if [ -n "$XRAY_VER" ]; then
+        XRAY_INSTALLED="Установлено (${XRAY_VER})"
+    else
+        XRAY_INSTALLED="Установлено"
+    fi
+fi
 
 fetch_singbox() {
-    echo "[+] Загрузка Sing-box из официального репозитория SagerNet/sing-box..."
+    echo -e "${CYAN}[+] Загрузка Sing-box из официального репозитория SagerNet/sing-box...${NC}"
     local SB_TAG=""
     if command -v python3 &>/dev/null; then
         SB_TAG=$(python3 -c "
@@ -88,14 +114,15 @@ except Exception:
         fi
         chmod +x "$BIN_DIR/sing-box" 2>/dev/null || true
         rm -f "$TMP_ARCHIVE"
-        echo "✓ Sing-box успешно установлен в $BIN_DIR"
+        echo -e "${GREEN}✓ Sing-box успешно установлен в $BIN_DIR${NC}"
         return 0
     fi
+    echo -e "${RED}⚠️ Не удалось загрузить Sing-box${NC}"
     return 1
 }
 
 fetch_xray() {
-    echo "[+] Загрузка Xray-core из официального репозитория XTLS/Xray-core..."
+    echo -e "${CYAN}[+] Загрузка Xray-core из официального репозитория XTLS/Xray-core...${NC}"
     local XRAY_URL=""
     if [ "$OS" = "windows" ]; then
         XRAY_URL="https://github.com/XTLS/Xray-core/releases/latest/download/Xray-windows-${ARCH_XRAY}.zip"
@@ -115,26 +142,67 @@ fetch_xray() {
             unzip -q -o "$TMP_ZIP" -d "$BIN_DIR" xray xray.exe geoip.dat geosite.dat 2>/dev/null || unzip -q -o "$TMP_ZIP" -d "$BIN_DIR"
             chmod +x "$BIN_DIR/xray" 2>/dev/null || true
             rm -f "$TMP_ZIP"
-            echo "✓ Xray-core успешно установлен в $BIN_DIR"
+            echo -e "${GREEN}✓ Xray-core успешно установлен в $BIN_DIR${NC}"
             return 0
         elif command -v python3 &>/dev/null; then
             python3 -c "import zipfile; zipfile.ZipFile('$TMP_ZIP').extractall('$BIN_DIR')"
             chmod +x "$BIN_DIR/xray" 2>/dev/null || true
             rm -f "$TMP_ZIP"
-            echo "✓ Xray-core успешно распакован через Python в $BIN_DIR"
+            echo -e "${GREEN}✓ Xray-core успешно распакован в $BIN_DIR${NC}"
             return 0
         fi
     fi
-    echo "⚠️ Не удалось загрузить Xray-core напрямую"
+    echo -e "${RED}⚠️ Не удалось загрузить Xray-core напрямую${NC}"
     return 1
 }
 
-# Download Sing-box (Primary for resource efficiency) and Xray-core (Fallback)
-fetch_singbox || true
-fetch_xray || true
+if [ "$AUTO_MODE" -eq 1 ]; then
+    # In auto mode, ensure at least Sing-box is installed
+    if [ "$SB_INSTALLED" = "Не установлено" ]; then
+        fetch_singbox || true
+    fi
+else
+    # Interactive menu
+    echo ""
+    echo -e "${CYAN}====================================================${NC}"
+    echo -e "${BLUE}🚀  ВЫБОР PROXY / VPN ДВИЖКА ДЛЯ FAILOVER МОСТА${NC}"
+    echo -e "${CYAN}====================================================${NC}"
+    echo -e "📌 Текущее состояние:"
+    echo -e "  • ${YELLOW}Sing-box:${NC}  $SB_INSTALLED"
+    echo -e "  • ${YELLOW}Xray-core:${NC} $XRAY_INSTALLED"
+    echo -e "${CYAN}====================================================${NC}"
+    echo -e "Варианты установки:"
+    echo -e "  1) ${GREEN}🟢 Установить / Обновить Sing-box${NC} [Рекомендуется (минимальный RAM: ~15 МБ)]"
+    echo -e "  2) ${YELLOW}🟡 Установить / Обновить Xray-core${NC}"
+    echo -e "  3) ${BLUE}🔵 Установить оба ядра (Sing-box + Xray-core)${NC}"
+    echo -e "  4) ⏹️  Оставить текущее состояние (пропустить)"
+    echo -n "Выберите вариант [1-4] (по умолчанию 1 - Sing-box): "
+    read -r CHOICE
+    CHOICE="${CHOICE:-1}"
+
+    case "$CHOICE" in
+        1)
+            fetch_singbox || true
+            ;;
+        2)
+            fetch_xray || true
+            ;;
+        3)
+            fetch_singbox || true
+            fetch_xray || true
+            ;;
+        4)
+            echo -e "${YELLOW}[!] Пропуск установки proxy-движков.${NC}"
+            ;;
+        *)
+            echo -e "${YELLOW}[!] Неверный выбор. Устанавливаем Sing-box по умолчанию.${NC}"
+            fetch_singbox || true
+            ;;
+    esac
+fi
 
 if [ -x "$BIN_DIR/sing-box" ] || [ -f "$BIN_DIR/sing-box.exe" ] || [ -x "$BIN_DIR/xray" ] || [ -f "$BIN_DIR/xray.exe" ]; then
-    echo "✓ Proxy ядра готовы к работе в $BIN_DIR"
+    echo -e "${GREEN}✓ Proxy ядра готовы к работе в $BIN_DIR${NC}"
 else
-    echo "⚠️ Не удалось загрузить Xray/Sing-box ядра. Будет использоваться прямой SOCKS5/HTTP fallback."
+    echo -e "${YELLOW}⚠️ Не удалось загрузить Xray/Sing-box ядра. Будет использоваться прямой SOCKS5/HTTP fallback.${NC}"
 fi

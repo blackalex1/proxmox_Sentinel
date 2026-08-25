@@ -99,7 +99,11 @@ fi
 echo "[+] Checking and updating proxy engines (Sing-box / Xray-core)..."
 if [ -f "bot/fetch_proxy_core.sh" ]; then
     chmod +x "bot/fetch_proxy_core.sh"
-    bash "bot/fetch_proxy_core.sh" --auto || true
+    if [ -t 0 ]; then
+        bash "bot/fetch_proxy_core.sh"
+    else
+        bash "bot/fetch_proxy_core.sh" --auto
+    fi
 fi
 
 # 4. Restart proxmox-lxc-bot service
