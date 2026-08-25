@@ -86,7 +86,6 @@ fi
 echo "[+] Checking and updating sentinel-core engine..."
 if [ -f "bot/fetch_core.sh" ]; then
     chmod +x "bot/fetch_core.sh"
-    # Pass --auto if not in interactive terminal
     if [ -t 0 ]; then
         bash "bot/fetch_core.sh"
     else
@@ -94,6 +93,13 @@ if [ -f "bot/fetch_core.sh" ]; then
     fi
 else
     echo "[!] bot/fetch_core.sh not found. Skipping core update."
+fi
+
+# 3.5 Update proxy engines (Sing-box / Xray-core)
+echo "[+] Checking and updating proxy engines (Sing-box / Xray-core)..."
+if [ -f "bot/fetch_proxy_core.sh" ]; then
+    chmod +x "bot/fetch_proxy_core.sh"
+    bash "bot/fetch_proxy_core.sh" --auto || true
 fi
 
 # 4. Restart proxmox-lxc-bot service
