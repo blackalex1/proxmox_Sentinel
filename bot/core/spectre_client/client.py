@@ -27,18 +27,21 @@ async def probe_panel_url(ip: str, port: str) -> str:
     Проверяет доступность панели по HTTPS и HTTP, возвращает рабочий URL.
     """
     connector = aiohttp.TCPConnector(ssl=False)
-    async with aiohttp.ClientSession(connector=connector) as session:
-        for proto in ["http", "https"]:
-            url = f"{proto}://{ip}:{port}"
-            try:
-                async with session.get(url, timeout=2) as response:
-                    logging.info("spectre_discovery_panel_responded_via_protocol_status", proto, url, response.status)
-                    return url
-            except (aiohttp.ClientConnectorError, aiohttp.ServerDisconnectedError, asyncio.TimeoutError):
-                continue
-            except Exception:
-                continue
-    return f"http://{ip}:{port}"
+    try:
+        async with aiohttp.ClientSession(connector=connector) as session:
+            for proto in ["https", "http"]:
+                url = f"{proto}://{ip}:{port}"
+                try:
+                    async with session.get(url, timeout=2) as response:
+                        logging.info("spectre_discovery_panel_responded_via_protocol_status", proto, url, response.status)
+                        return url
+                except (aiohttp.ClientConnectorError, aiohttp.ServerDisconnectedError, asyncio.TimeoutError):
+                    continue
+                except Exception:
+                    continue
+    except Exception:
+        pass
+    return f"https://{ip}:{port}"
 
 
 def normalize_url(url: str) -> Optional[Tuple[str, int]]:
