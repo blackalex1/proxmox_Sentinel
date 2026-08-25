@@ -215,7 +215,7 @@ async def main():
                     from modules.proxmox.monitor.utils import send_alert_to_admins
                     from core.messages import get_proxy_switch_alert
                     asyncio.create_task(send_alert_to_admins(
-                        get_proxy_switch_alert(primary_proxy_endpoint, new_proxy, tier_info=proxy_rotator._last_working_source_tier or "Tier 1 (Black List)")
+                        get_proxy_switch_alert(primary_proxy_endpoint, new_proxy, tier_info=proxy_rotator._last_working_source_tier or "Tier 1")
                     ))
                 else:
                     logging.error("proxy_monitor_failed_to_find_a_live")
