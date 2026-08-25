@@ -65,14 +65,9 @@ class LogTailer:
         finally:
             if proc:
                 try:
-                    proc.terminate()
-                    await asyncio.wait_for(proc.wait(), timeout=1.5)
+                    proc.kill()
                 except Exception:
-                    try:
-                        proc.kill()
-                        await asyncio.wait_for(proc.wait(), timeout=1.0)
-                    except:
-                        pass
+                    pass
 
     async def _run_file(self):
         try:

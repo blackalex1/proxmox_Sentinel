@@ -143,7 +143,18 @@ class SocksProxyRotator:
         if xray_bin:
             return xray_bin, "xray"
 
-        return None, ""
+    def stop_tunnel(self):
+        """Останавливает локальный процесс Sing-box / Xray при завершении работы бота."""
+        if self._singbox_proc is not None:
+            try:
+                self._singbox_proc.terminate()
+                self._singbox_proc.wait(timeout=1)
+            except Exception:
+                try:
+                    self._singbox_proc.kill()
+                except Exception:
+                    pass
+            self._singbox_proc = None
 
     async def start_or_reload_singbox_tunnel(self, config_json: str, port: int = 10818) -> bool:
         """

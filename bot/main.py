@@ -233,29 +233,63 @@ async def main():
     from core.db import sync_approved_ips_to_panels
     asyncio.create_task(sync_approved_ips_to_panels(), name="sync_approved_ips_to_panels")
 
-    # Запуск пулинга с авто-восстановлением при сетевых сбоях
+    # Запуск пулинга с авто-восстановлением при сетевых сбоях и мгновенной реакцией на SIGTERM
+    import signal
     from aiogram.exceptions import TelegramNetworkError
     from aiohttp.client_exceptions import ClientOSError
 
+    stop_event = asyncio.Event()
+
+    def _on_signal():
+        stop_event.set()
+        for t in asyncio.all_tasks():
+            if t.get_name() == "polling_task":
+                t.cancel()
+
+    loop = asyncio.get_running_loop()
+    for sig in (signal.SIGINT, signal.SIGTERM):
+        try:
+            loop.add_signal_handler(sig, _on_signal)
+        except (NotImplementedError, RuntimeError):
+            pass
+
     try:
-        while True:
+        while not stop_event.is_set():
             try:
                 try:
                     await bot.delete_webhook(drop_pending_updates=True)
                 except Exception as e:
                     logging.error("error_deleting_webhook", e)
-                await dp.start_polling(bot)
+                
+                poll_task = asyncio.create_task(dp.start_polling(bot, handle_signals=False), name="polling_task")
+                await poll_task
                 break
             except (TelegramNetworkError, ClientOSError, asyncio.TimeoutError, ConnectionResetError) as net_err:
+                if stop_event.is_set():
+                    break
                 logging.warning("polling_network_error_reconnecting", net_err)
-                await asyncio.sleep(5)
-            except asyncio.CancelledError:
-                raise
+                try:
+                    await asyncio.wait_for(stop_event.wait(), timeout=5.0)
+                except asyncio.TimeoutError:
+                    pass
+            except (asyncio.CancelledError, KeyboardInterrupt):
+                stop_event.set()
+                break
             except Exception as e:
+                if stop_event.is_set():
+                    break
                 logging.error("polling_unexpected_error_reconnecting", e)
-                await asyncio.sleep(5)
+                try:
+                    await asyncio.wait_for(stop_event.wait(), timeout=5.0)
+                except asyncio.TimeoutError:
+                    pass
     finally:
         logging.info("stopping_all_background_services")
+        try:
+            proxy_rotator.stop_tunnel()
+        except Exception:
+            pass
+
         current_task = asyncio.current_task()
         active_tasks = [t for t in asyncio.all_tasks() if t is not current_task]
         for task in active_tasks:
@@ -263,7 +297,7 @@ async def main():
             
         if active_tasks:
             try:
-                await asyncio.wait_for(asyncio.gather(*active_tasks, return_exceptions=True), timeout=2.0)
+                await asyncio.wait_for(asyncio.gather(*active_tasks, return_exceptions=True), timeout=1.5)
                 logging.info("all_background_services_successfully_terminated")
             except asyncio.TimeoutError:
                 logging.warning("timeout_waiting_for_background_services_to_stop")
@@ -276,7 +310,7 @@ async def main():
         except Exception as e:
             logging.error("error_clearing_iptables", e)
         try:
-            await asyncio.wait_for(bot.session.close(), timeout=2.0)
+            await asyncio.wait_for(bot.session.close(), timeout=1.0)
         except asyncio.TimeoutError:
             logging.warning("bot_session_closing_timeout_exceeded_forcing_termination")
         except Exception as e:
