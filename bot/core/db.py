@@ -366,11 +366,14 @@ async def sync_approved_ips_to_panels():
         all_clients = await spectre_manager.search_client_all("")
         client_panels_map = {}
         active_emails = set()
+        reachable_panels = set()
         
         for c in all_clients:
             c_info = c.get("client") or {}
             email = c.get("email") or c_info.get("email")
             p_name = c.get("panel_name")
+            if p_name:
+                reachable_panels.add(p_name)
             if email:
                 active_emails.add(email)
                 if p_name:
@@ -389,8 +392,9 @@ async def sync_approved_ips_to_panels():
                                 (email, panel_ip)
                             )
 
-        # 2. Очищаем устаревший мусор (удаленных клиентов) из базы бота
-        if active_emails:
+        # 2. Очищаем устаревший мусор ТОЛЬКО если ВСЕ зарегистрированные панели ответили без ошибок!
+        total_configured_panels = len(spectre_manager.panels)
+        if active_emails and len(reachable_panels) >= total_configured_panels:
             await cleanup_orphaned_approved_ips(active_emails)
 
         # 3. Синхронизируем оставшиеся одобренные IP ТОЛЬКО на те панели, где этот клиент реально заведен!
