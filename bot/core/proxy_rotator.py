@@ -306,7 +306,7 @@ class SocksProxyRotator:
 
         working.sort(key=lambda x: x.get("latencyMs", 99999))
         best_proxy = working[0]["proxyUrl"]
-        self._last_working_source_tier = "Tier 3 (SOCKS5 Public)"
+        self._last_working_source_tier = "Tier 3"
         logger.info("Tier 3 SOCKS5: found %d working proxies, best: %s (%.1f ms)", len(working), best_proxy, working[0]["latencyMs"])
         return best_proxy
 
@@ -319,13 +319,13 @@ class SocksProxyRotator:
         """
         # ТИР 1: Проверяем черные списки
         logger.info("starting_checking_tier1_black_lists")
-        t1_proxy = await self._check_vpn_sources(BLACK_LIST_SOURCES, tier_name="Tier 1 (Black List)")
+        t1_proxy = await self._check_vpn_sources(BLACK_LIST_SOURCES, tier_name="Tier 1")
         if t1_proxy:
             return t1_proxy
 
         # ТИР 2: Проверяем белые списки
         logger.info("starting_checking_tier2_white_lists")
-        t2_proxy = await self._check_vpn_sources(WHITE_LIST_SOURCES, tier_name="Tier 2 (White List)")
+        t2_proxy = await self._check_vpn_sources(WHITE_LIST_SOURCES, tier_name="Tier 2")
         if t2_proxy:
             return t2_proxy
 

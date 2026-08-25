@@ -69,17 +69,34 @@ def is_card_active(card, now_time):
 
 async def get_traffic_from_api(panel, username):
     db_download, db_upload = 0, 0
-    if not panel:
+    if not username:
         return 0, 0
+
+    # 1. Сначала опрашиваем целевую панель, если она передана
+    if panel:
+        try:
+            success, res = await panel.request("GET", "/api/security/search-client", params={"key": username})
+            if success and res.get("success") and res.get("clients"):
+                for item in res["clients"]:
+                    c_data = item.get("client", {})
+                    db_download += c_data.get("down", 0)
+                    db_upload += c_data.get("up", 0)
+                if db_download > 0 or db_upload > 0:
+                    return db_download, db_upload
+        except Exception as e:
+            logging.error(f"[Controller Alerts] Error fetching traffic for {username} on panel {panel.name}: {e}")
+
+    # 2. Fallback: поиск по всем обнаруженным панелям через spectre_manager
     try:
-        success, res = await panel.request("GET", "/api/security/search-client", params={"key": username})
-        if success and res.get("success") and res.get("clients"):
-            for item in res["clients"]:
-                c_data = item.get("client", {})
-                db_download += c_data.get("down", 0)
-                db_upload += c_data.get("up", 0)
+        from core.spectre_client import spectre_manager
+        all_clients = await spectre_manager.search_client_all(username)
+        for item in all_clients:
+            c_data = item.get("client", {})
+            db_download += c_data.get("down", 0)
+            db_upload += c_data.get("up", 0)
     except Exception as e:
-        logging.error(f"[Controller Alerts] Error fetching traffic for {username} on panel {panel.name}: {e}")
+        logging.error(f"[Controller Alerts] Error searching traffic across all panels for {username}: {e}")
+
     return db_download, db_upload
 
 

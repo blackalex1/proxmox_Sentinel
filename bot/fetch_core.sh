@@ -108,54 +108,79 @@ if [ -t 0 ] && [ "$AUTO_MODE" -eq 0 ]; then
     echo "🟡 Пре-релиз / Бета (Pre-release): ${PRERELEASE_VER:-Отсутствует}"
     echo "===================================================="
 
+    DEFAULT_CHOICE="1"
+    [ "$is_installed" -eq 1 ] && DEFAULT_CHOICE="3"
+
     if [ -n "$PRERELEASE_VER" ] && [ -n "$STABLE_VER" ]; then
         echo "Варианты установки:"
-        echo "  1) 🟢 Установить стабильную версию ($STABLE_VER) [Рекомендуется / По умолчанию]"
+        echo "  1) 🟢 Установить стабильную версию ($STABLE_VER)"
         echo "  2) 🟡 Установить пре-релиз / бету ($PRERELEASE_VER) [Экспериментальная]"
-        echo "  3) ⏹️  Оставить текущую версию (пропустить обновление ядра)"
+        if [ "$is_installed" -eq 1 ]; then
+            echo "  3) ⏹️  Оставить текущую версию (пропустить обновление ядра) [По умолчанию]"
+        else
+            echo "  3) ⏹️  Пропустить установку ядра"
+        fi
         echo "  4) ✏️  Ввести тег/версию вручную"
-        read -t 15 -p "Выберите вариант [1-4] (по умолчанию 1 - Stable): " USER_CHOICE || USER_CHOICE="1"
+        read -t 15 -p "Выберите вариант [1-4] (по умолчанию $DEFAULT_CHOICE): " USER_CHOICE || USER_CHOICE="$DEFAULT_CHOICE"
+        USER_CHOICE="${USER_CHOICE:-$DEFAULT_CHOICE}"
         echo ""
         case "$USER_CHOICE" in
+            1) SELECTED_TAG="$STABLE_VER" ;;
             2) SELECTED_TAG="$PRERELEASE_VER" ;;
-            3) echo "[+] Обновление ядра пропущено пользователем."; exit 0 ;;
+            3) echo "[+] Обновление ядра пропущено (оставлена текущая версия)."; exit 0 ;;
             4) read -p "Введите тег релиза (например $PRERELEASE_VER): " SELECTED_TAG ;;
-            *) SELECTED_TAG="$STABLE_VER" ;;
+            *) echo "[+] Обновление ядра пропущено (оставлена текущая версия)."; exit 0 ;;
         esac
     elif [ -n "$PRERELEASE_VER" ]; then
         echo "⚠️  Внимание: Стабильный релиз пока отсутствует (проект на стадии беты/пре-релиза)."
         echo "  1) 🟡 Установить бета-версию ($PRERELEASE_VER) [Экспериментальная]"
-        echo "  2) ⏹️  Пропустить установку ядра (оставить как есть)"
+        if [ "$is_installed" -eq 1 ]; then
+            echo "  2) ⏹️  Оставить текущую версию (пропустить обновление) [По умолчанию]"
+        else
+            echo "  2) ⏹️  Пропустить установку ядра"
+        fi
         echo "  3) ✏️  Ввести тег/версию вручную"
-        read -t 15 -p "Выберите вариант [1-3] (по умолчанию 1 - Beta): " USER_CHOICE || USER_CHOICE="1"
+        [ "$is_installed" -eq 1 ] && DEFAULT_CHOICE="2"
+        read -t 15 -p "Выберите вариант [1-3] (по умолчанию $DEFAULT_CHOICE): " USER_CHOICE || USER_CHOICE="$DEFAULT_CHOICE"
+        USER_CHOICE="${USER_CHOICE:-$DEFAULT_CHOICE}"
         echo ""
         case "$USER_CHOICE" in
-            2) echo "[+] Обновление ядра пропущено пользователем."; exit 0 ;;
+            1) SELECTED_TAG="$PRERELEASE_VER" ;;
+            2) echo "[+] Обновление ядра пропущено (оставлена текущая версия)."; exit 0 ;;
             3) read -p "Введите тег релиза (например $PRERELEASE_VER): " SELECTED_TAG ;;
-            *) SELECTED_TAG="$PRERELEASE_VER" ;;
+            *) echo "[+] Обновление ядра пропущено (оставлена текущая версия)."; exit 0 ;;
         esac
     elif [ -n "$STABLE_VER" ]; then
-        echo "  1) 🟢 Установить стабильную версию ($STABLE_VER) [Рекомендуется / По умолчанию]"
-        echo "  2) ⏹️  Оставить текущую версию (пропустить)"
+        echo "  1) 🟢 Установить стабильную версию ($STABLE_VER)"
+        if [ "$is_installed" -eq 1 ]; then
+            echo "  2) ⏹️  Оставить текущую версию (пропустить) [По умолчанию]"
+        else
+            echo "  2) ⏹️  Пропустить установку"
+        fi
         echo "  3) ✏️  Ввести тег/версию вручную"
-        read -t 15 -p "Выберите вариант [1-3] (по умолчанию 1 - Stable): " USER_CHOICE || USER_CHOICE="1"
+        [ "$is_installed" -eq 1 ] && DEFAULT_CHOICE="2"
+        read -t 15 -p "Выберите вариант [1-3] (по умолчанию $DEFAULT_CHOICE): " USER_CHOICE || USER_CHOICE="$DEFAULT_CHOICE"
+        USER_CHOICE="${USER_CHOICE:-$DEFAULT_CHOICE}"
         echo ""
         case "$USER_CHOICE" in
-            2) echo "[+] Обновление ядра пропущено пользователем."; exit 0 ;;
+            1) SELECTED_TAG="$STABLE_VER" ;;
+            2) echo "[+] Обновление ядра пропущено (оставлена текущая версия)."; exit 0 ;;
             3) read -p "Введите тег релиза (например $STABLE_VER): " SELECTED_TAG ;;
-            *) SELECTED_TAG="$STABLE_VER" ;;
+            *) echo "[+] Обновление ядра пропущено (оставлена текущая версия)."; exit 0 ;;
         esac
     else
         echo "[-] Не удалось получить список версий через API."
         echo "  1) Попробовать скачать последний релиз напрямую"
         echo "  2) Ввести версию вручную"
-        echo "  3) Пропустить"
-        read -t 15 -p "Выберите вариант [1-3] (по умолчанию 1): " USER_CHOICE || USER_CHOICE="1"
+        echo "  3) ⏹️  Оставить текущую версию (пропустить) [По умолчанию]"
+        DEFAULT_CHOICE="3"
+        read -t 15 -p "Выберите вариант [1-3] (по умолчанию $DEFAULT_CHOICE): " USER_CHOICE || USER_CHOICE="$DEFAULT_CHOICE"
+        USER_CHOICE="${USER_CHOICE:-$DEFAULT_CHOICE}"
         echo ""
         case "$USER_CHOICE" in
+            1) SELECTED_TAG="" ;;
             2) read -p "Введите тег релиза вручную: " SELECTED_TAG ;;
-            3) echo "[+] Обновление ядра пропущено."; exit 0 ;;
-            *) SELECTED_TAG="" ;;
+            *) echo "[+] Обновление ядра пропущено (оставлена текущая версия)."; exit 0 ;;
         esac
     fi
 else

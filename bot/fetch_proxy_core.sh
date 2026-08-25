@@ -163,6 +163,11 @@ if [ "$AUTO_MODE" -eq 1 ]; then
     fi
 else
     # Interactive menu
+    DEFAULT_PROXY_CHOICE="1"
+    if [ "$SB_INSTALLED" != "Не установлено" ] || [ "$XRAY_INSTALLED" != "Не установлено" ]; then
+        DEFAULT_PROXY_CHOICE="4"
+    fi
+
     echo ""
     echo -e "${CYAN}====================================================${NC}"
     echo -e "${BLUE}🚀  ВЫБОР PROXY / VPN ДВИЖКА ДЛЯ FAILOVER МОСТА${NC}"
@@ -175,10 +180,14 @@ else
     echo -e "  1) ${GREEN}🟢 Установить / Обновить Sing-box${NC} [Рекомендуется (минимальный RAM: ~15 МБ)]"
     echo -e "  2) ${YELLOW}🟡 Установить / Обновить Xray-core${NC}"
     echo -e "  3) ${BLUE}🔵 Установить оба ядра (Sing-box + Xray-core)${NC}"
-    echo -e "  4) ⏹️  Оставить текущее состояние (пропустить)"
-    echo -n "Выберите вариант [1-4] (по умолчанию 1 - Sing-box): "
+    if [ "$DEFAULT_PROXY_CHOICE" = "4" ]; then
+        echo -e "  4) ⏹️  Оставить текущее состояние (пропустить) [По умолчанию]"
+    else
+        echo -e "  4) ⏹️  Пропустить установку"
+    fi
+    echo -n "Выберите вариант [1-4] (по умолчанию $DEFAULT_PROXY_CHOICE): "
     read -r CHOICE
-    CHOICE="${CHOICE:-1}"
+    CHOICE="${CHOICE:-$DEFAULT_PROXY_CHOICE}"
 
     case "$CHOICE" in
         1)
@@ -192,11 +201,10 @@ else
             fetch_xray || true
             ;;
         4)
-            echo -e "${YELLOW}[!] Пропуск установки proxy-движков.${NC}"
+            echo -e "${YELLOW}[+] Пропуск установки proxy-движков (оставлено текущее состояние).${NC}"
             ;;
         *)
-            echo -e "${YELLOW}[!] Неверный выбор. Устанавливаем Sing-box по умолчанию.${NC}"
-            fetch_singbox || true
+            echo -e "${YELLOW}[+] Оставлено текущее состояние.${NC}"
             ;;
     esac
 fi
