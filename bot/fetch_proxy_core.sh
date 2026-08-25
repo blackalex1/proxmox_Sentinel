@@ -177,7 +177,7 @@ else
     echo -e "  • ${YELLOW}Xray-core:${NC} $XRAY_INSTALLED"
     echo -e "${CYAN}====================================================${NC}"
     echo -e "Варианты установки:"
-    echo -e "  1) ${GREEN}🟢 Установить / Обновить Sing-box${NC} [Рекомендуется (минимальный RAM: ~15 МБ)]"
+    echo -e "  1) ${GREEN}🟢 Установить / Обновить Sing-box${NC}"
     echo -e "  2) ${YELLOW}🟡 Установить / Обновить Xray-core${NC}"
     echo -e "  3) ${BLUE}🔵 Установить оба ядра (Sing-box + Xray-core)${NC}"
     if [ "$DEFAULT_PROXY_CHOICE" = "4" ]; then
