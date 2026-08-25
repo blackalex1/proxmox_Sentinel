@@ -97,6 +97,14 @@ async def get_traffic_from_api(panel, username):
     except Exception as e:
         logging.error(f"[Controller Alerts] Error searching traffic across all panels for {username}: {e}")
 
+    # 3. Fallback: локальная накопленная история сессий бота (vpn_sessions)
+    if db_download == 0 and db_upload == 0:
+        try:
+            from core.db import get_client_cumulative_traffic
+            db_download, db_upload = await get_client_cumulative_traffic(username)
+        except Exception:
+            pass
+
     return db_download, db_upload
 
 
@@ -230,11 +238,18 @@ async def process_hysteria_audit_event(panel, action, client_ip, log_timestamp, 
     # Получаем актуальный совокупный трафик из базы панели
     tx, rx = await get_traffic_from_api(panel, username)
     if tx == 0 and rx == 0:
-        # Резервный фолбек на данные из лога события
-        tx = details.get("tx", 0)
-        rx = details.get("rx", 0)
-        if protocol == "Xray":
-            tx, rx = rx, tx  # Swap: tx becomes client download, rx becomes client upload
+        if card and (card.get('last_tx', 0) > 0 or card.get('last_rx', 0) > 0):
+            tx = card.get('last_tx', 0)
+            rx = card.get('last_rx', 0)
+        else:
+            # Резервный фолбек на данные из лога события
+            tx = details.get("tx", 0)
+            rx = details.get("rx", 0)
+            if protocol == "Xray":
+                tx, rx = rx, tx  # Swap: tx becomes client download, rx becomes client upload
+    elif card:
+        card['last_tx'] = tx
+        card['last_rx'] = rx
         
     key = (panel_name, username, protocol)
     now_time = time.time()
@@ -401,5 +416,12 @@ async def update_controller_active_cards_traffic():
             continue
             
         tx, rx = await get_traffic_from_api(panel, username)
+        if tx == 0 and rx == 0:
+            tx = card.get('last_tx', 0)
+            rx = card.get('last_rx', 0)
+        else:
+            card['last_tx'] = tx
+            card['last_rx'] = rx
+
         msg_text = format_card_msg(panel_name, username, protocol, [l['text'] for l in card['lines']], tx, rx)
         await trigger_card_edit(card, msg_text)

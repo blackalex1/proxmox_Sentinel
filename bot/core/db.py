@@ -513,4 +513,20 @@ async def save_vpn_disconnect(username: str, ip: str, disconnect_time_str: str, 
         return session_id, 0, 0, 0
 
 
+async def get_client_cumulative_traffic(username: str) -> tuple[int, int]:
+    """Возвращает совокупный исторический трафик (download, upload) пользователя из базы бота."""
+    if not username:
+        return 0, 0
+    try:
+        row = await execute_read_one(
+            "SELECT SUM(download_bytes) as total_down, SUM(upload_bytes) as total_up FROM vpn_sessions WHERE username = ?",
+            (username,)
+        )
+        if row and (row.get('total_down') or row.get('total_up')):
+            return int(row.get('total_down') or 0), int(row.get('total_up') or 0)
+    except Exception:
+        pass
+    return 0, 0
+
+
 
