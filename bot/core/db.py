@@ -445,7 +445,7 @@ async def save_vpn_connect(username: str, ip: str, connect_time_str: str, tx: in
         "INSERT INTO vpn_sessions (session_id, username, ip, connect_time, disconnect_time, duration, is_new_ip, download_bytes, upload_bytes) VALUES (?, ?, ?, ?, NULL, NULL, ?, ?, ?)",
         (session_id, username, ip, connect_time_str, is_new_ip, tx, rx)
     )
-    logging.info("database_connection_registered_session_id", username, ip, session_id)
+    logging.info("[Database] Connection registered: %s (%s), is_approved=%s, is_new_ip=%s, session_id=%s", username, ip, is_approved, is_new_ip, session_id)
     return session_id
 
 
