@@ -203,6 +203,7 @@ async def send_rich_message(chat_id, text, parse_mode="HTML", reply_markup=None)
         if re.search(r'^#\s+', text, re.MULTILINE) or re.search(r'^###\s+', text, re.MULTILINE) or ('| ---' in text) or ('| :---' in text) or re.search(r'^---\s*$', text, re.MULTILINE):
             actual_parse_mode = "markdown"
 
+    session = None
     try:
         payload = {
             "chat_id": chat_id,
@@ -226,15 +227,24 @@ async def send_rich_message(chat_id, text, parse_mode="HTML", reply_markup=None)
         proxy_auth = getattr(bot.session, "proxy_auth", None)
         if proxy and not proxy.startswith(("http://", "https://")):
             proxy = None
-        async with session.post(url_rich, json=payload, timeout=5, proxy=proxy, proxy_auth=proxy_auth) as response:
+        async with session.post(url_rich, json=payload, timeout=8, proxy=proxy, proxy_auth=proxy_auth) as response:
             res = await response.json()
             if res.get("ok"):
                 sent_msg = Message.model_validate(res["result"])
             else:
                 logging.warning("rich_message_failed_send_rich_message_code", chat_id, res.get('description'))
     except Exception as e:
+        from core.outbox import is_network_error
+        if is_network_error(e):
+            raise e
         err_msg = f"{e.__class__.__name__}: {e}" if str(e) else e.__class__.__name__
         logging.warning("rich_message_exception_sending_rich_message", chat_id, err_msg)
+    finally:
+        if session and not session.closed:
+            try:
+                await session.close()
+            except Exception:
+                pass
         
     if not sent_msg:
         try:
@@ -270,6 +280,7 @@ async def edit_rich_message(chat_id, message_id, text, parse_mode="HTML", reply_
         if re.search(r'^#\s+', text, re.MULTILINE) or re.search(r'^###\s+', text, re.MULTILINE) or ('| ---' in text) or ('| :---' in text) or re.search(r'^---\s*$', text, re.MULTILINE):
             actual_parse_mode = "markdown"
 
+    session = None
     try:
         payload = {
             "chat_id": chat_id,
@@ -294,7 +305,7 @@ async def edit_rich_message(chat_id, message_id, text, parse_mode="HTML", reply_
         proxy_auth = getattr(bot.session, "proxy_auth", None)
         if proxy and not proxy.startswith(("http://", "https://")):
             proxy = None
-        async with session.post(url_rich, json=payload, timeout=5, proxy=proxy, proxy_auth=proxy_auth) as response:
+        async with session.post(url_rich, json=payload, timeout=8, proxy=proxy, proxy_auth=proxy_auth) as response:
             res = await response.json()
             if res.get("ok"):
                 edited_msg = Message.model_validate(res["result"])
@@ -305,7 +316,16 @@ async def edit_rich_message(chat_id, message_id, text, parse_mode="HTML", reply_
                 else:
                     logging.warning("rich_message_edit_failed_edit_rich_message_code", desc)
     except Exception as e:
+        from core.outbox import is_network_error
+        if is_network_error(e):
+            raise e
         logging.warning("rich_message_edit_exception_while_editing_rich_message", e)
+    finally:
+        if session and not session.closed:
+            try:
+                await session.close()
+            except Exception:
+                pass
         
     if not edited_msg:
         try:

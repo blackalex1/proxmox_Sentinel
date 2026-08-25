@@ -35,35 +35,8 @@ OUTBOX_FILE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__fil
 import re
 
 def clean_markdown_tables(text: str) -> str:
-    if not text:
-        return text
-    lines = text.split('\n')
-    new_lines = []
-    in_table = False
-    
-    for line in lines:
-        stripped = line.strip()
-        if stripped.startswith('|') and stripped.endswith('|'):
-            # Check if it's a separator line (contains only |, -, :, spaces)
-            if re.match(r'^\|[\s\-:|]*\|$', stripped):
-                # Skip separator line
-                continue
-            
-            # Parse columns
-            cols = [c.strip() for c in stripped.split('|')[1:-1]]
-            if cols:
-                # For 2 columns, we can format as "Col1 | Col2"
-                if len(cols) == 2:
-                    new_lines.append(f"{cols[0]} | {cols[1]}")
-                else:
-                    new_lines.append(" | ".join(cols))
-            in_table = True
-        else:
-            if in_table:
-                in_table = False
-            new_lines.append(line)
-            
-    return '\n'.join(new_lines)
+    """Сохраняет структуру Markdown-таблиц для нативного рендеринга в Telegram."""
+    return text
 
 def clean_mixed_html_to_markdown(text: str) -> str:
     if not text:
@@ -390,6 +363,7 @@ class ResilientOutbox:
         import aiohttp
         import json
         
+        session = None
         try:
             url_rich = bot.session.api.api_url(token=settings.bot_token, method="sendRichMessage")
             
@@ -421,7 +395,7 @@ class ResilientOutbox:
             proxy_auth = getattr(bot.session, "proxy_auth", None)
             if proxy and not proxy.startswith(("http://", "https://")):
                 proxy = None
-            async with session.post(url_rich, json=payload, timeout=5, proxy=proxy, proxy_auth=proxy_auth) as response:
+            async with session.post(url_rich, json=payload, timeout=8, proxy=proxy, proxy_auth=proxy_auth) as response:
                 res = await response.json()
                 if res.get("ok"):
                     from aiogram.types import Message
@@ -429,8 +403,16 @@ class ResilientOutbox:
                 else:
                     logger.warning("rich_message_failed_send_rich_message_code", chat_id, res.get('description'))
         except Exception as e:
+            if is_network_error(e):
+                raise e
             err_msg = f"{e.__class__.__name__}: {e}" if str(e) else e.__class__.__name__
             logger.warning("rich_message_exception_sending_rich_message", chat_id, err_msg)
+        finally:
+            if session and not session.closed:
+                try:
+                    await session.close()
+                except Exception:
+                    pass
             
         return None
 
@@ -438,6 +420,7 @@ class ResilientOutbox:
         import aiohttp
         import json
         
+        session = None
         try:
             url_rich = bot.session.api.api_url(token=settings.bot_token, method="editMessageText")
             
@@ -470,7 +453,7 @@ class ResilientOutbox:
             proxy_auth = getattr(bot.session, "proxy_auth", None)
             if proxy and not proxy.startswith(("http://", "https://")):
                 proxy = None
-            async with session.post(url_rich, json=payload, timeout=5, proxy=proxy, proxy_auth=proxy_auth) as response:
+            async with session.post(url_rich, json=payload, timeout=8, proxy=proxy, proxy_auth=proxy_auth) as response:
                 res = await response.json()
                 if res.get("ok"):
                     from aiogram.types import Message
@@ -482,7 +465,15 @@ class ResilientOutbox:
                     else:
                         logger.warning("rich_message_edit_failed_edit_rich_message_code", desc)
         except Exception as e:
+            if is_network_error(e):
+                raise e
             logger.warning("rich_message_edit_exception_while_editing_rich_message", e)
+        finally:
+            if session and not session.closed:
+                try:
+                    await session.close()
+                except Exception:
+                    pass
             
         return None
 
