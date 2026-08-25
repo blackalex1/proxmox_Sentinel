@@ -129,9 +129,9 @@ translation = {
         '</table>'
     ),
     "spectre_2fa_alert": (
-        "# 🔑 Spectre 2FA Prompt\n"
+        "# 🔑 Sentinel 2FA Prompt\n"
         "---\n\n"
-        "### 🔑 [Spectre 2FA: Попытка входа]\n\n"
+        "### 🔑 [Sentinel 2FA: Попытка входа]\n\n"
         '<table border="1" style="border-collapse: collapse; width: 100%;">\n'
         '  <tr style="background-color: #1e1e2e; color: #ffffff;">\n'
         '    <th style="padding: 8px; text-align: left;"><b>Параметр</b></th>\n'
@@ -216,22 +216,22 @@ translation = {
     "timeline_show_more": "*... показать ещё ...*",
 
     # Panel handler menu strings
-    "panel_not_found_err": "❌ <b>Панели Spectre Panel не обнаружены.</b>\nУбедитесь, что панели запущены и доступны.",
+    "panel_not_found_err": "❌ <b>Панели Sentinel Panel не обнаружены.</b>\nУбедитесь, что панели запущены и доступны.",
     "open_panel_btn": "📱 Открыть {name}",
     "clients_list_btn": "👥 Список клиентов",
     "status_btn": "⚙️ Статус",
     "add_slave_btn": "➕ Добавить слейв",
     "add_master_btn": "➕ Добавить мастер",
     "add_master_node_btn": "➕ Добавить мастер ноду",
-    "spectre_panel_title": "🚀 <b>Панель управления Spectre Panel</b>\n\nСервер: <code>{name}</code>",
-    "select_panel_title": "🚀 <b>Выберите Spectre Panel для управления:</b>",
+    "spectre_panel_title": "🛡️ <b>Панель управления Sentinel Panel</b>\n\nСервер: <code>{name}</code>",
+    "select_panel_title": "🛡️ <b>Выберите Sentinel Panel для управления:</b>",
     "panel_not_found": "❌ Панель не найдена.",
     "open_webapp_btn": "📱 Открыть WebApp",
     "audit_logs_btn": "📋 Логи аудита",
     "backup_btn": "📥 Бэкап",
     "vps_logs_btn": "🔒 Логи входа VPS",
     "back_to_list_btn": "🔙 Назад к списку",
-    "manage_panel_title": "🚀 <b>Управление панелью {name}</b>\n\nВыберите действие:",
+    "manage_panel_title": "🛡️ <b>Управление панелью {name}</b>\n\nВыберите действие:",
     "generating_join_code": "⏳ <b>Генерация кода подключения для слейв-ноды на {name}...</b>",
     "add_slave_title": (
         "➕ <b>Добавление слейв-ноды для {name}</b>\n"
@@ -240,7 +240,7 @@ translation = {
         "⏱ Истекает: <b>{expiry_str}</b>\n\n"
         "💻 <b>Команда для запуска на слейв-сервере:</b>\n\n"
         "🐳 <b>Вариант А (в Docker-контейнере):</b>\n"
-        "<code>docker compose exec -T spectre-panel python register_node.py --master \"{master_url}\" --join-code \"{join_code}\"</code>\n\n"
+        "<code>docker compose exec -T sentinel-panel python register_node.py --master \"{master_url}\" --join-code \"{join_code}\"</code>\n\n"
         "🐍 <b>Вариант Б (локально на хосте через Virtualenv):</b>\n"
         "<code>.venv/bin/python register_node.py --master \"{master_url}\" --join-code \"{join_code}\"</code>\n\n"
         "<i>Запустите подходящую команду в директории слейв-панели для регистрации публичного ключа.</i>"
@@ -252,8 +252,8 @@ translation = {
         "━━━━━━━━━━━━━━━━━━━━━━━━\n"
         "Чтобы подключить еще одну Мастер-панель к вашему Telegram-боту:\n\n"
         "1️⃣ Откройте конфигурационный файл <code>.env</code> контроллера.\n"
-        "2️⃣ Добавьте или отредактируйте переменную <code>SPECTRE_PANELS</code>. Это JSON-список панелей:\n\n"
-        "<code>SPECTRE_PANELS='[\n"
+        "2️⃣ Добавьте или отредактируйте переменную <code>SENTINEL_PANELS</code>. Это JSON-список панелей:\n\n"
+        "<code>SENTINEL_PANELS='[\n"
         "  {{\"name\": \"Моя Панель\", \"url\": \"https://ip:port\", \"token\": \"api_token_here\", \"secret_path\": \"secret\"}}\n"
         "]'</code>\n\n"
         "3️⃣ Перезапустите бота. Он автоматически обнаружит её и добавит в меню."
@@ -354,7 +354,7 @@ translation = {
     "act_failed_alert": "❌ Ошибка: {desc}",
 
     # System and Backup handler keys
-    "no_panels_err": "❌ <b>Панели Spectre Panel не обнаружены.</b>",
+    "no_panels_err": "❌ <b>Панели Sentinel Panel не обнаружены.</b>",
     "select_panel_backup": "📥 <b>Выберите панель для создания бэкапа:</b>",
     "backup_in_progress": "⏳ Создание резервной копии для <b>{name}</b>...",
     "backup_success": "✅ <b>Резервная копия успешно создана!</b>\nСервер: <code>{name}</code>",

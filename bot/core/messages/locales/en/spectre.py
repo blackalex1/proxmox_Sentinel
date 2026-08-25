@@ -129,9 +129,9 @@ translation = {
         '</table>'
     ),
     "spectre_2fa_alert": (
-        "# 🔑 Spectre 2FA Prompt\n"
+        "# 🔑 Sentinel 2FA Prompt\n"
         "---\n\n"
-        "### 🔑 [Spectre 2FA: Login Attempt]\n\n"
+        "### 🔑 [Sentinel 2FA: Login Attempt]\n\n"
         '<table border="1" style="border-collapse: collapse; width: 100%;">\n'
         '  <tr style="background-color: #1e1e2e; color: #ffffff;">\n'
         '    <th style="padding: 8px; text-align: left;"><b>Parameter</b></th>\n'
@@ -216,22 +216,22 @@ translation = {
     "timeline_show_more": "*... show more ...*",
 
     # Panel handler menu strings
-    "panel_not_found_err": "❌ <b>Spectre Panels not found.</b>\nMake sure the panels are running and reachable.",
+    "panel_not_found_err": "❌ <b>Sentinel Panels not found.</b>\nMake sure the panels are running and reachable.",
     "open_panel_btn": "📱 Open {name}",
     "clients_list_btn": "👥 Clients List",
     "status_btn": "⚙️ Status",
     "add_slave_btn": "➕ Add Slave",
     "add_master_btn": "➕ Add Master",
     "add_master_node_btn": "➕ Add Master Node",
-    "spectre_panel_title": "🚀 <b>Spectre Panel Control</b>\n\nServer: <code>{name}</code>",
-    "select_panel_title": "🚀 <b>Select Spectre Panel to manage:</b>",
+    "spectre_panel_title": "🛡️ <b>Sentinel Panel Control</b>\n\nServer: <code>{name}</code>",
+    "select_panel_title": "🛡️ <b>Select Sentinel Panel to manage:</b>",
     "panel_not_found": "❌ Panel not found.",
     "open_webapp_btn": "📱 Open WebApp",
     "audit_logs_btn": "📋 Audit Logs",
     "backup_btn": "📥 Backup",
     "vps_logs_btn": "🔒 VPS Login Logs",
     "back_to_list_btn": "🔙 Back to List",
-    "manage_panel_title": "🚀 <b>Manage panel {name}</b>\n\nSelect action:",
+    "manage_panel_title": "🛡️ <b>Manage panel {name}</b>\n\nSelect action:",
     "generating_join_code": "⏳ <b>Generating join code for slave node on {name}...</b>",
     "add_slave_title": (
         "➕ <b>Add Slave Node for {name}</b>\n"
@@ -240,7 +240,7 @@ translation = {
         "⏱ Expires: <b>{expiry_str}</b>\n\n"
         "💻 <b>Command to run on the slave server:</b>\n\n"
         "🐳 <b>Option A (in Docker container):</b>\n"
-        "<code>docker compose exec -T spectre-panel python register_node.py --master \"{master_url}\" --join-code \"{join_code}\"</code>\n\n"
+        "<code>docker compose exec -T sentinel-panel python register_node.py --master \"{master_url}\" --join-code \"{join_code}\"</code>\n\n"
         "🐍 <b>Option B (locally on host via Virtualenv):</b>\n"
         "<code>.venv/bin/python register_node.py --master \"{master_url}\" --join-code \"{join_code}\"</code>\n\n"
         "<i>Run the appropriate command in the slave panel directory to register the public key.</i>"
@@ -252,8 +252,8 @@ translation = {
         "━━━━━━━━━━━━━━━━━━━━━━━━\n"
         "To connect another Master panel to your Telegram bot:\n\n"
         "1️⃣ Open the controller's <code>.env</code> configuration file.\n"
-        "2️⃣ Add or edit the <code>SPECTRE_PANELS</code> variable. This is a JSON list of panels:\n\n"
-        "<code>SPECTRE_PANELS='[\n"
+        "2️⃣ Add or edit the <code>SENTINEL_PANELS</code> variable. This is a JSON list of panels:\n\n"
+        "<code>SENTINEL_PANELS='[\n"
         "  {{\"name\": \"My Panel\", \"url\": \"https://ip:port\", \"token\": \"api_token_here\", \"secret_path\": \"secret\"}}\n"
         "]'</code>\n\n"
         "3️⃣ Restart the bot. It will automatically detect it and add it to the menu."
@@ -354,7 +354,7 @@ translation = {
     "act_failed_alert": "❌ Error: {desc}",
 
     # System and Backup handler keys
-    "no_panels_err": "❌ <b>Spectre Panels not found.</b>",
+    "no_panels_err": "❌ <b>Sentinel Panels not found.</b>",
     "select_panel_backup": "📥 <b>Select a panel to create backup:</b>",
     "backup_in_progress": "⏳ Creating database backup for <b>{name}</b>...",
     "backup_success": "✅ <b>Backup successfully created!</b>\nServer: <code>{name}</code>",

@@ -10,6 +10,7 @@ MODULES_DIR="${SCRIPT_DIR}/setup_modules"
 # Source modular installation components
 source "${MODULES_DIR}/common.sh"
 source "${MODULES_DIR}/dependencies.sh"
+source "${MODULES_DIR}/core_downloader.sh"
 source "${MODULES_DIR}/config_wizard.sh"
 source "${MODULES_DIR}/service_setup.sh"
 
@@ -42,6 +43,9 @@ main() {
     setup_python_venv
     install_python_requirements
     
+    # 3.5. Sentinel Core Engine
+    fetch_sentinel_core
+
     # 4. Interactive Configuration Wizard
     run_config_wizard
     

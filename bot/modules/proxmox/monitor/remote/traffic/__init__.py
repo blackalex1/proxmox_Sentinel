@@ -22,38 +22,10 @@ from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 recent_remote_traffic_alerts = {}
 
 def parse_remote_iptables_line(line):
-    """Парсинг логов iptables с префиксами REMOTE_CONN_IN/OUT."""
-    if "REMOTE_CONN_IN:" not in line and "REMOTE_CONN_OUT:" not in line:
-        return None
-    try:
-        parts = line.strip().split()
-        data = {}
-        
-        data['direction'] = 'IN' if "REMOTE_CONN_IN:" in line else 'OUT'
-        for p in parts:
-            if '=' in p:
-                k, v = p.split('=', 1)
-                data[k] = v
-                
-        dst = data.get('DST', 'UNKNOWN')
-        try:
-            first_octet = int(dst.split('.')[0])
-            if 224 <= first_octet <= 239 or dst == '255.255.255.255' or dst.endswith('.255'):
-                return None
-        except Exception:
-            pass
-            
-        return {
-            'direction': data.get('direction', 'IN'),
-            'proto': data.get('PROTO', 'UNKNOWN'),
-            'src': data.get('SRC', 'UNKNOWN'),
-            'dst': dst,
-            'spt': int(data.get('SPT', 0)) if data.get('SPT', '').isdigit() else 0,
-            'dpt': int(data.get('DPT', 0)) if data.get('DPT', '').isdigit() else 0
-        }
-    except Exception as e:
-        logging.error("error_parsing_remote_conn_line", e)
-        return None
+    """Парсинг логов iptables с префиксами REMOTE_CONN_IN/OUT через Go-ядро sentinel_core."""
+    from core import sentinel_core_bridge
+    return sentinel_core_bridge.parse_iptables_line(line)
+
 
 async def get_and_kill_remote_process(server, spt):
     """

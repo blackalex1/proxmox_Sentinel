@@ -46,4 +46,14 @@ bot/ansible/id_ed25519_ansible.pub
 # Temporary diagnostic & scratch scripts
 scratch/
 
+# Compiled native core binaries
+bin/
+bot/bin/
+*.dll
+*.so
+*.dylib
+sentinel-core
+sentinel-core.exe
+
+
 

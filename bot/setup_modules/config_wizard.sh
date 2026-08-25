@@ -256,7 +256,7 @@ except Exception as e:
             fi
         fi
 
-        # 4. Автоопределение LXC контейнеров для VPN_VMID и Spectre Panel
+        # 4. Автоопределение LXC контейнеров для VPN_VMID и Sentinel Panel
         AUTO_VPN_VMID=""
         DETECTED_PANELS_JSON=""
         USE_AUTO_PANEL="n"
@@ -271,8 +271,8 @@ except Exception as e:
         fi
         
         if [ "${setup_vpn_lxc}" = "y" ]; then
-            # Мы можем попробовать найти Spectre Panel прямо сейчас, до вывода списка всех LXC
-            print_lang "\n${CYAN}Поиск установленных панелей Spectre Panel на LXC контейнерах...${NC}" "\n${CYAN}Searching for installed Spectre Panels on LXC containers...${NC}"
+            # Попытка найти Sentinel Panel прямо сейчас, до вывода списка всех LXC
+            print_lang "\n${CYAN}Поиск установленных панелей Sentinel Panel на LXC контейнерах...${NC}" "\n${CYAN}Searching for installed Sentinel Panels on LXC containers...${NC}"
             if [ -f "${SCRIPT_DIR}/venv/bin/python" ]; then
                 DETECTED_PANELS_JSON=$(BOT_TOKEN="123:abc" "${SCRIPT_DIR}/venv/bin/python" "${SCRIPT_DIR}/setup_modules/detect_panels.py" 2>/dev/null || true)
             else
@@ -290,7 +290,7 @@ except Exception as e:
             fi
             
             if [ -n "${PANEL_VMID_SUGGESTION}" ]; then
-                print_lang "${GREEN}✓ Обнаружена установленная Spectre Panel: ${YELLOW}${PANEL_NAME_SUGGESTION}${GREEN} (${PANEL_URL_SUGGESTION})${NC}" "${GREEN}✓ Detected installed Spectre Panel: ${YELLOW}${PANEL_NAME_SUGGESTION}${GREEN} (${PANEL_URL_SUGGESTION})${NC}"
+                print_lang "${GREEN}✓ Обнаружена установленная Sentinel Panel: ${YELLOW}${PANEL_NAME_SUGGESTION}${GREEN} (${PANEL_URL_SUGGESTION})${NC}" "${GREEN}✓ Detected installed Sentinel Panel: ${YELLOW}${PANEL_NAME_SUGGESTION}${GREEN} (${PANEL_URL_SUGGESTION})${NC}"
                 print_lang "Использовать этот контейнер (${YELLOW}${PANEL_VMID_SUGGESTION}${NC}) для мониторинга VPN_VMID и автоматически подключить панель? (y/n) [y]" "Use this container (${YELLOW}${PANEL_VMID_SUGGESTION}${NC}) for VPN_VMID monitoring and automatically connect the panel? (y/n) [y]"
                 read -rp ">> " use_auto_panel_input
                 if [ -z "${use_auto_panel_input}" ] || [ "${use_auto_panel_input}" = "y" ] || [ "${use_auto_panel_input}" = "Y" ]; then
@@ -300,6 +300,7 @@ except Exception as e:
                     print_lang "${GREEN}✓ Выбран контейнер с панелью: ${AUTO_VPN_VMID}${NC}" "${GREEN}✓ Selected container with panel: ${AUTO_VPN_VMID}${NC}"
                 fi
             fi
+        fi
             
             if [ "${USE_AUTO_PANEL}" = "n" ]; then
                 if command -v pct >/dev/null 2>&1; then
@@ -443,8 +444,8 @@ except Exception as e:
                 prompt_var "REMOTE_MONITOR_IGNORE_IPS" "$(echo_lang "Игнорировать успешные входы по SSH с данных IP-адресов (через запятую)" "Ignore successful SSH logins from these IP addresses (comma-separated)")" ""
             fi
         
-            # Интерактивная настройка Spectre Panel (автоопределение с ручным вводом при необходимости)
-            print_lang "\n${BLUE}👉 Настройка Spectre Panel (управление VPN-клиентами):${NC}" "\n${BLUE}👉 Spectre Panel Setup (VPN client management):${NC}"
+            # Интерактивная настройка Sentinel Panel (автоопределение с ручным вводом при необходимости)
+            print_lang "\n${BLUE}👉 Настройка Sentinel Panel (управление VPN-клиентами):${NC}" "\n${BLUE}👉 Sentinel Panel Setup (VPN client management):${NC}"
             
             local configure_spectre_manual="n"
             if [ "${USE_AUTO_PANEL}" = "y" ]; then
@@ -452,7 +453,7 @@ except Exception as e:
                 print_lang "Хотите ли вы дополнительно настроить еще одну панель вручную? (y/n) [n]" "Do you want to additionally configure another panel manually? (y/n) [n]"
                 read -rp ">> " configure_spectre_manual
             else
-                print_lang "Хотите ли вы настроить интеграцию с Spectre Panel? (y/n) [y]" "Do you want to configure integration with Spectre Panel? (y/n) [y]"
+                print_lang "Хотите ли вы настроить интеграцию с Sentinel Panel? (y/n) [y]" "Do you want to configure integration with Sentinel Panel? (y/n) [y]"
                 read -rp ">> " setup_spectre_input
                 if [ -z "${setup_spectre_input}" ] || [ "${setup_spectre_input}" = "y" ] || [ "${setup_spectre_input}" = "Y" ]; then
                     print_lang "${YELLOW}Запуск автоматического поиска установленных панелей...${NC}" "${YELLOW}Launching automatic search for installed panels...${NC}"
@@ -471,7 +472,7 @@ except Exception as e:
                     
                     USE_DETECTED="n"
                     if [ ${PANELS_FOUND} -eq 1 ]; then
-                        print_lang "\n${GREEN}✓ Обнаружены следующие панели Spectre Panel:${NC}" "\n${GREEN}✓ Found the following Spectre Panels:${NC}"
+                        print_lang "\n${GREEN}✓ Обнаружены следующие панели Sentinel Panel:${NC}" "\n${GREEN}✓ Found the following Sentinel Panels:${NC}"
                         python3 -c "import sys, json; panels = json.loads(sys.argv[1]); [print(f'  - {p[\"name\"]} ({p[\"url\"]})') for p in panels]" "${DETECTED_JSON}" 2>/dev/null || print_lang "  (Не удалось отформатировать вывод)" "  (Failed to format output)"
                         
                         print_lang "\nИспользовать обнаруженные панели? (y/n) [y]" "\nUse detected panels? (y/n) [y]"
@@ -480,7 +481,7 @@ except Exception as e:
                             USE_DETECTED="y"
                         fi
                     else
-                        print_lang "\n${YELLOW}⚠️ Не удалось автоматически обнаружить установленные панели Spectre Panel.${NC}" "\n${YELLOW}⚠️ Failed to automatically detect installed Spectre Panels.${NC}"
+                        print_lang "\n${YELLOW}⚠️ Не удалось автоматически обнаружить установленные панели Sentinel Panel.${NC}" "\n${YELLOW}⚠️ Failed to automatically detect installed Sentinel Panels.${NC}"
                         if [ -f "${SCRIPT_DIR}/detect_panels.log" ] && [ -s "${SCRIPT_DIR}/detect_panels.log" ]; then
                             print_lang "${CYAN}Детали ошибки поиска:${NC}" "${CYAN}Search error details:${NC}"
                             cat "${SCRIPT_DIR}/detect_panels.log"
@@ -493,7 +494,7 @@ except Exception as e:
                         print_lang "Хотите ли вы дополнительно настроить еще одну панель вручную? (y/n) [n]" "Do you want to additionally configure another panel manually? (y/n) [n]"
                         read -rp ">> " configure_spectre_manual
                     else
-                        print_lang "Хотите ли вы настроить адрес и API-токен Spectre Panel вручную? (y/n) [y]" "Do you want to configure Spectre Panel address and API token manually? (y/n) [y]"
+                        print_lang "Хотите ли вы настроить адрес и API-токен Sentinel Panel вручную? (y/n) [y]" "Do you want to configure Sentinel Panel address and API token manually? (y/n) [y]"
                         read -rp ">> " configure_spectre_manual
                         if [ -z "${configure_spectre_manual}" ] || [ "${configure_spectre_manual}" = "y" ] || [ "${configure_spectre_manual}" = "Y" ]; then
                             configure_spectre_manual="y"
@@ -503,7 +504,7 @@ except Exception as e:
             fi
             
             if [ "${configure_spectre_manual}" = "y" ] || [ "${configure_spectre_manual}" = "Y" ]; then
-                print_lang "\n${YELLOW}Введите параметры Spectre Panel:${NC}" "\n${YELLOW}Enter Spectre Panel parameters:${NC}"
+                print_lang "\n${YELLOW}Введите параметры Sentinel Panel:${NC}" "\n${YELLOW}Enter Sentinel Panel parameters:${NC}"
                 if [ "${INSTALL_LANG}" = "ru" ]; then
                     read -rp "Имя панели (например, Мой Сервер): " SP_NAME
                     read -rp "URL панели (например, http://10.10.10.101:2053): " SP_URL
@@ -530,12 +531,14 @@ except Exception as e:
             
             # Записываем в .env
             if [ "${SP_JSON}" != "[]" ]; then
-                if grep -q "^SPECTRE_PANELS=" "${ENV_FILE}"; then
-                    sed -i "s|^SPECTRE_PANELS=.*|SPECTRE_PANELS='${SP_JSON}'|" "${ENV_FILE}"
+                if grep -q "^SENTINEL_PANELS=" "${ENV_FILE}"; then
+                    sed -i "s|^SENTINEL_PANELS=.*|SENTINEL_PANELS='${SP_JSON}'|" "${ENV_FILE}"
+                elif grep -q "^SPECTRE_PANELS=" "${ENV_FILE}"; then
+                    sed -i "s|^SPECTRE_PANELS=.*|SENTINEL_PANELS='${SP_JSON}'|" "${ENV_FILE}"
                 else
-                    echo "SPECTRE_PANELS='${SP_JSON}'" >> "${ENV_FILE}"
+                    echo "SENTINEL_PANELS='${SP_JSON}'" >> "${ENV_FILE}"
                 fi
-                print_lang "${GREEN}✓ Настройки Spectre Panel успешно сохранены в .env файл.${NC}" "${GREEN}✓ Spectre Panel settings successfully saved to .env file.${NC}"
+                print_lang "${GREEN}✓ Настройки Sentinel Panel успешно сохранены в .env файл.${NC}" "${GREEN}✓ Sentinel Panel settings successfully saved to .env file.${NC}"
             fi
 
             # Настройки прокси для Telegram

@@ -1,7 +1,7 @@
 import os
 from typing import List, Dict, Any
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from pydantic import Field, field_validator, model_validator
+from pydantic import Field, field_validator, model_validator, AliasChoices
 
 # Определяем базовую директорию проекта (папка bot/)
 base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -130,9 +130,15 @@ class Settings(BaseSettings):
     # Сгенерированные сервера
     remote_servers: List[Dict[str, str]] = Field(default_factory=list)
 
-    # Ручные настройки панелей Spectre
-    spectre_panels_json: str = Field(default='[]', validation_alias='SPECTRE_PANELS')
+    # Ручные настройки панелей Sentinel Panel
+    spectre_panels_json: str = Field(default='[]', validation_alias=AliasChoices('SENTINEL_PANELS', 'SPECTRE_PANELS'))
     spectre_panels: List[Dict[str, str]] = Field(default_factory=list, validation_alias='SPECTRE_PANELS_LIST_DUMMY')
+
+    @property
+    def sentinel_panels(self) -> List[Dict[str, str]]:
+        """Алиас для spectre_panels."""
+        return self.spectre_panels
+
 
     # Валидаторы полей
     @field_validator('bot_token')
