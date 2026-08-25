@@ -115,6 +115,10 @@ def _init_sentinel_lib(lib: Any) -> Any:
         ("SentinelParseRouterIptablesLine", [ctypes.c_char_p]),
         ("SentinelPing", [ctypes.c_char_p, ctypes.c_int, ctypes.c_int]),
         ("SentinelGetSecuritySchema", [ctypes.c_char_p]),
+        ("SentinelParseSubscription", [ctypes.c_char_p]),
+        ("SentinelBatchCheckProxies", [ctypes.c_char_p, ctypes.c_char_p, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int]),
+        ("SentinelFindFastestProxy", [ctypes.c_char_p, ctypes.c_char_p, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int]),
+        ("SentinelBuildFailoverClientConfig", [ctypes.c_char_p, ctypes.c_char_p, ctypes.c_int, ctypes.c_int, ctypes.c_char_p]),
     ]
 
     for name, argtypes in func_signatures:
