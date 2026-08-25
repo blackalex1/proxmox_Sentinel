@@ -234,6 +234,8 @@ async def process_hysteria_audit_event(panel, action, client_ip, log_timestamp, 
     
     panel_name = panel.name
     protocol = "Xray" if "xray" in action else ("Sing-box" if "singbox" in action else "Hysteria")
+    key = (panel_name, username, protocol)
+    card = active_activity_cards.get(key)
     
     # Получаем актуальный совокупный трафик из базы панели
     tx, rx = await get_traffic_from_api(panel, username)
@@ -251,7 +253,6 @@ async def process_hysteria_audit_event(panel, action, client_ip, log_timestamp, 
         card['last_tx'] = tx
         card['last_rx'] = rx
         
-    key = (panel_name, username, protocol)
     now_time = time.time()
     is_too_old = (now_time - log_timestamp) > 600.0
     
@@ -259,8 +260,6 @@ async def process_hysteria_audit_event(panel, action, client_ip, log_timestamp, 
         timestamp_str = datetime.datetime.fromtimestamp(log_timestamp).strftime("%H:%M:%S")
     except Exception:
         timestamp_str = datetime.datetime.now().strftime("%H:%M:%S")
-
-    card = active_activity_cards.get(key)
     
     if action in ("xray_connect", "hysteria_connect", "singbox_connect"):
         session_id = None
