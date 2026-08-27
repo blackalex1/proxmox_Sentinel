@@ -279,14 +279,15 @@ async def process_hysteria_audit_event(panel, action, client_ip, log_timestamp, 
                 conn_time_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             session_id = await save_vpn_connect(username, client_ip, conn_time_str, tx, rx)
         except Exception as db_err:
-            logging.error("controller_database_error_saving_connection", db_err)
+            logging.error(f"controller_database_error_saving_connection: {db_err}")
 
         # Check for new IP connection on controller using bot database
-        if session_id and not is_too_old:
+        if session_id:
             try:
                 is_new_ip, history = await check_new_ip_and_get_history(username, client_ip, session_id)
+                logging.info(f"[Controller Alerts] Connect event evaluated: user={username}, ip={client_ip}, is_new_ip={is_new_ip}, session_id={session_id}")
                 if is_new_ip:
-                    from .utils import get_geoip_info
+                    from .utils import get_geoip_info, send_alert_to_admins
                     geoip_info = await get_geoip_info(client_ip)
                     alert_text = get_new_ip_alert(protocol, panel_name, username, client_ip, timestamp_str, history, geoip_info=geoip_info)
                     from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
@@ -296,12 +297,8 @@ async def process_hysteria_audit_event(panel, action, client_ip, log_timestamp, 
                             InlineKeyboardButton(text=_("spectre", "btn_block_ip", "❌ Запретить и заблокировать"), callback_data=f"block_ip:{panel_name}:{username}:{client_ip}")
                         ]
                     ])
-                    from .utils import send_rich_message
-                    for admin_id in settings.admin_ids:
-                        try:
-                            await send_rich_message(admin_id, alert_text, parse_mode="HTML", reply_markup=kb)
-                        except Exception as e:
-                            logging.error(f"[Controller Alerts] Error sending new IP alert to admin {admin_id}: {e}")
+                    await send_alert_to_admins(alert_text, parse_mode="HTML", reply_markup=kb)
+                    logging.info(f"[Controller Alerts] Successfully dispatched New IP alert to admins for {username} ({client_ip})")
             except Exception as e:
                 logging.error(f"[Controller Alerts] Error checking new IP: {e}")
 
