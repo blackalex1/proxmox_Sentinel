@@ -136,9 +136,9 @@ async def test_simulate_xray_remote_vps_attack_autoban(live_spectre_attack_panel
         token=live_spectre_attack_panel["token"],
         secret_path=live_spectre_attack_panel["secret"],
         source_type="vps",
-        identifier="194.87.29.14"
+        identifier="198.51.100.14"
     )
-    spectre_manager.panels = {"vps_194.87.29.14": panel_instance}
+    spectre_manager.panels = {"vps_198.51.100.14": panel_instance}
 
     # Имитируем автоблокировку атаковавшего Xray клиента
     block_res = await spectre_manager.disable_client_everywhere("xray_attacker@attack.com")
@@ -170,9 +170,9 @@ async def test_simulate_hysteria2_tunnel_attack_autoban(live_spectre_attack_pane
         token=live_spectre_attack_panel["token"],
         secret_path=live_spectre_attack_panel["secret"],
         source_type="vps",
-        identifier="194.87.29.14"
+        identifier="198.51.100.14"
     )
-    spectre_manager.panels = {"vps_194.87.29.14": panel_instance}
+    spectre_manager.panels = {"vps_198.51.100.14": panel_instance}
 
     # Имитируем мгновенную блокировку Hysteria2 туннеля при атаке
     block_res = await spectre_manager.disable_client_everywhere("hysteria_attacker@attack.com")

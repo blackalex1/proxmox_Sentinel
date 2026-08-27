@@ -172,9 +172,9 @@ async def test_real_panel_disable_and_enable_client(live_spectre_panel):
         token=live_spectre_panel["token"],
         secret_path=live_spectre_panel["secret"],
         source_type="vps",
-        identifier="194.87.29.14"
+        identifier="198.51.100.14"
     )
-    manager.panels = {"vps_194.87.29.14": panel_instance}
+    manager.panels = {"vps_198.51.100.14": panel_instance}
 
     # 1. Запрос на блокировку вредоносного клиента
     results_ban = await manager.disable_client_everywhere("attacker@spectre.com")

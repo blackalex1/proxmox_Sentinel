@@ -127,48 +127,62 @@ def convert_rich_html_to_standard(html):
     if not html:
         return ""
         
-    # 1. Convert markdown headers: # Header -> <b>Header</b>
-    html = re.sub(r'^#+\s+(.*?)$', r'<b>\1</b>', html, flags=re.MULTILINE)
+    # 1. Mask code blocks (<pre><code>, <code>, ```...```, `...`)
+    code_blocks = []
+    def mask_code(match):
+        code_blocks.append(match.group(0))
+        return f"__CODE_BLOCK_MASK_{len(code_blocks)-1}__"
+        
+    html = re.sub(r'<pre\b[^>]*>.*?</pre>', mask_code, html, flags=re.DOTALL)
+    html = re.sub(r'<code\b[^>]*>.*?</code>', mask_code, html, flags=re.DOTALL)
+    html = re.sub(r'```[\s\S]*?```', mask_code, html)
+    html = re.sub(r'`[^`\n]+`', mask_code, html)
+        
+    # 2. Convert markdown headers: # Header -> <b>Header</b>
+    html = re.sub(r'^#+\s+(.*?)$', r'<b>\1</b>\n', html, flags=re.MULTILINE)
     
-    # 2. Convert HTML header tags to bold
-    html = re.sub(r'<h[1-6][^>]*>', '<b>', html)
-    html = re.sub(r'</h[1-6]>', '</b>\n', html)
+    # 3. Convert HTML header tags to bold
+    html = re.sub(r'</?h[1-6][^>]*>', lambda m: '<b>' if m.group(0).startswith('<h') else '</b>\n', html)
     
-    # 3. Convert <hr> / <hr/> / --- to separator
+    # 4. Convert <hr> / <hr/> / --- to separator
     html = re.sub(r'<hr\s*/?>', '\n⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯\n', html)
     html = re.sub(r'^---\s*$', '⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯', html, flags=re.MULTILINE)
     
-    # 4. Convert <details><summary>...</summary>...</details> to collapsible expandable blockquote
+    # 5. Convert <details><summary>...</summary>...</details> to collapsible expandable blockquote
     def process_details(match):
         summary = match.group(1).strip()
         body = match.group(2).strip()
-        return f"\n<blockquote expandable>{summary}\n{body}</blockquote>\n"
+        summary_clean = re.sub(r'</?(?:b|strong)[^>]*>', '', summary)
+        return f"\n<blockquote expandable><b>{summary_clean}</b>\n{body}</blockquote>\n"
 
     html = re.sub(r'<details\b[^>]*>\s*<summary\b[^>]*>(.*?)</summary>(.*?)</details>', process_details, html, flags=re.DOTALL | re.IGNORECASE)
+    html = re.sub(r'\s*</?details[^>]*>\s*', '\n', html)
+    html = re.sub(r'[ \t]*<summary[^>]*>', '<b>', html)
+    html = re.sub(r'</summary>\s*', '</b>\n', html)
     
-    # 5. Convert <aside> to blockquote
+    # 6. Convert <aside> to blockquote
     html = re.sub(r'<aside[^>]*>', '<blockquote>', html)
     html = re.sub(r'</aside>', '</blockquote>', html)
     
-    # 6. Convert footer/cite
+    # 7. Convert footer/cite
     html = re.sub(r'<footer[^>]*>', '<i>', html)
     html = re.sub(r'</footer>', '</i>', html)
     html = re.sub(r'<cite[^>]*>', '\n— ', html)
     html = re.sub(r'</cite>', '', html)
     
-    # 7. Convert <br/> to newline
+    # 8. Convert <br/> to newline
     html = re.sub(r'<br\s*/?>', '\n', html)
     
-    # 8. For HTML tables, extract rows and clean up
+    # 9. For HTML tables, extract rows and clean up
     def process_table(table_match):
         table_content = table_match.group(1)
-        rows = re.findall(r'<tr>(.*?)</tr>', table_content, re.DOTALL)
+        rows = re.findall(r'<tr\b[^>]*>(.*?)</tr>', table_content, flags=re.DOTALL)
         result_rows = []
         for row in rows:
-            headers = re.findall(r'<th[^>]*>(.*?)</th>', row, re.DOTALL)
+            headers = re.findall(r'<th\b[^>]*>(.*?)</th>', row, flags=re.DOTALL)
             if headers:
                 continue
-            cells = re.findall(r'<td[^>]*>(.*?)</td>', row, re.DOTALL)
+            cells = re.findall(r'<td\b[^>]*>(.*?)</td>', row, flags=re.DOTALL)
             if len(cells) == 2:
                 result_rows.append(f"{cells[0].strip()}: {cells[1].strip()}")
             elif cells:
@@ -177,29 +191,40 @@ def convert_rich_html_to_standard(html):
 
     html = re.sub(r'<table[^>]*>(.*?)</table>', process_table, html, flags=re.DOTALL)
 
-    # 9. For markdown tables: | Param | Value | -> Param: Value
-    def clean_md_tables(text):
-        lines = text.split('\n')
-        out_lines = []
-        for line in lines:
-            trimmed = line.strip()
-            if trimmed.startswith('|') and trimmed.endswith('|'):
-                parts = [p.strip() for p in trimmed.strip('|').split('|')]
-                if any(p.startswith(':--') or p.startswith('---') for p in parts):
-                    continue  # skip separator line | :--- | :--- |
-                if len(parts) == 2:
-                    if parts[0] in ("Параметр", "Parameter", "Metric"):
-                        continue
-                    out_lines.append(f"{parts[0]}: {parts[1]}")
-                else:
-                    out_lines.append(" - ".join(parts))
+    # 10. For markdown tables: | Param | Value | -> Param: Value
+    lines = html.split('\n')
+    out_lines = []
+    for line in lines:
+        trimmed = line.strip()
+        if trimmed.startswith('|') and trimmed.endswith('|'):
+            parts = [p.strip() for p in trimmed.strip('|').split('|')]
+            if any(p.startswith(':--') or p.startswith('---') for p in parts):
+                continue
+            if len(parts) == 2:
+                if parts[0] in ("Параметр", "Parameter", "Metric", "Показатель"):
+                    continue
+                out_lines.append(f"{parts[0]}: {parts[1]}")
             else:
-                out_lines.append(line)
-        return '\n'.join(out_lines)
-
-    html = clean_md_tables(html)
+                out_lines.append(" - ".join(parts))
+        else:
+            out_lines.append(line)
+    html = '\n'.join(out_lines)
     
-    # 10. Strip any other unrecognized/unsupported HTML tags that might fail Telegram's parse_mode="HTML"
+    # 11. Convert markdown bold **...** -> <b>...</b> and italic *...* -> <i>...</i>
+    html = re.sub(r'\*\*(.*?)\*\*', r'<b>\1</b>', html)
+    html = re.sub(r'(?<!\*)\*([^\*\n]+)\*(?!\*)', r'<i>\1</i>', html)
+    
+    # 12. Restore code blocks
+    for idx, block in enumerate(code_blocks):
+        if block.startswith('```') and block.endswith('```'):
+            inner = block.strip('`').strip('\n')
+            block = f"<pre><code>{inner}</code></pre>"
+        elif block.startswith('`') and block.endswith('`'):
+            inner = block.strip('`')
+            block = f"<code>{inner}</code>"
+        html = html.replace(f"__CODE_BLOCK_MASK_{idx}__", block)
+    
+    # 13. Strip any other unrecognized/unsupported HTML tags that might fail Telegram's parse_mode="HTML"
     def strip_unsupported_tags(match):
         full_tag = match.group(0)
         tag = match.group(1).lower()
@@ -211,7 +236,8 @@ def convert_rich_html_to_standard(html):
         
     html = re.sub(r'<(/?[a-zA-Z0-9_-]+)(?:\s+[^>]*)?>', strip_unsupported_tags, html)
     
-    # Clean up double newlines
+    # Clean double spaces and double newlines
+    html = re.sub(r'[ \t]+', ' ', html)
     html = re.sub(r'\n{3,}', '\n\n', html)
     return html.strip()
 

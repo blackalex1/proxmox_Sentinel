@@ -9,17 +9,25 @@ from core.config import settings
 def _build_geo_rows(geoip_info):
     if not geoip_info:
         return ""
-    geo_str = geoip_info
-    isp_str = ""
-    if " (" in geoip_info and geoip_info.endswith(")"):
-        geo_str, isp_str = geoip_info.rsplit(" (", 1)
-        isp_str = isp_str.rstrip(")")
+    if isinstance(geoip_info, dict):
+        country = geoip_info.get("country", "")
+        city = geoip_info.get("city", "")
+        isp = geoip_info.get("isp") or geoip_info.get("org") or ""
+        geo_parts = [p for p in (country, city) if p]
+        geo_str = " - ".join(geo_parts) if geo_parts else ""
+        isp_str = isp
+    else:
+        geo_str = str(geoip_info)
+        isp_str = ""
+        if " (" in geo_str and geo_str.endswith(")"):
+            geo_str, isp_str = geo_str.rsplit(" (", 1)
+            isp_str = isp_str.rstrip(")")
 
     is_en = settings.bot_language.lower() == "en"
     geo_label = "🗺️ Geo" if is_en else "🗺️ Гео"
     isp_label = "🏢 ISP" if is_en else "🏢 Провайдер"
 
-    rows = f'  <tr>\n    <td style="padding: 8px;"><b>{geo_label}</b></td>\n    <td style="padding: 8px;"><code>{html.escape(geo_str)}</code></td>\n  </tr>\n'
+    rows = f'  <tr>\n    <td style="padding: 8px;"><b>{geo_label}</b></td>\n    <td style="padding: 8px;"><code>{html.escape(geo_str or "Неизвестно")}</code></td>\n  </tr>\n'
     if isp_str:
         rows += f'  <tr>\n    <td style="padding: 8px;"><b>{isp_label}</b></td>\n    <td style="padding: 8px;"><code>{html.escape(isp_str)}</code></td>\n  </tr>\n'
     return rows

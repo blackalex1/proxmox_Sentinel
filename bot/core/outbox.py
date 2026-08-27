@@ -91,7 +91,7 @@ def clean_html_for_telegram(text: str) -> str:
     if not text:
         return text
         
-    # Маскируем блоки <pre><code> и <code>, чтобы регулярки не поломали их форматирование
+    # 1. Mask code blocks (<pre><code>, <code>, ```...```, `...`)
     code_blocks = []
     def mask_code(match):
         code_blocks.append(match.group(0))
@@ -99,17 +99,37 @@ def clean_html_for_telegram(text: str) -> str:
         
     text = re.sub(r'<pre\b[^>]*>.*?</pre>', mask_code, text, flags=re.DOTALL)
     text = re.sub(r'<code\b[^>]*>.*?</code>', mask_code, text, flags=re.DOTALL)
+    text = re.sub(r'```[\s\S]*?```', mask_code, text)
+    text = re.sub(r'`[^`\n]+`', mask_code, text)
     
-    # 1. Заголовки h1-h6 -> жирный текст с переносом строки
+    # 2. Markdown headers: # Title / ### Subtitle -> <b>Title</b>\n
+    text = re.sub(r'^#+\s+(.*?)$', r'<b>\1</b>\n', text, flags=re.MULTILINE)
+    
+    # 3. HTML headers h1-h6 -> <b>Header</b>\n
     text = re.sub(r'</?h[1-6][^>]*>', lambda m: '<b>' if m.group(0).startswith('<h') else '</b>\n', text)
     
-    # 2. Линия hr -> разделитель
-    text = re.sub(r'<hr\s*/?>', '⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯\n', text)
+    # 4. Horizontal rules: <hr> or --- -> visual separator
+    text = re.sub(r'<hr\s*/?>', '\n⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯\n', text)
+    text = re.sub(r'^---\s*$', '⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯', text, flags=re.MULTILINE)
     
-    # 3. Табличные теги: парсим двухколоночные строки с разделителем :
+    # 5. Collapsible blocks: <details><summary>...</summary>...</details> -> <blockquote expandable>
+    def process_details_html(match):
+        summary = match.group(1).strip()
+        body = match.group(2).strip()
+        summary_clean = re.sub(r'</?(?:b|strong)[^>]*>', '', summary)
+        return f"\n<blockquote expandable><b>{summary_clean}</b>\n{body}</blockquote>\n"
+
+    text = re.sub(r'<details\b[^>]*>\s*<summary\b[^>]*>(.*?)</summary>(.*?)</details>', process_details_html, text, flags=re.DOTALL | re.IGNORECASE)
+    text = re.sub(r'\s*</?details[^>]*>\s*', '\n', text)
+    text = re.sub(r'[ \t]*<summary[^>]*>', '<b>', text)
+    text = re.sub(r'</summary>\s*', '</b>\n', text)
+    
+    # 6. HTML table rows: <tr><td>Key</td><td>Value</td></tr> -> Key: Value
     def clean_tr(match):
         row_content = match.group(1)
-        # Находим все теги th/td в строке
+        headers = re.findall(r'<th\b[^>]*>(.*?)</th>', row_content, flags=re.DOTALL)
+        if headers:
+            return ""
         cols = re.findall(r'<(?:td|th)\b[^>]*>(.*?)</(?:td|th)>', row_content, flags=re.DOTALL)
         if len(cols) == 2:
             val1 = re.sub(r'\s+', ' ', cols[0]).strip()
@@ -123,32 +143,55 @@ def clean_html_for_telegram(text: str) -> str:
     text = re.sub(r'<tr\b[^>]*>(.*?)</tr>', clean_tr, text, flags=re.DOTALL)
     text = re.sub(r'</?table[^>]*>', '', text)
     
-    # 4. Коллапсирующие блоки details/summary -> нативный Telegram blockquote expandable
-    def process_details_html(match):
-        summary = match.group(1).strip()
-        body = match.group(2).strip()
-        return f"\n<blockquote expandable>{summary}\n{body}</blockquote>\n"
+    # 7. Markdown tables: | Key | Value | -> Key: Value
+    lines = text.split('\n')
+    out_lines = []
+    for line in lines:
+        trimmed = line.strip()
+        if trimmed.startswith('|') and trimmed.endswith('|'):
+            parts = [p.strip() for p in trimmed.strip('|').split('|')]
+            if any(p.startswith(':--') or p.startswith('---') for p in parts):
+                continue
+            if len(parts) == 2:
+                if parts[0] in ("Параметр", "Parameter", "Metric", "Показатель"):
+                    continue
+                out_lines.append(f"{parts[0]}: {parts[1]}")
+            else:
+                out_lines.append(" - ".join(parts))
+        else:
+            out_lines.append(line)
+    text = '\n'.join(out_lines)
 
-    text = re.sub(r'<details\b[^>]*>\s*<summary\b[^>]*>(.*?)</summary>(.*?)</details>', process_details_html, text, flags=re.DOTALL | re.IGNORECASE)
-    text = re.sub(r'\s*</?details[^>]*>\s*', '\n', text)
-    text = re.sub(r'[ \t]*<summary[^>]*>', '<b>', text)
-    text = re.sub(r'</summary>\s*', '</b>\n', text)
+    # 8. Convert markdown bold **...** -> <b>...</b> and italic *...* -> <i>...</i>
+    text = re.sub(r'\*\*(.*?)\*\*', r'<b>\1</b>', text)
+    text = re.sub(r'(?<!\*)\*([^\*\n]+)\*(?!\*)', r'<i>\1</i>', text)
     
-    # 5. Лишние пробелы
-    text = re.sub(r' +', ' ', text)
-    
-    # Возвращаем замаскированные блоки кода
+    # 9. Restore code blocks and normalize formatting
     for idx, block in enumerate(code_blocks):
+        if block.startswith('```') and block.endswith('```'):
+            inner = block.strip('`').strip('\n')
+            block = f"<pre><code>{inner}</code></pre>"
+        elif block.startswith('`') and block.endswith('`'):
+            inner = block.strip('`')
+            block = f"<code>{inner}</code>"
         text = text.replace(f"__CODE_BLOCK_MASK_{idx}__", block)
         
-    # Очищаем лишние пустые строки (максимум одна пустая строка подряд)
-    lines = []
-    for line in text.split("\n"):
-        line_str = line.strip()
-        if line_str or (lines and lines[-1]):
-            lines.append(line)
-            
-    return "\n".join(lines).strip()
+    # 10. Strip unsupported HTML tags
+    def strip_unsupported_tags(match):
+        full_tag = match.group(0)
+        tag = match.group(1).lower()
+        is_closing = tag.startswith('/')
+        tag_name = tag[1:] if is_closing else tag
+        if tag_name in ('a', 'b', 'strong', 'i', 'em', 'u', 'ins', 's', 'strike', 'del', 'span', 'code', 'pre', 'blockquote', 'tg-spoiler', 'tg-emoji'):
+            return full_tag
+        return ''
+
+    text = re.sub(r'<(/?[a-zA-Z0-9_-]+)(?:\s+[^>]*)?>', strip_unsupported_tags, text)
+    
+    # Clean double spaces and excessive newlines
+    text = re.sub(r'[ \t]+', ' ', text)
+    text = re.sub(r'\n{3,}', '\n\n', text)
+    return text.strip()
 
 class ResilientOutbox:
     def __init__(self):
@@ -366,6 +409,9 @@ class ResilientOutbox:
             self.save_to_disk()
 
     async def _send_rich_message_impl(self, bot: Bot, chat_id, text, parse_mode="HTML", reply_markup=None):
+        if not settings.telegram_api_server:
+            return None
+            
         import aiohttp
         import json
         
@@ -421,6 +467,9 @@ class ResilientOutbox:
         return None
 
     async def _edit_rich_message_impl(self, bot: Bot, chat_id, message_id, text, parse_mode="HTML", reply_markup=None):
+        if not settings.telegram_api_server:
+            return None
+            
         import aiohttp
         import json
         
@@ -501,18 +550,9 @@ class ResilientOutbox:
             if rich_msg:
                 return rich_msg
                 
-            # Если не удалось, делаем очистку и шлем стандартно
-            actual_parse_mode = parse_mode
-            if parse_mode and parse_mode.lower() == "html" and text:
-                if re.search(r'^#\s+', text, re.MULTILINE) or re.search(r'^###\s+', text, re.MULTILINE) or ('| ---' in text) or ('| :---' in text) or re.search(r'^---\s*$', text, re.MULTILINE):
-                    actual_parse_mode = "markdown"
-            
-            if actual_parse_mode and actual_parse_mode.lower() in ("markdown", "markdownv2"):
-                cleaned_text = clean_mixed_html_to_markdown(text)
-                kwargs['parse_mode'] = actual_parse_mode
-            else:
-                cleaned_text = clean_html_for_telegram(text)
-                kwargs['parse_mode'] = "HTML"
+            # Стандартный фолбек: чистим любой Markdown/HTML в валидный Telegram HTML и отправляем с parse_mode="HTML"
+            cleaned_text = clean_html_for_telegram(text)
+            kwargs['parse_mode'] = "HTML"
                 
             try:
                 return await bot._original_send_message(chat_id, cleaned_text, *args, **kwargs)
@@ -572,18 +612,9 @@ class ResilientOutbox:
                 if rich_edit:
                     return rich_edit
             
-            # Стандартный фолбек с очисткой
-            actual_parse_mode = parse_mode
-            if parse_mode and parse_mode.lower() == "html" and text:
-                if re.search(r'^#\s+', text, re.MULTILINE) or re.search(r'^###\s+', text, re.MULTILINE) or ('| ---' in text) or ('| :---' in text) or re.search(r'^---\s*$', text, re.MULTILINE):
-                    actual_parse_mode = "markdown"
-            
-            if actual_parse_mode and actual_parse_mode.lower() in ("markdown", "markdownv2"):
-                cleaned_text = clean_mixed_html_to_markdown(text)
-                kwargs['parse_mode'] = actual_parse_mode
-            else:
-                cleaned_text = clean_html_for_telegram(text)
-                kwargs['parse_mode'] = "HTML"
+            # Стандартный фолбек: чистим любой Markdown/HTML в валидный Telegram HTML и отправляем с parse_mode="HTML"
+            cleaned_text = clean_html_for_telegram(text)
+            kwargs['parse_mode'] = "HTML"
                 
             if 'text' in kwargs:
                 kwargs['text'] = cleaned_text

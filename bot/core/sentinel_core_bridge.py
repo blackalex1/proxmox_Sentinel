@@ -119,6 +119,7 @@ def _init_sentinel_lib(lib: Any) -> Any:
         ("SentinelBatchCheckProxies", [ctypes.c_char_p, ctypes.c_char_p, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int]),
         ("SentinelFindFastestProxy", [ctypes.c_char_p, ctypes.c_char_p, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int]),
         ("SentinelBuildFailoverClientConfig", [ctypes.c_char_p, ctypes.c_char_p, ctypes.c_int, ctypes.c_int, ctypes.c_char_p]),
+        ("SentinelSetLanguage", [ctypes.c_char_p]),
     ]
 
     for name, argtypes in func_signatures:
@@ -150,10 +151,10 @@ def get_sentinel_lib() -> Optional[ctypes.CDLL]:
         lib = ctypes.CDLL(lib_path)
         _init_sentinel_lib(lib)
         _SENTINEL_LIB = lib
-        logger.info("Loaded sentinel-core shared library from %s", lib_path)
+        logger.info("sentinel_core_library_loaded", lib_path)
         return _SENTINEL_LIB
     except Exception as e:
-        logger.warning("Failed to load sentinel-core shared library (%s): %s", lib_path, e)
+        logger.warning("sentinel_core_bridge_call_failed", "load_lib", e)
         return None
 
 
@@ -650,4 +651,14 @@ def build_failover_client_config(
         except Exception:
             pass
     return None
+
+
+def set_core_language(lang: str) -> bool:
+    """Sets language locale in Go sentinel-core ('ru' or 'en')."""
+    try:
+        res = _ffi_call_json("SentinelSetLanguage", lang)
+        return isinstance(res, dict) and res.get("success") is True
+    except Exception:
+        return False
+
 
