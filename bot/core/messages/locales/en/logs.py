@@ -394,4 +394,12 @@ translation = {
     "env_verifier_remote_enable": "REMOTE_MONITOR_ENABLE=True (monitoring and protection of remote VPS)",
     "env_verifier_remote_ssh": "REMOTE_SERVER_* (REMOTE_SERVER_IP, REMOTE_SERVER_USER - SSH access to remote servers)",
     "env_verifier_bot_language": "BOT_LANGUAGE (bot language, not set in .env - defaults to English)",
+    "sentinel_core_client_connected": "[Sentinel-Core] Client connected: core=%s, user=%s, IP=%s",
+    "sentinel_core_client_disconnected": "[Sentinel-Core] Client disconnected: core=%s, user=%s, IP=%s, duration=%s",
+    "sentinel_core_started_core": "[Sentinel-Core] Proxy engine %s successfully started (PID=%s)",
+    "sentinel_core_stopped_core": "[Sentinel-Core] Proxy engine %s stopped",
+    "sentinel_core_session_sync_audit": "[Sentinel-Core] Recording session event to audit log: action=%s, IP=%s, user=%s",
+    "sentinel_core_traffic_polled": "[Sentinel-Core] Unified traffic polled: active users=%s, total bytes=%s",
+    "sentinel_core_library_loaded": "[Sentinel-Core] sentinel-core library successfully loaded from %s",
+    "sentinel_core_bridge_call_failed": "[Sentinel-Core] Bridge function call failed %s: %s",
 }

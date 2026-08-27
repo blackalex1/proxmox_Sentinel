@@ -394,4 +394,12 @@ translation = {
     "env_verifier_remote_enable": "REMOTE_MONITOR_ENABLE=True (мониторинг и защита удаленных VPS)",
     "env_verifier_remote_ssh": "REMOTE_SERVER_* (REMOTE_SERVER_IP, REMOTE_SERVER_USER - SSH доступ к удаленным серверам)",
     "env_verifier_bot_language": "BOT_LANGUAGE (язык бота, не задан в .env - используется английский язык по умолчанию)",
+    "sentinel_core_client_connected": "[Sentinel-Core] Подключен клиент: движок=%s, пользователь=%s, IP=%s",
+    "sentinel_core_client_disconnected": "[Sentinel-Core] Отключен клиент: движок=%s, пользователь=%s, IP=%s, длительность=%s",
+    "sentinel_core_started_core": "[Sentinel-Core] Движок %s успешно запущен (PID=%s)",
+    "sentinel_core_stopped_core": "[Sentinel-Core] Движок %s остановлен",
+    "sentinel_core_session_sync_audit": "[Sentinel-Core] Запись события сессии в аудит-лог: действие=%s, IP=%s, пользователь=%s",
+    "sentinel_core_traffic_polled": "[Sentinel-Core] Опрошен совокупный трафик: активных пользователей=%s, всего байт=%s",
+    "sentinel_core_library_loaded": "[Sentinel-Core] Библиотека sentinel-core успешно загружена из %s",
+    "sentinel_core_bridge_call_failed": "[Sentinel-Core] Ошибка вызова функции моста %s: %s",
 }
