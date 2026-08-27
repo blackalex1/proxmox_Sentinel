@@ -123,8 +123,11 @@ def clean_html_for_telegram(text: str) -> str:
     text = re.sub(r'\s*</?details[^>]*>\s*', '\n', text)
     text = re.sub(r'[ \t]*<summary[^>]*>', '<b>', text)
     text = re.sub(r'</summary>\s*', '</b>\n', text)
+
+    # 6. Convert <tg-thinking>...</tg-thinking> to placeholder
+    text = re.sub(r'<tg-thinking\b[^>]*>(.*?)</tg-thinking>', r'⏳ <i>\1</i>', text, flags=re.DOTALL | re.IGNORECASE)
     
-    # 6. HTML table rows: <tr><td>Key</td><td>Value</td></tr> -> Key: Value
+    # 7. HTML table rows: <tr><td>Key</td><td>Value</td></tr> -> Key: Value
     def clean_tr(match):
         row_content = match.group(1)
         headers = re.findall(r'<th\b[^>]*>(.*?)</th>', row_content, flags=re.DOTALL)
@@ -408,10 +411,7 @@ class ResilientOutbox:
             self.queue = remaining_queue
             self.save_to_disk()
 
-    async def _send_rich_message_impl(self, bot: Bot, chat_id, text, parse_mode="HTML", reply_markup=None):
-        if not settings.telegram_api_server:
-            return None
-            
+    async def _send_rich_message_impl(self, bot: Bot, chat_id, text, parse_mode="HTML", reply_markup=None, ephemeral_params=None):
         import aiohttp
         import json
         
@@ -441,6 +441,9 @@ class ResilientOutbox:
                     payload["reply_markup"] = reply_markup.to_python()
                 else:
                     payload["reply_markup"] = reply_markup
+
+            if ephemeral_params:
+                payload["ephemeral_message_parameters"] = ephemeral_params
                     
             session = await bot.session.create_session()
             proxy = getattr(bot.session, "proxy", None)
@@ -448,12 +451,13 @@ class ResilientOutbox:
             if proxy and not proxy.startswith(("http://", "https://")):
                 proxy = None
             async with session.post(url_rich, json=payload, timeout=8, proxy=proxy, proxy_auth=proxy_auth) as response:
-                res = await response.json()
-                if res.get("ok"):
-                    from aiogram.types import Message
-                    return Message.model_validate(res["result"])
-                else:
-                    logger.warning("rich_message_failed_send_rich_message_code", chat_id, res.get('description'))
+                if response.status == 200:
+                    res = await response.json()
+                    if res.get("ok"):
+                        from aiogram.types import Message
+                        return Message.model_validate(res["result"])
+                    else:
+                        logger.debug("rich_message_failed_send_rich_message_code", chat_id, res.get('description'))
         except Exception as e:
             err_msg = f"{e.__class__.__name__}: {e}" if str(e) else e.__class__.__name__
             logger.debug(f"Rich message send skipped, falling back to standard message: {err_msg}")
@@ -467,9 +471,6 @@ class ResilientOutbox:
         return None
 
     async def _edit_rich_message_impl(self, bot: Bot, chat_id, message_id, text, parse_mode="HTML", reply_markup=None):
-        if not settings.telegram_api_server:
-            return None
-            
         import aiohttp
         import json
         
@@ -507,18 +508,20 @@ class ResilientOutbox:
             if proxy and not proxy.startswith(("http://", "https://")):
                 proxy = None
             async with session.post(url_rich, json=payload, timeout=8, proxy=proxy, proxy_auth=proxy_auth) as response:
-                res = await response.json()
-                if res.get("ok"):
-                    from aiogram.types import Message
-                    return Message.model_validate(res["result"])
-                else:
-                    desc = res.get('description', '')
-                    if "message is not modified" in desc.lower():
-                        logger.debug("rich_message_edit_message_not_modified", desc)
+                if response.status == 200:
+                    res = await response.json()
+                    if res.get("ok"):
+                        from aiogram.types import Message
+                        return Message.model_validate(res["result"])
                     else:
-                        logger.warning("rich_message_edit_failed_edit_rich_message_code", desc)
+                        desc = res.get('description', '')
+                        if "message is not modified" in desc.lower():
+                            logger.debug("rich_message_edit_message_not_modified", desc)
+                        else:
+                            logger.debug("rich_message_edit_failed_edit_rich_message_code", desc)
         except Exception as e:
-            logger.debug(f"Rich message edit skipped: {e}")
+            err_msg = f"{e.__class__.__name__}: {e}" if str(e) else e.__class__.__name__
+            logger.debug(f"Rich message edit skipped, falling back to standard edit: {err_msg}")
         finally:
             if session and not session.closed:
                 try:
