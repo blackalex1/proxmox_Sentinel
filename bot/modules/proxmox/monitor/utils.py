@@ -124,28 +124,42 @@ def make_progress_bar(pct, length=10):
 
 def convert_rich_html_to_standard(html):
     import re
-    # Convert header tags to bold
+    if not html:
+        return ""
+        
+    # 1. Convert markdown headers: # Header -> <b>Header</b>
+    html = re.sub(r'^#+\s+(.*?)$', r'<b>\1</b>', html, flags=re.MULTILINE)
+    
+    # 2. Convert HTML header tags to bold
     html = re.sub(r'<h[1-6][^>]*>', '<b>', html)
     html = re.sub(r'</h[1-6]>', '</b>\n', html)
     
-    # Convert <hr> / <hr/> to separator
+    # 3. Convert <hr> / <hr/> / --- to separator
     html = re.sub(r'<hr\s*/?>', '\n⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯\n', html)
+    html = re.sub(r'^---\s*$', '⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯', html, flags=re.MULTILINE)
     
-    # Convert <aside> to blockquote
+    # 4. Convert <details><summary>...</summary>...</details> to collapsible expandable blockquote
+    def process_details(match):
+        summary = match.group(1).strip()
+        body = match.group(2).strip()
+        return f"\n<blockquote expandable>{summary}\n{body}</blockquote>\n"
+
+    html = re.sub(r'<details\b[^>]*>\s*<summary\b[^>]*>(.*?)</summary>(.*?)</details>', process_details, html, flags=re.DOTALL | re.IGNORECASE)
+    
+    # 5. Convert <aside> to blockquote
     html = re.sub(r'<aside[^>]*>', '<blockquote>', html)
     html = re.sub(r'</aside>', '</blockquote>', html)
     
-    # Convert footer/cite
+    # 6. Convert footer/cite
     html = re.sub(r'<footer[^>]*>', '<i>', html)
     html = re.sub(r'</footer>', '</i>', html)
     html = re.sub(r'<cite[^>]*>', '\n— ', html)
     html = re.sub(r'</cite>', '', html)
     
-    # Convert <hr/> to divider and <br/> to newline
-    html = re.sub(r'<hr\s*/?>', '\n⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯\n', html)
+    # 7. Convert <br/> to newline
     html = re.sub(r'<br\s*/?>', '\n', html)
     
-    # For tables, extract rows and clean up
+    # 8. For HTML tables, extract rows and clean up
     def process_table(table_match):
         table_content = table_match.group(1)
         rows = re.findall(r'<tr>(.*?)</tr>', table_content, re.DOTALL)
@@ -162,17 +176,40 @@ def convert_rich_html_to_standard(html):
         return "\n" + "\n".join(result_rows) + "\n"
 
     html = re.sub(r'<table[^>]*>(.*?)</table>', process_table, html, flags=re.DOTALL)
+
+    # 9. For markdown tables: | Param | Value | -> Param: Value
+    def clean_md_tables(text):
+        lines = text.split('\n')
+        out_lines = []
+        for line in lines:
+            trimmed = line.strip()
+            if trimmed.startswith('|') and trimmed.endswith('|'):
+                parts = [p.strip() for p in trimmed.strip('|').split('|')]
+                if any(p.startswith(':--') or p.startswith('---') for p in parts):
+                    continue  # skip separator line | :--- | :--- |
+                if len(parts) == 2:
+                    if parts[0] in ("Параметр", "Parameter", "Metric"):
+                        continue
+                    out_lines.append(f"{parts[0]}: {parts[1]}")
+                else:
+                    out_lines.append(" - ".join(parts))
+            else:
+                out_lines.append(line)
+        return '\n'.join(out_lines)
+
+    html = clean_md_tables(html)
     
-    # Strip any other unrecognized/unsupported HTML tags that might fail Telegram's parse_mode="HTML"
+    # 10. Strip any other unrecognized/unsupported HTML tags that might fail Telegram's parse_mode="HTML"
     def strip_unsupported_tags(match):
+        full_tag = match.group(0)
         tag = match.group(1).lower()
         is_closing = tag.startswith('/')
         tag_name = tag[1:] if is_closing else tag
-        if tag_name in ('a', 'b', 'strong', 'i', 'em', 'u', 'ins', 's', 'strike', 'del', 'span', 'code', 'pre', 'blockquote'):
-            return match.group(0)
+        if tag_name in ('a', 'b', 'strong', 'i', 'em', 'u', 'ins', 's', 'strike', 'del', 'span', 'code', 'pre', 'blockquote', 'tg-spoiler', 'tg-emoji'):
+            return full_tag
         return ''
         
-    html = re.sub(r'<(/?[a-zA-Z0-9]+)(?:\s+[^>]*)?>', strip_unsupported_tags, html)
+    html = re.sub(r'<(/?[a-zA-Z0-9_-]+)(?:\s+[^>]*)?>', strip_unsupported_tags, html)
     
     # Clean up double newlines
     html = re.sub(r'\n{3,}', '\n\n', html)
@@ -190,12 +227,6 @@ async def send_rich_message(chat_id, text, parse_mode="HTML", reply_markup=None)
     from aiogram.types import Message
     
     sent_msg = None
-    
-    # Авто-детект markdown формата, если передан HTML, но текст содержит заголовки или таблицы Markdown
-    actual_parse_mode = parse_mode
-    if parse_mode and parse_mode.lower() == "html" and text:
-        if re.search(r'^#\s+', text, re.MULTILINE) or re.search(r'^###\s+', text, re.MULTILINE) or ('| ---' in text) or ('| :---' in text) or re.search(r'^---\s*$', text, re.MULTILINE):
-            actual_parse_mode = "markdown"
 
     # 1. Попытка отправить через кастомный Telegram API сервер (если настроен sendRichMessage)
     if settings.telegram_api_server:
@@ -204,13 +235,10 @@ async def send_rich_message(chat_id, text, parse_mode="HTML", reply_markup=None)
         try:
             payload = {
                 "chat_id": chat_id,
-                "rich_message": {}
+                "rich_message": {
+                    "html": text
+                }
             }
-            if actual_parse_mode and actual_parse_mode.lower() in ("markdown", "markdownv2"):
-                payload["rich_message"]["markdown"] = text
-            else:
-                payload["rich_message"]["html"] = text
-                
             if reply_markup:
                 if hasattr(reply_markup, "model_dump"):
                     payload["reply_markup"] = reply_markup.model_dump(exclude_none=True)
@@ -241,13 +269,8 @@ async def send_rich_message(chat_id, text, parse_mode="HTML", reply_markup=None)
     # 2. Стандартная и надежная отправка через aiogram bot.send_message
     if not sent_msg:
         try:
-            fallback_text = text
-            if actual_parse_mode and actual_parse_mode.lower() == "html":
-                fallback_text = convert_rich_html_to_standard(text)
-            elif actual_parse_mode and actual_parse_mode.lower() in ("markdown", "markdownv2"):
-                from core.outbox import clean_mixed_html_to_markdown
-                fallback_text = clean_mixed_html_to_markdown(text)
-            sent_msg = await bot.send_message(chat_id, fallback_text, parse_mode=actual_parse_mode, reply_markup=reply_markup)
+            fallback_text = convert_rich_html_to_standard(text)
+            sent_msg = await bot.send_message(chat_id, fallback_text, parse_mode="HTML", reply_markup=reply_markup)
         except Exception as e:
             logging.error(f"Failed to send standard message for chat_id={chat_id}: {e}")
             raise e
