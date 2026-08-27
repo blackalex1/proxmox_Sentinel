@@ -23,7 +23,7 @@ async def test_handle_router_iptables_log_line_sensitive():
     
     lxc_alert_throttle.clear()
     
-    line = "ROUTER-IPS: IN=br-lan OUT= SRC=192.168.1.150 DST=203.0.113.100 PROTO=TCP SPT=54321 DPT=22"
+    line = "ROUTER-IPS: IN=br-lan OUT= SRC=192.168.1.150 DST=192.168.1.1 PROTO=TCP SPT=54321 DPT=22"
     
     with patch("modules.router.monitor.router_handlers.send_alert_to_admins", AsyncMock()) as mock_alert:
         await handle_router_iptables_log_line(line)
@@ -33,7 +33,7 @@ async def test_handle_router_iptables_log_line_sensitive():
         alert_text = mock_alert.call_args[0][0]
         assert "Router Security: IPTables" in alert_text
         assert "192.168.1.150:54321" in alert_text
-        assert "203.0.113.100:22" in alert_text
+        assert "192.168.1.1:22" in alert_text
 
 
 @pytest.mark.asyncio
@@ -521,11 +521,26 @@ async def test_ban_unban_router_port():
         settings.router_type = original_type
 
 
+@pytest.mark.asyncio
+async def test_process_router_event_threat_and_autoban():
+    from modules.router.monitor.router_handlers import _process_router_event
+    from unittest.mock import AsyncMock, patch
 
+    event_threat = {
+        "src_ip": "192.168.1.88",
+        "src_port": 54321,
+        "dst_host": "192.0.2.30",
+        "dst_port": 22,
+        "proto": "TCP",
+        "is_threat": True,
+        "should_autoban": True,
+        "threat_type": "horizontal_scan",
+        "reason": "Массовое сканирование сети (3 целевых IP на порт 22)",
+    }
 
-
-
-
-
-
+    with patch("modules.router.monitor.router_handlers.ban_router_ip", AsyncMock(return_value=(True, "banned"))) as mock_ban, \
+         patch("modules.router.monitor.router_handlers.send_alert_to_admins", AsyncMock()) as mock_alert:
+        await _process_router_event("Conntrack", event_threat)
+        mock_ban.assert_called_once_with("192.168.1.88", reason="Массовое сканирование сети (3 целевых IP на порт 22)")
+        mock_alert.assert_called_once()
 

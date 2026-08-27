@@ -268,14 +268,15 @@ async def send_rich_message(chat_id, text, parse_mode="HTML", reply_markup=None,
             if re.search(r'^#\s+', text, re.MULTILINE) or re.search(r'^###\s+', text, re.MULTILINE) or ('| ---' in text) or ('| :---' in text) or re.search(r'^---\s*$', text, re.MULTILINE):
                 actual_parse_mode = "markdown"
 
+        from bot.core.outbox import clean_mixed_html_to_markdown, clean_html_for_telegram
         payload = {
             "chat_id": chat_id,
             "rich_message": {}
         }
         if actual_parse_mode and actual_parse_mode.lower() in ("markdown", "markdownv2"):
-            payload["rich_message"]["markdown"] = text
+            payload["rich_message"]["markdown"] = clean_mixed_html_to_markdown(text)
         else:
-            payload["rich_message"]["html"] = text
+            payload["rich_message"]["html"] = clean_html_for_telegram(text)
             
         if reply_markup:
             if hasattr(reply_markup, "model_dump"):
@@ -345,10 +346,11 @@ async def edit_rich_message(chat_id, message_id, text, parse_mode="HTML", reply_
             "message_id": message_id,
             "rich_message": {}
         }
+        from bot.core.outbox import clean_mixed_html_to_markdown, clean_html_for_telegram
         if actual_parse_mode and actual_parse_mode.lower() in ("markdown", "markdownv2"):
-            payload["rich_message"]["markdown"] = text
+            payload["rich_message"]["markdown"] = clean_mixed_html_to_markdown(text)
         else:
-            payload["rich_message"]["html"] = text
+            payload["rich_message"]["html"] = clean_html_for_telegram(text)
             
         if reply_markup:
             if hasattr(reply_markup, "model_dump"):
