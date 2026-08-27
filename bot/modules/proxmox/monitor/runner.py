@@ -196,7 +196,13 @@ async def monitor_panel_audit_logs():
                             "IPS Auto-blocked" in str(log.get("details"))
                         )
                         is_login_success = log.get("action") in ["login_success", "login_telegram_success"]
-                        is_client_event = log.get("action") in ("xray_connect", "xray_disconnect", "hysteria_connect", "hysteria_disconnect", "singbox_connect", "singbox_disconnect")
+                        is_client_event = log.get("action") in (
+                            "xray_connect", "xray_disconnect",
+                            "hysteria_connect", "hysteria_disconnect",
+                            "hysteria2_connect", "hysteria2_disconnect",
+                            "singbox_connect", "singbox_disconnect",
+                            "sing-box_connect", "sing-box_disconnect"
+                        )
                         
                         if is_ips_block:
                             email = log.get("target") or "unknown"

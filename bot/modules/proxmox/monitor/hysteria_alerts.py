@@ -237,7 +237,7 @@ async def process_hysteria_audit_event(panel, action, client_ip, log_timestamp, 
     duration_str = details.get("duration", _("spectre", "history_unknown"))
     
     panel_name = panel.name
-    protocol = "Xray" if "xray" in action else ("Sing-box" if "singbox" in action else "Hysteria")
+    protocol = "Xray" if "xray" in action else ("Sing-box" if ("sing" in action or "singbox" in action) else ("Hysteria 2" if "hysteria" in action else "VPN"))
     key = (panel_name, username, protocol)
     card = active_activity_cards.get(key)
     
@@ -265,7 +265,10 @@ async def process_hysteria_audit_event(panel, action, client_ip, log_timestamp, 
     except Exception:
         timestamp_str = datetime.datetime.now().strftime("%H:%M:%S")
     
-    if action in ("xray_connect", "hysteria_connect", "singbox_connect"):
+    is_connect = any(c in action for c in ("connect", "_connect")) and not any(d in action for d in ("disconnect", "_disconnect"))
+    is_disconnect = any(d in action for d in ("disconnect", "_disconnect"))
+
+    if is_connect:
         session_id = None
         # Записываем событие подключения в SQLite БД
         try:
@@ -341,7 +344,7 @@ async def process_hysteria_audit_event(panel, action, client_ip, log_timestamp, 
             # Start background task to process send/noise checks after delay
             asyncio.create_task(check_and_send_card_delayed(key, session_id))
             
-    elif action in ("xray_disconnect", "hysteria_disconnect", "singbox_disconnect"):
+    elif is_disconnect:
         # Записываем событие отключения в SQLite БД
         try:
             from core.db import save_vpn_disconnect
