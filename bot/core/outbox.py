@@ -123,7 +123,13 @@ def clean_html_for_telegram(text: str) -> str:
     text = re.sub(r'<tr\b[^>]*>(.*?)</tr>', clean_tr, text, flags=re.DOTALL)
     text = re.sub(r'</?table[^>]*>', '', text)
     
-    # 4. Коллапсирующие блоки details/summary
+    # 4. Коллапсирующие блоки details/summary -> нативный Telegram blockquote expandable
+    def process_details_html(match):
+        summary = match.group(1).strip()
+        body = match.group(2).strip()
+        return f"\n<blockquote expandable>{summary}\n{body}</blockquote>\n"
+
+    text = re.sub(r'<details\b[^>]*>\s*<summary\b[^>]*>(.*?)</summary>(.*?)</details>', process_details_html, text, flags=re.DOTALL | re.IGNORECASE)
     text = re.sub(r'\s*</?details[^>]*>\s*', '\n', text)
     text = re.sub(r'[ \t]*<summary[^>]*>', '<b>', text)
     text = re.sub(r'</summary>\s*', '</b>\n', text)
@@ -403,10 +409,8 @@ class ResilientOutbox:
                 else:
                     logger.warning("rich_message_failed_send_rich_message_code", chat_id, res.get('description'))
         except Exception as e:
-            if is_network_error(e):
-                raise e
             err_msg = f"{e.__class__.__name__}: {e}" if str(e) else e.__class__.__name__
-            logger.warning("rich_message_exception_sending_rich_message", chat_id, err_msg)
+            logger.debug(f"Rich message send skipped, falling back to standard message: {err_msg}")
         finally:
             if session and not session.closed:
                 try:
@@ -465,9 +469,7 @@ class ResilientOutbox:
                     else:
                         logger.warning("rich_message_edit_failed_edit_rich_message_code", desc)
         except Exception as e:
-            if is_network_error(e):
-                raise e
-            logger.warning("rich_message_edit_exception_while_editing_rich_message", e)
+            logger.debug(f"Rich message edit skipped: {e}")
         finally:
             if session and not session.closed:
                 try:
