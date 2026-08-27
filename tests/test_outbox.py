@@ -361,3 +361,38 @@ async def test_outbox_flush_rate_limited(clean_outbox):
     # Отправка не должна случиться
     bot._original_send_message.assert_not_called()
     assert len(outbox.queue) == 1
+
+
+@pytest.mark.asyncio
+async def test_send_rich_message_draft_api():
+    """
+    Проверяет отправку потокового драфта через sendRichMessageDraft (Bot API 10.1 - 10.3).
+    """
+    from modules.proxmox.monitor.utils import send_rich_message_draft
+    
+    mock_resp = AsyncMock()
+    mock_resp.status = 200
+    mock_resp.json = AsyncMock(return_value={"ok": True, "result": True})
+    
+    mock_cm = AsyncMock()
+    mock_cm.__aenter__.return_value = mock_resp
+    mock_cm.__aexit__.return_value = None
+    
+    with patch('aiohttp.ClientSession.post', return_value=mock_cm):
+        success = await send_rich_message_draft(
+            chat_id=12345,
+            text="<tg-thinking>Анализ аномалий трафика...</tg-thinking>",
+            draft_id=1,
+            can_stop=True
+        )
+        assert success is True
+
+
+def test_clean_html_for_telegram_tg_thinking():
+    """
+    Проверяет, что <tg-thinking> корректно преобразуется в стандартный HTML Telegram.
+    """
+    from core.outbox import clean_html_for_telegram
+    raw = "<b>Отчет</b>\n<tg-thinking>Поиск подозрительных IP адресов...</tg-thinking>"
+    cleaned = clean_html_for_telegram(raw)
+    assert "⏳ <i>Поиск подозрительных IP адресов...</i>" in cleaned
