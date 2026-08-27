@@ -309,12 +309,19 @@ def find_real_vpn_client_ip(
             except Exception:
                 pass
 
-    try:
-        client_ip = _ffi_call_str("SentinelFindRealVPNClientIP", proto, container_ip, dst_ip, int(sport), int(dpt), conntrack_dump)
-        if client_ip:
-            return client_ip.strip()
-    except Exception as e:
-        logger.debug("FFI find_real_vpn_client_ip error: %s", e)
+    if get_sentinel_lib():
+        try:
+            client_ip = _ffi_call_str("SentinelFindRealVPNClientIP", proto, container_ip, dst_ip, int(sport), int(dpt), conntrack_dump)
+            if client_ip:
+                return client_ip.strip()
+            return None
+        except Exception as e:
+            logger.debug("FFI find_real_vpn_client_ip error: %s", e)
+            return None
+
+    # CLI fallback only if FFI is completely unavailable and payload is not too large
+    if conntrack_dump and len(conntrack_dump) > 32768:
+        return None
 
     args = [
         "security", "find-vpn-client",
@@ -345,12 +352,18 @@ def find_xray_client_email(
     Returns: (email, ip, inbound_tag)
     """
     lines_json = json.dumps(lines)
-    try:
-        res = _ffi_call_json("SentinelFindXrayClientEmail", lines_json, client_ip or "", dst_ip or "", int(dst_port), int(max_age_sec))
-        if isinstance(res, dict) and res.get("email"):
-            return res.get("email"), res.get("ip") or client_ip, res.get("inbound_tag")
-    except Exception as e:
-        logger.debug("FFI find_xray_client_email error: %s", e)
+    if get_sentinel_lib():
+        try:
+            res = _ffi_call_json("SentinelFindXrayClientEmail", lines_json, client_ip or "", dst_ip or "", int(dst_port), int(max_age_sec))
+            if isinstance(res, dict) and res.get("email"):
+                return res.get("email"), res.get("ip") or client_ip, res.get("inbound_tag")
+            return None, None, None
+        except Exception as e:
+            logger.debug("FFI find_xray_client_email error: %s", e)
+            return None, None, None
+
+    if len(lines_json) > 32768:
+        return None, None, None
 
     args = [
         "security", "find-proxy-client",
@@ -375,12 +388,18 @@ def find_hysteria_client_email(
 ) -> Optional[str]:
     """Searches Hysteria 2 log lines for client user/email via sentinel-core."""
     lines_json = json.dumps(lines)
-    try:
-        email = _ffi_call_str("SentinelFindHysteriaClientEmail", lines_json, dst_ip or "", int(dst_port), int(max_age_sec))
-        if email:
-            return email.strip()
-    except Exception as e:
-        logger.debug("FFI find_hysteria_client_email error: %s", e)
+    if get_sentinel_lib():
+        try:
+            email = _ffi_call_str("SentinelFindHysteriaClientEmail", lines_json, dst_ip or "", int(dst_port), int(max_age_sec))
+            if email:
+                return email.strip()
+            return None
+        except Exception as e:
+            logger.debug("FFI find_hysteria_client_email error: %s", e)
+            return None
+
+    if len(lines_json) > 32768:
+        return None
 
     args = [
         "security", "find-proxy-client",
@@ -403,12 +422,18 @@ def find_client_ip_for_email_in_hysteria_log(
 ) -> Optional[str]:
     """Searches Hysteria 2 log lines for latest client IP by email via sentinel-core."""
     lines_json = json.dumps(lines)
-    try:
-        ip = _ffi_call_str("SentinelFindClientIPForEmail", lines_json, email, int(max_age_sec))
-        if ip:
-            return ip.strip()
-    except Exception as e:
-        logger.debug("FFI find_client_ip_for_email_in_hysteria_log error: %s", e)
+    if get_sentinel_lib():
+        try:
+            ip = _ffi_call_str("SentinelFindClientIPForEmail", lines_json, email, int(max_age_sec))
+            if ip:
+                return ip.strip()
+            return None
+        except Exception as e:
+            logger.debug("FFI find_client_ip_for_email_in_hysteria_log error: %s", e)
+            return None
+
+    if len(lines_json) > 32768:
+        return None
 
     args = [
         "security", "find-proxy-client",
