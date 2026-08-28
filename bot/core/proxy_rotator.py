@@ -323,12 +323,6 @@ class SocksProxyRotator:
                     self._last_working_source_tier = tier_name
                     return "socks5://127.0.0.1:10818"
 
-        # Если локальный бинарник sing-box не установлен, но среди лучших есть SOCKS5
-        for w in working:
-            if w.get("protocol") == "socks5" or "socks5://" in w.get("proxyUrl", ""):
-                self._last_working_source_tier = tier_name
-                return w.get("proxyUrl")
-
         return None
 
     async def _fetch_single_source(self, base_url: str) -> List[str]:
