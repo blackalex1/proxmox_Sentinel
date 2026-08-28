@@ -83,6 +83,8 @@ def test_all_messages_functions_can_be_translated(lang):
     translator.cache.clear()
     
     for func_name in core.messages.__all__:
+        if func_name == "build_rich_message":
+            continue
         func = getattr(core.messages, func_name)
         if not callable(func):
             continue

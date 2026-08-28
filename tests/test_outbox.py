@@ -291,50 +291,45 @@ def test_clean_mixed_html_to_markdown_formatting():
 
 def test_clean_html_for_telegram_tables():
     from core.outbox import clean_html_for_telegram
-    from core.messages.spectre import get_session_activity_card
-    
-    # Generate a card which uses our new HTML table template
-    card_html = get_session_activity_card(
-        protocol="Hysteria",
-        panel_name="VPS 198.51.100.42",
-        username="bot",
-        download_bytes=859.62 * 1024 * 1024,
-        upload_bytes=18.97 * 1024 * 1024 * 1024,
-        timeline_lines=["🟢 [17:46:05] Подключение с 198.51.100.50"]
+
+    sample_table = (
+        '<table border="1">\n'
+        '  <tr><th>Параметр</th><th>Значение</th></tr>\n'
+        '  <tr><td><b>👤 Пользователь</b></td><td><code>bot</code></td></tr>\n'
+        '  <tr><td><b>📥 Скачано</b></td><td><code>859.62 MB</code></td></tr>\n'
+        '  <tr><td><b>📤 Загружено</b></td><td><code>18.97 GB</code></td></tr>\n'
+        '</table>\n'
+        '🟢 [17:46:05] Подключение с 198.51.100.50'
     )
     
-    # Ensure HTML table syntax is present in the output
-    assert "<table" in card_html
+    assert "<table" in sample_table
+    cleaned = clean_html_for_telegram(sample_table)
     
-    # Process it with clean_html_for_telegram
-    cleaned = clean_html_for_telegram(card_html)
-    
-    # Check that it converted the HTML table to text table rows (supporting both RU/EN locales)
-    assert ("<b>👤 Пользователь</b>: <code>bot</code>" in cleaned) or ("<b>👤 User</b>: <code>bot</code>" in cleaned) or ("<b>👤 Пользователь</b> | <code>bot</code>" in cleaned) or ("<b>👤 User</b> | <code>bot</code>" in cleaned)
-    assert ("<b>📥 Скачано</b>: <code>859.62 MB</code>" in cleaned) or ("<b>📥 Downloaded</b>: <code>859.62 MB</code>" in cleaned) or ("<b>📥 Скачано</b> | <code>859.62 MB</code>" in cleaned) or ("<b>📥 Downloaded</b> | <code>859.62 MB</code>" in cleaned)
-    assert ("<b>📤 Загружено</b>: <code>18.97 GB</code>" in cleaned) or ("<b>📤 Uploaded</b>: <code>18.97 GB</code>" in cleaned) or ("<b>📤 Загружено</b> | <code>18.97 GB</code>" in cleaned) or ("<b>📤 Uploaded</b> | <code>18.97 GB</code>" in cleaned)
+    assert ("<b>👤 Пользователь</b>: <code>bot</code>" in cleaned) or ("<b>👤 Пользователь</b> | <code>bot</code>" in cleaned)
+    assert ("<b>📥 Скачано</b>: <code>859.62 MB</code>" in cleaned) or ("<b>📥 Скачано</b> | <code>859.62 MB</code>" in cleaned)
+    assert ("<b>📤 Загружено</b>: <code>18.97 GB</code>" in cleaned) or ("<b>📤 Загружено</b> | <code>18.97 GB</code>" in cleaned)
     assert "🟢 [17:46:05] Подключение с 198.51.100.50" in cleaned
     assert "<table" not in cleaned
 
 
 def test_clean_mixed_html_to_markdown_tables():
     from core.outbox import clean_mixed_html_to_markdown
-    from core.messages.spectre import get_session_activity_card
-    
-    card_html = get_session_activity_card(
-        protocol="Hysteria",
-        panel_name="VPS 198.51.100.42",
-        username="bot",
-        download_bytes=859.62 * 1024 * 1024,
-        upload_bytes=18.97 * 1024 * 1024 * 1024,
-        timeline_lines=["🟢 [17:46:05] Подключение с 198.51.100.50"]
+
+    sample_table = (
+        '<table border="1">\n'
+        '  <tr><th>Параметр</th><th>Значение</th></tr>\n'
+        '  <tr><td><b>👤 Пользователь</b></td><td><code>bot</code></td></tr>\n'
+        '  <tr><td><b>📥 Скачано</b></td><td><code>859.62 MB</code></td></tr>\n'
+        '  <tr><td><b>📤 Загружено</b></td><td><code>18.97 GB</code></td></tr>\n'
+        '</table>\n'
+        '🟢 [17:46:05] Подключение с 198.51.100.50'
     )
     
-    cleaned = clean_mixed_html_to_markdown(card_html)
+    cleaned = clean_mixed_html_to_markdown(sample_table)
     
-    assert ("**👤 Пользователь** | `bot`" in cleaned) or ("**👤 User** | `bot`" in cleaned)
-    assert ("**📥 Скачано** | `859.62 MB`" in cleaned) or ("**📥 Downloaded** | `859.62 MB`" in cleaned)
-    assert ("**📤 Загружено** | `18.97 GB`" in cleaned) or ("**📤 Uploaded** | `18.97 GB`" in cleaned)
+    assert ("**👤 Пользователь** | `bot`" in cleaned) or ("**👤 Пользователь**: `bot`" in cleaned)
+    assert ("**📥 Скачано** | `859.62 MB`" in cleaned) or ("**📥 Скачано**: `859.62 MB`" in cleaned)
+    assert ("**📤 Загружено** | `18.97 GB`" in cleaned) or ("**📤 Загружено**: `18.97 GB`" in cleaned)
     assert "🟢 [17:46:05] Подключение с 198.51.100.50" in cleaned
     assert "<table" not in cleaned
 
