@@ -250,68 +250,28 @@ async def send_rich_message(chat_id, text, parse_mode="HTML", reply_markup=None,
     Отправка Rich Message (Bot API 10.1 - 10.3 / sendRichMessage) или стандартного сообщения через aiogram.
     Возвращает объект Message при успехе, или None при ошибке.
     """
-    import aiohttp
-    import json
-    import re
-    from aiogram.types import Message
+    from core.rich import build_rich_message
+    from aiogram.types import Message, InputRichMessage
     
     sent_msg = None
 
     # 1. Попытка отправить через нативный sendRichMessage (Bot API 10.1-10.3)
     try:
-        url_rich = bot.session.api.api_url(token=settings.bot_token, method="sendRichMessage")
-        session = None
-        
-        # Авто-детект markdown формата
-        actual_parse_mode = parse_mode
-        if parse_mode and parse_mode.lower() == "html" and text:
-            if re.search(r'^#\s+', text, re.MULTILINE) or re.search(r'^###\s+', text, re.MULTILINE) or ('| ---' in text) or ('| :---' in text) or re.search(r'^---\s*$', text, re.MULTILINE):
-                actual_parse_mode = "markdown"
-
-        from bot.core.outbox import clean_mixed_html_to_markdown, clean_html_for_telegram
-        payload = {
-            "chat_id": chat_id,
-            "rich_message": {}
-        }
-        if actual_parse_mode and actual_parse_mode.lower() in ("markdown", "markdownv2"):
-            payload["rich_message"]["markdown"] = clean_mixed_html_to_markdown(text)
-        else:
-            payload["rich_message"]["html"] = clean_html_for_telegram(text)
-            
-        if reply_markup:
-            if hasattr(reply_markup, "model_dump"):
-                payload["reply_markup"] = reply_markup.model_dump(exclude_none=True)
-            elif hasattr(reply_markup, "to_python"):
-                payload["reply_markup"] = reply_markup.to_python()
-            else:
-                payload["reply_markup"] = reply_markup
-
+        rich_message = build_rich_message(text)
+        kwargs = {}
+        if reply_markup is not None:
+            kwargs["reply_markup"] = reply_markup
         if ephemeral_params:
-            payload["ephemeral_message_parameters"] = ephemeral_params
-                
-        session = await bot.session.create_session()
-        proxy = getattr(bot.session, "proxy", None)
-        proxy_auth = getattr(bot.session, "proxy_auth", None)
-        if proxy and not proxy.startswith(("http://", "https://")):
-            proxy = None
-        async with session.post(url_rich, json=payload, timeout=6, proxy=proxy, proxy_auth=proxy_auth) as response:
-            if response.status == 200:
-                res = await response.json()
-                if res.get("ok"):
-                    sent_msg = Message.model_validate(res["result"])
+            kwargs["ephemeral_message_parameters"] = ephemeral_params
+
+        sent_msg = await bot.send_rich_message(chat_id=chat_id, rich_message=rich_message, **kwargs)
     except Exception as e:
-        logging.debug(f"Rich message attempt skipped: {e}")
-    finally:
-        if 'session' in locals() and session and not session.closed:
-            try:
-                await session.close()
-            except Exception:
-                pass
-    
-    # 2. Стандартная и надежная отправка через aiogram bot.send_message
+        logging.debug(f"Rich message attempt skipped for chat_id={chat_id}: {e}")
+
+    # 2. Стандартная и надежная отправка через aiogram bot.send_message (fallback)
     if not sent_msg:
         try:
-            fallback_text = convert_rich_html_to_standard(text)
+            fallback_text = convert_rich_html_to_standard(text) if isinstance(text, str) else str(text)
             sent_msg = await bot.send_message(chat_id, fallback_text, parse_mode="HTML", reply_markup=reply_markup)
         except Exception as e:
             logging.error(f"Failed to send standard message for chat_id={chat_id}: {e}")
@@ -321,112 +281,34 @@ async def send_rich_message(chat_id, text, parse_mode="HTML", reply_markup=None,
 
 async def edit_rich_message(chat_id, message_id, text, parse_mode="HTML", reply_markup=None):
     """
-    Редактирование Rich Message (Bot API 10.1 - 10.3 / editMessageText) или стандартного сообщения через aiogram.
+    Редактирование сообщения через aiogram bot.edit_message_text.
     Возвращает объект Message при успехе, или None при ошибке.
     """
-    import aiohttp
-    import json
-    import re
     from aiogram.types import Message
     
     edited_msg = None
-    
-    # Авто-детект markdown формата
-    actual_parse_mode = parse_mode
-    if parse_mode and parse_mode.lower() == "html" and text:
-        if re.search(r'^#\s+', text, re.MULTILINE) or re.search(r'^###\s+', text, re.MULTILINE) or ('| ---' in text) or ('| :---' in text) or re.search(r'^---\s*$', text, re.MULTILINE):
-            actual_parse_mode = "markdown"
-
-    # 1. Попытка редактирования через Rich Message API
     try:
-        url_rich = bot.session.api.api_url(token=settings.bot_token, method="editMessageText")
-        session = None
-        payload = {
-            "chat_id": chat_id,
-            "message_id": message_id,
-            "rich_message": {}
-        }
-        from bot.core.outbox import clean_mixed_html_to_markdown, clean_html_for_telegram
-        if actual_parse_mode and actual_parse_mode.lower() in ("markdown", "markdownv2"):
-            payload["rich_message"]["markdown"] = clean_mixed_html_to_markdown(text)
-        else:
-            payload["rich_message"]["html"] = clean_html_for_telegram(text)
-            
-        if reply_markup:
-            if hasattr(reply_markup, "model_dump"):
-                payload["reply_markup"] = reply_markup.model_dump(exclude_none=True)
-            elif hasattr(reply_markup, "to_python"):
-                payload["reply_markup"] = reply_markup.to_python()
-            else:
-                payload["reply_markup"] = reply_markup
-                
-        session = await bot.session.create_session()
-        proxy = getattr(bot.session, "proxy", None)
-        proxy_auth = getattr(bot.session, "proxy_auth", None)
-        if proxy and not proxy.startswith(("http://", "https://")):
-            proxy = None
-        async with session.post(url_rich, json=payload, timeout=6, proxy=proxy, proxy_auth=proxy_auth) as response:
-            if response.status == 200:
-                res = await response.json()
-                if res.get("ok"):
-                    edited_msg = Message.model_validate(res["result"])
+        fallback_text = convert_rich_html_to_standard(text) if isinstance(text, str) else str(text)
+        edited_msg = await bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=fallback_text, parse_mode="HTML", reply_markup=reply_markup)
     except Exception as e:
-        logging.debug(f"Rich message edit attempt skipped: {e}")
-    finally:
-        if 'session' in locals() and session and not session.closed:
-            try:
-                await session.close()
-            except Exception:
-                pass
-        
-    if not edited_msg:
-        try:
-            fallback_text = convert_rich_html_to_standard(text)
-            edited_msg = await bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=fallback_text, parse_mode="HTML", reply_markup=reply_markup)
-        except Exception as e:
-            if "message is not modified" not in str(e).lower():
-                logging.error(f"Failed to edit standard message for chat_id={chat_id}: {e}")
-                raise e
+        if "message is not modified" not in str(e).lower():
+            logging.error(f"Failed to edit message for chat_id={chat_id}: {e}")
+            raise e
     return edited_msg
 
 
 async def send_rich_message_draft(chat_id, text: str, draft_id: int = 1, can_stop: bool = False, keep_on_stop: bool = False):
     """
     Отправка потокового драфта Rich Message (Bot API 10.1 - 10.3 / sendRichMessageDraft).
-    Позволяет боту выводить процесс генерации или ожидания (<tg-thinking>) в реальном времени.
+    Позволяет боту выводить процесс генерации или ожидания в реальном времени.
     """
-    import aiohttp
-    import json
-    
-    url_draft = bot.session.api.api_url(token=settings.bot_token, method="sendRichMessageDraft")
-    session = None
+    from core.rich import build_rich_message
     try:
-        payload = {
-            "chat_id": chat_id,
-            "draft_id": draft_id,
-            "rich_message": {
-                "html": text
-            },
-            "can_stop": can_stop,
-            "keep_on_stop": keep_on_stop
-        }
-        session = await bot.session.create_session()
-        proxy = getattr(bot.session, "proxy", None)
-        proxy_auth = getattr(bot.session, "proxy_auth", None)
-        if proxy and not proxy.startswith(("http://", "https://")):
-            proxy = None
-        async with session.post(url_draft, json=payload, timeout=5, proxy=proxy, proxy_auth=proxy_auth) as response:
-            if response.status == 200:
-                res = await response.json()
-                return res.get("ok", False)
+        rich_message = build_rich_message(text)
+        res = await bot.send_rich_message_draft(chat_id=chat_id, draft_id=draft_id, rich_message=rich_message)
+        return bool(res)
     except Exception as e:
         logging.debug(f"sendRichMessageDraft skipped: {e}")
-    finally:
-        if session and not session.closed:
-            try:
-                await session.close()
-            except Exception:
-                pass
     return False
 
 

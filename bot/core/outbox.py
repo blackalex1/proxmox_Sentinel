@@ -430,129 +430,58 @@ class ResilientOutbox:
             self.save_to_disk()
 
     async def _send_rich_message_impl(self, bot: Bot, chat_id, text, parse_mode="HTML", reply_markup=None, ephemeral_params=None):
-        import aiohttp
-        import json
-        
-        session = None
         try:
-            url_rich = bot.session.api.api_url(token=settings.bot_token, method="sendRichMessage")
-            
-            # Авто-детект markdown формата, если передан HTML, но текст содержит заголовки или таблицы Markdown
-            actual_parse_mode = parse_mode
-            if parse_mode and parse_mode.lower() == "html" and text:
-                if re.search(r'^#\s+', text, re.MULTILINE) or re.search(r'^###\s+', text, re.MULTILINE) or ('| ---' in text) or ('| :---' in text) or re.search(r'^---\s*$', text, re.MULTILINE):
-                    actual_parse_mode = "markdown"
-
-            payload = {
-                "chat_id": chat_id,
-                "rich_message": {}
-            }
-            if actual_parse_mode and actual_parse_mode.lower() in ("markdown", "markdownv2"):
-                payload["rich_message"]["markdown"] = clean_mixed_html_to_markdown(text)
-            else:
-                payload["rich_message"]["html"] = clean_html_for_telegram(text)
-                
-            if reply_markup:
-                if hasattr(reply_markup, "model_dump"):
-                    payload["reply_markup"] = reply_markup.model_dump(exclude_none=True)
-                elif hasattr(reply_markup, "to_python"):
-                    payload["reply_markup"] = reply_markup.to_python()
-                else:
-                    payload["reply_markup"] = reply_markup
-
+            from core.rich import build_rich_message
+            rich_message = build_rich_message(text)
+            kwargs = {}
+            if reply_markup is not None:
+                kwargs["reply_markup"] = reply_markup
             if ephemeral_params:
-                payload["ephemeral_message_parameters"] = ephemeral_params
-                    
-            session = await bot.session.create_session()
-            proxy = getattr(bot.session, "proxy", None)
-            proxy_auth = getattr(bot.session, "proxy_auth", None)
-            if proxy and not proxy.startswith(("http://", "https://")):
-                proxy = None
-            async with session.post(url_rich, json=payload, timeout=8, proxy=proxy, proxy_auth=proxy_auth) as response:
-                if response.status == 200:
-                    res = await response.json()
-                    if res.get("ok"):
-                        from aiogram.types import Message
-                        return Message.model_validate(res["result"])
-                    else:
-                        logger.debug("rich_message_failed_send_rich_message_code", chat_id, res.get('description'))
+                kwargs["ephemeral_message_parameters"] = ephemeral_params
+            send_method = getattr(bot, "_original_send_rich_message", None)
+            if send_method:
+                return await send_method(chat_id=chat_id, rich_message=rich_message, **kwargs)
+        except (TelegramRetryAfter, TelegramAPIError) as e:
+            raise e
+        except NETWORK_ERRORS as e:
+            raise e
         except Exception as e:
+            if is_network_error(e):
+                raise e
             err_msg = f"{e.__class__.__name__}: {e}" if str(e) else e.__class__.__name__
             logger.debug(f"Rich message send skipped, falling back to standard message: {err_msg}")
-        finally:
-            if session and not session.closed:
-                try:
-                    await session.close()
-                except Exception:
-                    pass
-            
         return None
 
     async def _edit_rich_message_impl(self, bot: Bot, chat_id, message_id, text, parse_mode="HTML", reply_markup=None):
-        import aiohttp
-        import json
-        
-        session = None
         try:
-            url_rich = bot.session.api.api_url(token=settings.bot_token, method="editMessageText")
-            
-            # Авто-детект markdown формата, если передан HTML, но текст содержит заголовки или таблицы Markdown
-            actual_parse_mode = parse_mode
-            if parse_mode and parse_mode.lower() == "html" and text:
-                if re.search(r'^#\s+', text, re.MULTILINE) or re.search(r'^###\s+', text, re.MULTILINE) or ('| ---' in text) or ('| :---' in text) or re.search(r'^---\s*$', text, re.MULTILINE):
-                    actual_parse_mode = "markdown"
-
-            payload = {
-                "chat_id": chat_id,
-                "message_id": message_id,
-                "rich_message": {}
-            }
-            if actual_parse_mode and actual_parse_mode.lower() in ("markdown", "markdownv2"):
-                payload["rich_message"]["markdown"] = clean_mixed_html_to_markdown(text)
-            else:
-                payload["rich_message"]["html"] = clean_html_for_telegram(text)
-                
-            if reply_markup:
-                if hasattr(reply_markup, "model_dump"):
-                    payload["reply_markup"] = reply_markup.model_dump(exclude_none=True)
-                elif hasattr(reply_markup, "to_python"):
-                    payload["reply_markup"] = reply_markup.to_python()
-                else:
-                    payload["reply_markup"] = reply_markup
-                    
-            session = await bot.session.create_session()
-            proxy = getattr(bot.session, "proxy", None)
-            proxy_auth = getattr(bot.session, "proxy_auth", None)
-            if proxy and not proxy.startswith(("http://", "https://")):
-                proxy = None
-            async with session.post(url_rich, json=payload, timeout=8, proxy=proxy, proxy_auth=proxy_auth) as response:
-                if response.status == 200:
-                    res = await response.json()
-                    if res.get("ok"):
-                        from aiogram.types import Message
-                        return Message.model_validate(res["result"])
-                    else:
-                        desc = res.get('description', '')
-                        if "message is not modified" in desc.lower():
-                            logger.debug("rich_message_edit_message_not_modified", desc)
-                        else:
-                            logger.debug("rich_message_edit_failed_edit_rich_message_code", desc)
+            fallback_text = clean_html_for_telegram(text) if isinstance(text, str) else str(text)
+            kwargs = {}
+            if reply_markup is not None:
+                kwargs["reply_markup"] = reply_markup
+            edit_method = getattr(bot, "_original_edit_message_text", None)
+            if edit_method:
+                return await edit_method(chat_id=chat_id, message_id=message_id, text=fallback_text, parse_mode="HTML", **kwargs)
+        except (TelegramRetryAfter, TelegramAPIError) as e:
+            raise e
+        except NETWORK_ERRORS as e:
+            raise e
         except Exception as e:
-            err_msg = f"{e.__class__.__name__}: {e}" if str(e) else e.__class__.__name__
-            logger.debug(f"Rich message edit skipped, falling back to standard edit: {err_msg}")
-        finally:
-            if session and not session.closed:
-                try:
-                    await session.close()
-                except Exception:
-                    pass
-            
+            if is_network_error(e):
+                raise e
+            desc = str(e)
+            if "message is not modified" in desc.lower():
+                logger.debug("rich_message_edit_message_not_modified", desc)
+            else:
+                logger.debug(f"Rich message edit skipped, falling back to standard edit: {desc}")
         return None
 
     def patch_bot(self, bot: Bot):
         """Динамически подменяет метод send_message и edit_message_text у инстанса бота."""
         # Сохраняем оригинальные методы
         bot._original_send_message = bot.send_message
+        bot._original_edit_message_text = bot.edit_message_text
+        if hasattr(bot, "send_rich_message"):
+            bot._original_send_rich_message = bot.send_rich_message
         
         async def resilient_send_message(chat_id, text, *args, **kwargs):
             parse_mode = kwargs.get("parse_mode", "HTML")

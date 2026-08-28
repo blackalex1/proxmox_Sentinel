@@ -154,8 +154,10 @@ async def handle_remote_ssh_auth_line(line, server=None):
                 )
                 reply_markup = None
                 if sshd_pid:
-                    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-                    kb = [[InlineKeyboardButton(text="❌ Сбросить SSH-сессию", callback_data=f"termssh:{server['ip']}:{sshd_pid}")]]
+                    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CopyTextButton
+                    action_row = [
+                        InlineKeyboardButton(text="🔴 Сбросить SSH-сессию", callback_data=f"termssh:{server['ip']}:{sshd_pid}", style="danger")
+                    ]
                     
                     # Если вход выполнен по ключу, кэшируем его в БД и добавляем кнопку бана
                     if auth_method == "publickey" and fingerprint:
@@ -163,7 +165,13 @@ async def handle_remote_ssh_auth_line(line, server=None):
                         cache = await get_state("ssh_key_cache", {})
                         cache[f"{server['ip']}:{sshd_pid}"] = [fingerprint, username]
                         await set_state("ssh_key_cache", cache)
-                        kb.append([InlineKeyboardButton(text="🚫 Заблокировать SSH-ключ", callback_data=f"bankey:{server['ip']}:{sshd_pid}")])
+                        action_row.append(InlineKeyboardButton(text="🔴 Заблокировать SSH-ключ", callback_data=f"bankey:{server['ip']}:{sshd_pid}", style="danger"))
+                    
+                    kb = [action_row]
+                    copy_row = [InlineKeyboardButton(text="📋 Скопировать IP", copy_text=CopyTextButton(text=client_ip))]
+                    if fingerprint:
+                        copy_row.append(InlineKeyboardButton(text="📋 Скопировать ключ", copy_text=CopyTextButton(text=fingerprint)))
+                    kb.append(copy_row)
                     
                     reply_markup = InlineKeyboardMarkup(inline_keyboard=kb)
                 

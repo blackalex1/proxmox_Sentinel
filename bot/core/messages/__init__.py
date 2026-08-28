@@ -130,4 +130,10 @@ __all__ = [
     
     # Ban Center templates
     "get_ban_center_table",
+    
+    # Rich Message Engine
+    "build_rich_message",
+    "parse_to_rich_text",
 ]
+
+from core.rich import build_rich_message, parse_to_rich_text
