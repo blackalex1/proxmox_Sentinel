@@ -331,35 +331,46 @@ class SocksProxyRotator:
 
         return None
 
-    async def _check_vpn_sources(self, sources: List[str], tier_name: str) -> Optional[str]:
-        """Загружает и проверяет через ядро список VPN-конфигураций."""
+    async def _fetch_single_source(self, base_url: str) -> List[str]:
+        """Быстро скачивает файл подписки через зеркала с таймаутом 3.5с."""
         loop = asyncio.get_running_loop()
-        uris = []
+        mirror_prefixes = [
+            "https://ghproxy.net/",
+            "https://gh-proxy.com/",
+            "https://mirror.ghproxy.com/",
+            "",
+        ]
 
-        for base_url in sources:
-            urls_to_try = [base_url]
-            if "raw.githubusercontent.com" in base_url:
-                urls_to_try.append(f"https://ghproxy.net/{base_url}")
-                urls_to_try.append(f"https://gh-proxy.com/{base_url}")
-                
-            fetched = False
-            for url in urls_to_try:
-                try:
-                    req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'})
-                    content = await loop.run_in_executor(
-                        None,
-                        lambda u=url: urllib.request.urlopen(req, timeout=6).read().decode('utf-8', errors='ignore')
-                    )
-                    for line in content.splitlines():
-                        line = line.strip()
-                        if line and not line.startswith('#') and not line.startswith('//'):
-                            uris.append(line)
-                    fetched = True
-                    break
-                except Exception:
-                    continue
-            if not fetched:
-                logger.warning("Failed to fetch %s source %s", tier_name, base_url)
+        def _fetch_url(target_url: str) -> str:
+            import ssl
+            ctx = ssl.create_default_context()
+            ctx.check_hostname = False
+            ctx.verify_mode = ssl.CERT_NONE
+            req = urllib.request.Request(
+                target_url,
+                headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+            )
+            with urllib.request.urlopen(req, timeout=3.5, context=ctx) as response:
+                return response.read().decode("utf-8", errors="ignore")
+
+        for prefix in mirror_prefixes:
+            full_url = f"{prefix}{base_url}" if prefix else base_url
+            try:
+                content = await loop.run_in_executor(None, _fetch_url, full_url)
+                if content and len(content) > 10:
+                    return [line.strip() for line in content.splitlines() if line.strip() and not line.startswith("#") and not line.startswith("//")]
+            except Exception:
+                continue
+        return []
+
+    async def _check_vpn_sources(self, sources: List[str], tier_name: str) -> Optional[str]:
+        """Параллельно скачивает подписки и активирует лучший Sing-box туннель."""
+        tasks = [self._fetch_single_source(url) for url in sources]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        uris = []
+        for r in results:
+            if isinstance(r, list):
+                uris.extend(r)
 
         return await self._test_and_activate_nodes(uris, tier_name=tier_name)
 
