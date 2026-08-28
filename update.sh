@@ -59,19 +59,26 @@ if [ -z "$PROXY_URL" ] && [ "$NO_PROXY" -eq 0 ]; then
     fi
 fi
 
-# Apply proxy settings if available
-GIT_PROXY_OPTS=()
-CORE_PROXY_ARG=()
+# Validate proxy scheme: Git and Curl only support http, https, socks4, socks5, socks5h
+VALID_PROXY=""
 if [ -n "$PROXY_URL" ] && [ "$NO_PROXY" -eq 0 ]; then
-    echo "[+] Настроено подключение через прокси / VPN: $PROXY_URL"
-    export http_proxy="$PROXY_URL"
-    export https_proxy="$PROXY_URL"
-    export all_proxy="$PROXY_URL"
-    export HTTP_PROXY="$PROXY_URL"
-    export HTTPS_PROXY="$PROXY_URL"
-    export ALL_PROXY="$PROXY_URL"
-    GIT_PROXY_OPTS=("-c" "http.proxy=$PROXY_URL" "-c" "https.proxy=$PROXY_URL")
-    CORE_PROXY_ARG=("--proxy" "$PROXY_URL")
+    if [[ "$PROXY_URL" =~ ^(http|https|socks4|socks5|socks5h):// ]]; then
+        VALID_PROXY="$PROXY_URL"
+        echo "[+] Настроено подключение через HTTP/SOCKS прокси: $VALID_PROXY"
+        export http_proxy="$VALID_PROXY"
+        export https_proxy="$VALID_PROXY"
+        export all_proxy="$VALID_PROXY"
+        export HTTP_PROXY="$VALID_PROXY"
+        export HTTPS_PROXY="$VALID_PROXY"
+        export ALL_PROXY="$VALID_PROXY"
+    else
+        echo "[ℹ️] В конфигурации указана VPN-нода (${PROXY_URL%%:*}:...). Для Git и Curl будут задействованы быстрые зеркала и прямые соединения."
+    fi
+fi
+
+CORE_PROXY_ARG=()
+if [ -n "$VALID_PROXY" ]; then
+    CORE_PROXY_ARG=("--proxy" "$VALID_PROXY")
 fi
 
 echo "===================================================="
@@ -83,31 +90,45 @@ echo "[+] Pulling latest updates from Git..."
 OLD_HEAD=$(git rev-parse HEAD 2>/dev/null)
 
 pull_git() {
-    git "${GIT_PROXY_OPTS[@]}" fetch origin main && git reset --hard origin/main
+    if [ -n "$VALID_PROXY" ]; then
+        git -c "http.proxy=$VALID_PROXY" -c "https.proxy=$VALID_PROXY" fetch origin main && git reset --hard origin/main
+    else
+        git fetch origin main && git reset --hard origin/main
+    fi
 }
 
-if ! pull_git; then
-    echo "[!] Не удалось выполнить git fetch напрямую."
-    if [ -t 0 ] && [ "$AUTO_MODE" -eq 0 ]; then
-        echo ""
-        echo "===================================================="
-        echo "🌐 НАСТРОЙКА ПОДКЛЮЧЕНИЯ К GITHUB (PROXY / VPN)"
-        echo "===================================================="
-        echo "Возможно, GitHub заблокирован провайдером или недоступен напрямую."
-        read -p "Введите адрес прокси/VPN (например, http://127.0.0.1:7890 или socks5://127.0.0.1:1080) [Enter для пропуска]: " USER_PROXY
-        if [ -n "$USER_PROXY" ]; then
-            PROXY_URL="$USER_PROXY"
-            export http_proxy="$PROXY_URL"
-            export https_proxy="$PROXY_URL"
-            export all_proxy="$PROXY_URL"
-            export HTTP_PROXY="$PROXY_URL"
-            export HTTPS_PROXY="$PROXY_URL"
-            export ALL_PROXY="$PROXY_URL"
-            GIT_PROXY_OPTS=("-c" "http.proxy=$PROXY_URL" "-c" "https.proxy=$PROXY_URL")
-            CORE_PROXY_ARG=("--proxy" "$PROXY_URL")
-            echo "[+] Повторная попытка git fetch через $PROXY_URL..."
-            pull_git || echo "[!] Ошибка: Не удалось обновить Git репозиторий даже через указанный прокси."
-        fi
+PULL_SUCCESS=0
+if pull_git; then
+    PULL_SUCCESS=1
+else
+    echo "[!] Прямое подключение к GitHub для git fetch не удалось. Пробуем через зеркало GitHub..."
+    if git fetch "https://ghproxy.net/https://github.com/blackalex1/proxmox_Sentinel.git" main 2>/dev/null && git reset --hard FETCH_HEAD; then
+        echo "[+] Git успешно обновлен через быстрое зеркало!"
+        PULL_SUCCESS=1
+    elif git fetch "https://gh-proxy.com/https://github.com/blackalex1/proxmox_Sentinel.git" main 2>/dev/null && git reset --hard FETCH_HEAD; then
+        echo "[+] Git успешно обновлен через зеркало gh-proxy.com!"
+        PULL_SUCCESS=1
+    fi
+fi
+
+if [ "$PULL_SUCCESS" -eq 0 ] && [ -t 0 ] && [ "$AUTO_MODE" -eq 0 ]; then
+    echo ""
+    echo "===================================================="
+    echo "🌐 НАСТРОЙКА ПОДКЛЮЧЕНИЯ К GITHUB (PROXY / VPN)"
+    echo "===================================================="
+    echo "GitHub недоступен напрямую. Укажите локальный HTTP или SOCKS5 прокси."
+    read -p "Введите адрес прокси (например, http://127.0.0.1:7890 или socks5://127.0.0.1:1080) [Enter для пропуска]: " USER_PROXY
+    if [ -n "$USER_PROXY" ]; then
+        VALID_PROXY="$USER_PROXY"
+        export http_proxy="$VALID_PROXY"
+        export https_proxy="$VALID_PROXY"
+        export all_proxy="$VALID_PROXY"
+        export HTTP_PROXY="$VALID_PROXY"
+        export HTTPS_PROXY="$VALID_PROXY"
+        export ALL_PROXY="$VALID_PROXY"
+        CORE_PROXY_ARG=("--proxy" "$VALID_PROXY")
+        echo "[+] Повторная попытка git fetch через $VALID_PROXY..."
+        pull_git && PULL_SUCCESS=1
     fi
 fi
 

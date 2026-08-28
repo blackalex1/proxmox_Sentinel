@@ -57,16 +57,21 @@ if [ -z "$PROXY_URL" ]; then
     fi
 fi
 
+VALID_PROXY=""
 CURL_OPTS=("-fsSL" "--connect-timeout" "10" "--retry" "2")
+
 if [ -n "$PROXY_URL" ]; then
-    echo -e "${CYAN}[+] Использование прокси / VPN для Sing-box & Xray: $PROXY_URL${NC}"
-    export http_proxy="$PROXY_URL"
-    export https_proxy="$PROXY_URL"
-    export all_proxy="$PROXY_URL"
-    export HTTP_PROXY="$PROXY_URL"
-    export HTTPS_PROXY="$PROXY_URL"
-    export ALL_PROXY="$PROXY_URL"
-    CURL_OPTS+=("-x" "$PROXY_URL")
+    if [[ "$PROXY_URL" =~ ^(http|https|socks4|socks5|socks5h):// ]]; then
+        VALID_PROXY="$PROXY_URL"
+        echo -e "${CYAN}[+] Использование прокси для Sing-box & Xray: $VALID_PROXY${NC}"
+        export http_proxy="$VALID_PROXY"
+        export https_proxy="$VALID_PROXY"
+        export all_proxy="$VALID_PROXY"
+        export HTTP_PROXY="$VALID_PROXY"
+        export HTTPS_PROXY="$VALID_PROXY"
+        export ALL_PROXY="$VALID_PROXY"
+        CURL_OPTS+=("-x" "$VALID_PROXY")
+    fi
 fi
 
 # 1. Detect OS
@@ -118,15 +123,24 @@ fetch_singbox() {
     if command -v python3 &>/dev/null; then
         SB_TAG=$(python3 -c "
 import urllib.request, json, os
-proxy = os.environ.get('HTTPS_PROXY') or os.environ.get('HTTP_PROXY') or '$PROXY_URL'
+urls = [
+    'https://api.github.com/repos/SagerNet/sing-box/releases/latest',
+    'https://ghproxy.net/https://api.github.com/repos/SagerNet/sing-box/releases/latest',
+    'https://gh-proxy.com/https://api.github.com/repos/SagerNet/sing-box/releases/latest'
+]
+proxy = '$VALID_PROXY'
 handlers = [urllib.request.ProxyHandler({'http': proxy, 'https': proxy})] if proxy else []
 opener = urllib.request.build_opener(*handlers)
-try:
-    req = urllib.request.Request('https://api.github.com/repos/SagerNet/sing-box/releases/latest', headers={'User-Agent': 'SentinelController'})
-    with opener.open(req, timeout=8) as r:
-        print(json.loads(r.read().decode('utf-8'))['tag_name'])
-except Exception:
-    pass
+for u in urls:
+    try:
+        req = urllib.request.Request(u, headers={'User-Agent': 'SentinelController'})
+        with opener.open(req, timeout=6) as r:
+            tag = json.loads(r.read().decode('utf-8'))['tag_name']
+            if tag:
+                print(tag)
+                exit(0)
+    except Exception:
+        continue
 " 2>/dev/null)
     fi
 
@@ -159,7 +173,7 @@ except Exception:
     for URL in "${SB_CANDIDATES[@]}"; do
         rm -f "$TMP_ARCHIVE"
         if curl "${CURL_OPTS[@]}" -o "$TMP_ARCHIVE" "$URL" 2>/dev/null; then
-            if [ -s "$TMP_ARCHIVE" ]; then
+            if [ -s "$TMP_ARCHIVE" ] && ! head -n 1 "$TMP_ARCHIVE" | grep -iqE "<!DOCTYPE|<html|404: Not Found|\{\"message\":"; then
                 if [[ "$TMP_ARCHIVE" == *.tar.gz ]]; then
                     tar -xzf "$TMP_ARCHIVE" --strip-components=1 -C "$BIN_DIR" 2>/dev/null || tar -xzf "$TMP_ARCHIVE" -C "$BIN_DIR"
                 elif command -v unzip &>/dev/null; then
@@ -205,7 +219,7 @@ fetch_xray() {
     for URL in "${XRAY_CANDIDATES[@]}"; do
         rm -f "$TMP_ZIP"
         if curl "${CURL_OPTS[@]}" -o "$TMP_ZIP" "$URL" 2>/dev/null; then
-            if [ -s "$TMP_ZIP" ]; then
+            if [ -s "$TMP_ZIP" ] && ! head -n 1 "$TMP_ZIP" | grep -iqE "<!DOCTYPE|<html|404: Not Found|\{\"message\":"; then
                 if command -v unzip &>/dev/null; then
                     unzip -q -o "$TMP_ZIP" -d "$BIN_DIR" xray xray.exe geoip.dat geosite.dat 2>/dev/null || unzip -q -o "$TMP_ZIP" -d "$BIN_DIR"
                     chmod +x "$BIN_DIR/xray" 2>/dev/null || true
