@@ -10,6 +10,11 @@ import time
 import urllib.request
 from typing import Optional, List, Dict, Any
 
+# Ensure bot root directory is always present in sys.path for direct CLI execution
+_bot_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if _bot_root not in sys.path:
+    sys.path.insert(0, _bot_root)
+
 import aiohttp
 from aiohttp_socks import ProxyConnector
 
@@ -360,20 +365,52 @@ class SocksProxyRotator:
 
     async def start_tunnel_for_node(self, node_uri: str, port: int = 10818) -> bool:
         """
-        Запускает локальный Sing-box / Xray туннель для конкретной VPN ссылки (ss://, vless://, trojan://, etc.).
+        Запускает локальный Sing-box / Xray / pproxy туннель для конкретной VPN ссылки (ss://, vless://, trojan://, etc.).
         """
-        parsed = sentinel_core_bridge.parse_subscription(node_uri)
-        if not parsed:
-            logger.warning("Failed to parse VPN node URI: %s", node_uri)
-            return False
-        cfg_json = sentinel_core_bridge.build_failover_client_config(parsed, socks_port=port, http_port=port+1)
-        if not cfg_json:
-            logger.warning("Failed to build client config for VPN node")
-            return False
-        ok = await self.start_or_reload_singbox_tunnel(cfg_json, port=port)
-        if ok:
-            self._save_working_nodes_to_disk([node_uri])
-        return ok
+        # 1. Попытка через Sing-box / Xray
+        try:
+            parsed = sentinel_core_bridge.parse_subscription(node_uri)
+            if parsed:
+                cfg_json = sentinel_core_bridge.build_failover_client_config(parsed, socks_port=port, http_port=port+1)
+                if cfg_json:
+                    ok = await self.start_or_reload_singbox_tunnel(cfg_json, port=port)
+                    if ok:
+                        self._save_working_nodes_to_disk([node_uri])
+                        return True
+        except Exception as e:
+            logger.debug("Sing-box tunnel start attempt failed: %s", e)
+
+        # 2. Если это Shadowsocks и Sing-box не запустился, запускаем встроенный pproxy
+        if node_uri.startswith("ss://"):
+            try:
+                import pproxy
+                import urllib.parse
+                parsed_url = urllib.parse.urlparse(node_uri)
+                netloc = parsed_url.netloc or parsed_url.path
+                if '@' in netloc:
+                    creds, host_port = netloc.rsplit('@', 1)
+                else:
+                    creds, host_port = netloc, ''
+
+                if creds and ':' not in creds:
+                    creds = creds.strip()
+                    missing_padding = len(creds) % 4
+                    if missing_padding:
+                        creds += '=' * (4 - missing_padding)
+
+                cleaned_ss_url = f"ss://{creds}@{host_port}"
+                server = pproxy.Server(f'socks5://127.0.0.1:{port}')
+                remote = pproxy.Connection(cleaned_ss_url)
+                await server.start_server({'rserver': [remote]})
+                ok, lat = await self.test_proxy_alive(f"socks5://127.0.0.1:{port}", timeout=4.0)
+                if ok:
+                    logger.info("Started pproxy Shadowsocks tunnel on port %d (latency: %.1f ms)", port, lat)
+                    self._save_working_nodes_to_disk([node_uri])
+                    return True
+            except Exception as e:
+                logger.debug("Failed to start pproxy fallback: %s", e)
+
+        return False
 
     async def _check_socks5_sources(self) -> Optional[str]:
         """Крайний случай: скрапинг и проверка открытых SOCKS5 списков."""
