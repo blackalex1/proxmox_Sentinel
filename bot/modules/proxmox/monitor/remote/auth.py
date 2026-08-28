@@ -13,67 +13,36 @@ from .helpers import (
 )
 
 async def handle_remote_ssh_auth_line(line, server=None):
-    """Парсинг логов авторизаций SSH (успешные входы и попытки брутфорса)."""
-    if not server:
+    """Парсинг логов авторизаций SSH (успешные входы и попытки брутфорса) через ядро Sentinel-Core."""
+    if not server or not line:
         return
     try:
-        if "Accepted" in line:
-            pid_match = re.search(r"sshd\[(\d+)\]", line)
-            sshd_pid = int(pid_match.group(1)) if pid_match else None
-            user_match = re.search(r"Accepted\s+(\S+)\s+for\s+(\S+)\s+from\s+(\S+)\s+port\s+(\d+)\s+ssh2(?::\s+(.*))?", line)
-            has_port = True
-            if not user_match:
-                user_match = re.search(r"Accepted\s+(\S+)\s+for\s+(\S+)\s+from\s+(\S+)", line)
-                has_port = False
-                
-            if user_match:
-                auth_method = user_match.group(1)
-                username = user_match.group(2)
-                client_ip = user_match.group(3)
-                client_port = None
-                
-                key_details = ""
-                if has_port:
-                    try:
-                        client_port = int(user_match.group(4))
-                    except (ValueError, TypeError):
-                        pass
-                    if len(user_match.groups()) >= 5 and user_match.group(5):
-                        key_details = user_match.group(5).strip()
-                else:
-                    if len(user_match.groups()) >= 4 and user_match.group(4):
-                        key_details = user_match.group(4).strip()
-                
-                key_info_str = ""
-                key_name = None
-                fingerprint = None
-                if auth_method == "publickey" and key_details:
-                    fingerprint = key_details
-                    if " " in key_details:
-                        fp_parts = key_details.split()
-                        for p in fp_parts:
-                            if p.startswith("SHA256:") or p.startswith("MD5:"):
-                                fingerprint = p
-                                break
-                    
+        from core import sentinel_core_bridge
+        event = sentinel_core_bridge.parse_auth_line(line)
+        
+        if event and event.get("type") == "SSH_LOGIN":
+            sshd_pid = event.get("pid")
+            auth_method = event.get("auth_method", "publickey")
+            username = event.get("user", "unknown")
+            client_ip = event.get("source_ip", "")
+            client_port = event.get("port")
+            fingerprint = event.get("key_fingerprint")
+            
+            key_name = None
+            if fingerprint:
+                server_cache = remote_key_caches.get(server['ip'], {})
+                key_name = server_cache.get(fingerprint)
+                if not key_name:
+                    await refresh_remote_key_cache(server)
                     server_cache = remote_key_caches.get(server['ip'], {})
                     key_name = server_cache.get(fingerprint)
-                    if not key_name:
-                        await refresh_remote_key_cache(server)
-                        server_cache = remote_key_caches.get(server['ip'], {})
-                        key_name = server_cache.get(fingerprint)
-                        
-                    if key_name:
-                        key_info_str = f"\n🔑 <b>Использован ключ:</b> <code>{key_name}</code>"
-                    else:
-                        key_info_str = f"\n🔑 <b>Ключ (fingerprint):</b> <code>{fingerprint}</code>"
-
-                # Проверка игнорируемых ключей и IP-адресов с защитой от компрометации
-                from core.config import settings
-                
-                ignore_ips = settings.remote_monitor_ignore_ips
-                if not isinstance(ignore_ips, list):
-                    ignore_ips = [ignore_ips] if ignore_ips else []
+            
+            # Проверка игнорируемых ключей и IP-адресов с защитой от компрометации
+            from core.config import settings
+            
+            ignore_ips = settings.remote_monitor_ignore_ips
+            if not isinstance(ignore_ips, list):
+                ignore_ips = [ignore_ips] if ignore_ips else []
                 
                 # Получаем публичный IP бота для привязки ключа к IP
                 auto_ip = await get_bot_public_ip()
