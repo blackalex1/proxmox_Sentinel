@@ -144,6 +144,7 @@ class SocksProxyRotator:
                     break
         if xray_bin:
             return xray_bin, "xray"
+        return None, ""
 
     def stop_tunnel(self):
         """Останавливает локальный процесс Sing-box / Xray при завершении работы бота."""
