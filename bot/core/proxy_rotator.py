@@ -533,26 +533,26 @@ class SocksProxyRotator:
         # ТИР 0: Быстрая проверка локального дискового кэша
         cached = self._load_cached_nodes_from_disk()
         if cached:
-            logger.info("checking_local_cached_nodes", len(cached))
+            logger.info("[Failover] Checking %d local cached VPN nodes...", len(cached))
             cached_res = await self._test_and_activate_nodes(cached, tier_name="Disk Cache")
             if cached_res:
-                logger.info("successfully_activated_cached_vpn_node", cached_res)
+                logger.info("[Failover] Successfully activated cached VPN node: %s", cached_res)
                 return cached_res
 
         # ТИР 1: Проверяем черные списки
-        logger.info("starting_checking_tier1_black_lists")
+        logger.info("[Failover] Checking Tier 1: Black lists (Hysteria 2 / Trojan / VLESS Reality)...")
         t1_proxy = await self._check_vpn_sources(BLACK_LIST_SOURCES, tier_name="Tier 1")
         if t1_proxy:
             return t1_proxy
 
         # ТИР 2: Проверяем белые списки
-        logger.info("starting_checking_tier2_white_lists")
+        logger.info("[Failover] Checking Tier 2: White lists (VLESS Reality)...")
         t2_proxy = await self._check_vpn_sources(WHITE_LIST_SOURCES, tier_name="Tier 2")
         if t2_proxy:
             return t2_proxy
 
         # ТИР 3: Крайний случай - парсинг открытых SOCKS5
-        logger.info("starting_checking_tier3_socks5_public")
+        logger.info("[Failover] Checking Tier 3: Public SOCKS5 proxy lists...")
         t3_proxy = await self._check_socks5_sources()
         if t3_proxy:
             return t3_proxy
