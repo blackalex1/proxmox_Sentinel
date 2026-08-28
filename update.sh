@@ -154,7 +154,7 @@ if [ -f "bot/requirements.txt" ] && [ -d "bot/venv" ]; then
 
     if command -v "$UV_BIN" >/dev/null 2>&1; then
         echo "[+] Found uv, updating dependencies using uv..."
-        if "$UV_BIN" pip install --python bot/venv -r bot/requirements.txt; then
+        if "$UV_BIN" pip install --upgrade --python bot/venv -r bot/requirements.txt; then
             echo "[+] Python dependencies updated successfully using uv."
         else
             echo "[!] Failed to update Python dependencies with uv."
@@ -162,7 +162,7 @@ if [ -f "bot/requirements.txt" ] && [ -d "bot/venv" ]; then
     else
         echo "[+] uv not found, checking for pip in virtual environment..."
         if [ -f "bot/venv/bin/pip" ]; then
-            if bot/venv/bin/pip install --upgrade pip && bot/venv/bin/pip install -r bot/requirements.txt; then
+            if bot/venv/bin/pip install --upgrade pip && bot/venv/bin/pip install --upgrade -r bot/requirements.txt; then
                 echo "[+] Python dependencies updated successfully."
             else
                 echo "[!] Failed to update Python dependencies."
@@ -170,7 +170,7 @@ if [ -f "bot/requirements.txt" ] && [ -d "bot/venv" ]; then
         else
             echo "[+] pip not found in venv/bin. Trying python3 -m pip..."
             if bot/venv/bin/python3 -m pip install --upgrade pip 2>/dev/null || bot/venv/bin/python -m pip install --upgrade pip 2>/dev/null; then
-                if bot/venv/bin/python3 -m pip install -r bot/requirements.txt || bot/venv/bin/python -m pip install -r bot/requirements.txt; then
+                if bot/venv/bin/python3 -m pip install --upgrade -r bot/requirements.txt || bot/venv/bin/python -m pip install --upgrade -r bot/requirements.txt; then
                     echo "[+] Python dependencies updated successfully."
                 else
                     echo "[!] Failed to update Python dependencies."
