@@ -4,6 +4,7 @@ import logging
 import os
 import re
 import shutil
+import signal
 import subprocess
 import sys
 import time
@@ -119,32 +120,31 @@ class SocksProxyRotator:
         return False, 0.0
 
     def _find_proxy_engine_bin(self) -> tuple[Optional[str], str]:
-        """Finds sing-box or xray binary across host and bot/bin paths."""
+        """Находит установленный бинарник sing-box или xray на хосте."""
         base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        bin_dir = os.path.join(base_dir, "bin")
 
-        # 1. Check sing-box
         sb_bin = shutil.which("sing-box") or shutil.which("singbox")
         if not sb_bin:
             for candidate in [
-                os.path.join(base_dir, "bin", "sing-box.exe" if sys.platform == "win32" else "sing-box"),
+                os.path.join(bin_dir, "sing-box.exe" if sys.platform == "win32" else "sing-box"),
                 "/usr/local/bin/sing-box",
                 "/usr/bin/sing-box"
             ]:
-                if os.path.isfile(candidate):
+                if os.path.isfile(candidate) and os.access(candidate, os.X_OK):
                     sb_bin = candidate
                     break
         if sb_bin:
             return sb_bin, "singbox"
 
-        # 2. Check xray
         xray_bin = shutil.which("xray") or shutil.which("xray-core")
         if not xray_bin:
             for candidate in [
-                os.path.join(base_dir, "bin", "xray.exe" if sys.platform == "win32" else "xray"),
+                os.path.join(bin_dir, "xray.exe" if sys.platform == "win32" else "xray"),
                 "/usr/local/bin/xray",
                 "/usr/bin/xray"
             ]:
-                if os.path.isfile(candidate):
+                if os.path.isfile(candidate) and os.access(candidate, os.X_OK):
                     xray_bin = candidate
                     break
         if xray_bin:
@@ -152,38 +152,45 @@ class SocksProxyRotator:
         return None, ""
 
     def stop_tunnel(self):
-        """Останавливает локальный процесс Sing-box / Xray при завершении работы бота."""
+        """Останавливает локальный процесс Sing-box / Xray и всю его группу процессов."""
         if self._singbox_proc is not None:
             try:
-                self._singbox_proc.terminate()
-                self._singbox_proc.wait(timeout=1)
+                if sys.platform != "win32":
+                    try:
+                        os.killpg(os.getpgid(self._singbox_proc.pid), signal.SIGTERM)
+                    except Exception:
+                        self._singbox_proc.terminate()
+                else:
+                    self._singbox_proc.terminate()
+                self._singbox_proc.wait(timeout=1.5)
             except Exception:
                 try:
-                    self._singbox_proc.kill()
+                    if sys.platform != "win32":
+                        try:
+                            os.killpg(os.getpgid(self._singbox_proc.pid), signal.SIGKILL)
+                        except Exception:
+                            self._singbox_proc.kill()
+                    else:
+                        self._singbox_proc.kill()
                 except Exception:
                     pass
             self._singbox_proc = None
+
+        _free_port(10818)
+        _free_port(10819)
 
     async def start_or_reload_singbox_tunnel(self, config_json: str, port: int = 10818) -> bool:
         """
         Запускает или обновляет локальный клиентский процесс Sing-box / Xray с failover конфигом.
         """
+        self.stop_tunnel()
+        _free_port(port)
+        _free_port(port + 1)
+
         engine_bin, engine_type = self._find_proxy_engine_bin()
         if not engine_bin:
             logger.debug("Neither sing-box nor xray binary found on host, using direct node connections")
             return False
-
-        # Terminate previous process if alive
-        if self._singbox_proc is not None:
-            try:
-                self._singbox_proc.terminate()
-                self._singbox_proc.wait(timeout=2)
-            except Exception:
-                try:
-                    self._singbox_proc.kill()
-                except Exception:
-                    pass
-            self._singbox_proc = None
 
         cfg_name = f"{engine_type}_failover.json"
         cfg_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), cfg_name)
@@ -194,34 +201,41 @@ class SocksProxyRotator:
             env = os.environ.copy()
             env["ENABLE_DEPRECATED_LEGACY_DNS_SERVERS"] = "true"
 
+            extra_kwargs = {}
+            if sys.platform != "win32":
+                extra_kwargs["preexec_fn"] = os.setsid
+
             self._singbox_proc = subprocess.Popen(
                 [engine_bin, "run", "-c", cfg_path],
-                stdout=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
-                env=env
+                text=True,
+                encoding="utf-8",
+                env=env,
+                **extra_kwargs
             )
-            # Wait 0.8s for socket binding
-            await asyncio.sleep(0.8)
+            self._current_engine = engine_type
 
-            # Test local proxy
-            local_url = f"socks5://127.0.0.1:{port}"
-            ok, lat = await self.test_proxy_alive(local_url, timeout=4.0)
-            if ok:
-                logger.info("Started local %s failover tunnel on port %d (latency: %.1f ms)", engine_type, port, lat)
-                return True
-            else:
-                stderr_output = ""
-                if self._singbox_proc and self._singbox_proc.poll() is not None:
-                    try:
-                        _, stderr_bytes = self._singbox_proc.communicate(timeout=1)
-                        stderr_output = stderr_bytes.decode('utf-8', errors='ignore').strip()
-                    except Exception:
-                        pass
-                logger.warning("%s started on port %d but failed health probe. Details: %s", engine_type, port, stderr_output or "timeout")
+            for _ in range(12):
+                await asyncio.sleep(0.5)
+                if self._singbox_proc.poll() is not None:
+                    _, stderr = self._singbox_proc.communicate()
+                    logger.warning("%s process terminated unexpectedly on startup: %s", engine_type, stderr)
+                    self._singbox_proc = None
+                    return False
+
+                ok, lat = await self.test_proxy_alive(f"socks5://127.0.0.1:{port}", timeout=2.5)
+                if ok:
+                    logger.info("Started local %s failover tunnel on port %d (latency: %.1f ms)", engine_type, port, lat)
+                    return True
+
+            logger.warning("%s started on port %d but failed health probe.", engine_type, port)
+            self.stop_tunnel()
+            return False
         except Exception as e:
             logger.error("Failed to start %s tunnel: %s", engine_type, e)
-
-        return False
+            self.stop_tunnel()
+            return False
 
     async def _check_vpn_sources(self, sources: List[str], tier_name: str) -> Optional[str]:
         """Загружает и проверяет через ядро список VPN-конфигураций."""

@@ -98,6 +98,7 @@ try_start_vpn_tunnel() {
     fi
 
     if [ "$CORE_FOUND" -eq 1 ] && [ "$ENGINE_FOUND" -eq 1 ]; then
+        fuser -k -9 10818/tcp 10819/tcp 2>/dev/null || true
         local LOG_FILE="/tmp/proxy_rotator_update.$$"
         if [ -n "$TARGET_NODE" ]; then
             echo "[+] Запуск локального Sing-box туннеля для ноды ${TARGET_NODE%%:*}..."
@@ -109,9 +110,9 @@ try_start_vpn_tunnel() {
             TUNNEL_PID=$!
         fi
         
-        # Wait up to 10 seconds for tunnel to become ready
+        # Wait up to 15 seconds for tunnel to become ready
         local READY=0
-        for i in {1..20}; do
+        for i in {1..30}; do
             if grep -q "PROXY_READY" "$LOG_FILE" 2>/dev/null; then
                 READY=1
                 break
@@ -137,6 +138,10 @@ try_start_vpn_tunnel() {
             return 0
         else
             echo "[-] Не удалось запустить VPN-туннель."
+            if [ -s "$LOG_FILE" ]; then
+                echo "    Лог ротатора:"
+                sed 's/^/    /' "$LOG_FILE" | tail -n 10
+            fi
             cleanup_tunnel
             rm -f "$LOG_FILE"
             return 1
