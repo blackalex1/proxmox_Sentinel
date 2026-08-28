@@ -10,6 +10,70 @@ fi
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
+PROXY_URL=""
+NO_PROXY=0
+AUTO_MODE=0
+
+# Parse arguments
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --proxy|-p)
+            PROXY_URL="$2"
+            shift 2
+            ;;
+        --no-proxy)
+            NO_PROXY=1
+            shift
+            ;;
+        --auto|-y)
+            AUTO_MODE=1
+            shift
+            ;;
+        --help|-h)
+            echo "Использование: sudo ./update.sh [опции]"
+            echo "Опции:"
+            echo "  --proxy <URL>   Использовать HTTP/HTTPS/SOCKS5 прокси (например, http://127.0.0.1:7890 или socks5://127.0.0.1:1080)"
+            echo "  --no-proxy      Игнорировать прокси из .env и окружения"
+            echo "  --auto, -y      Автоматический режим обновления без интерактива"
+            exit 0
+            ;;
+        *)
+            shift
+            ;;
+    esac
+done
+
+# Check PROXY_URL from .env if not specified via CLI
+if [ -z "$PROXY_URL" ] && [ "$NO_PROXY" -eq 0 ]; then
+    for env_file in "bot/config/.env" ".env"; do
+        if [ -f "$env_file" ]; then
+            ENV_P=$(grep -E '^[[:space:]]*PROXY_URL=' "$env_file" 2>/dev/null | cut -d'=' -f2- | tr -d '"'\'' ')
+            if [ -n "$ENV_P" ]; then
+                PROXY_URL="$ENV_P"
+                break
+            fi
+        fi
+    done
+    if [ -z "$PROXY_URL" ]; then
+        PROXY_URL="${HTTPS_PROXY:-${HTTP_PROXY:-${ALL_PROXY:-${https_proxy:-${http_proxy:-${all_proxy:-}}}}}}"
+    fi
+fi
+
+# Apply proxy settings if available
+GIT_PROXY_OPTS=()
+CORE_PROXY_ARG=()
+if [ -n "$PROXY_URL" ] && [ "$NO_PROXY" -eq 0 ]; then
+    echo "[+] Настроено подключение через прокси / VPN: $PROXY_URL"
+    export http_proxy="$PROXY_URL"
+    export https_proxy="$PROXY_URL"
+    export all_proxy="$PROXY_URL"
+    export HTTP_PROXY="$PROXY_URL"
+    export HTTPS_PROXY="$PROXY_URL"
+    export ALL_PROXY="$PROXY_URL"
+    GIT_PROXY_OPTS=("-c" "http.proxy=$PROXY_URL" "-c" "https.proxy=$PROXY_URL")
+    CORE_PROXY_ARG=("--proxy" "$PROXY_URL")
+fi
+
 echo "===================================================="
 echo "🔄 UPDATING PROXMOX LXC MONITOR BOT (CONTROLLER)"
 echo "===================================================="
@@ -17,18 +81,44 @@ echo "===================================================="
 # 1. Pull latest updates from Git
 echo "[+] Pulling latest updates from Git..."
 OLD_HEAD=$(git rev-parse HEAD 2>/dev/null)
-if git fetch origin main && git reset --hard origin/main; then
-    NEW_HEAD=$(git rev-parse HEAD 2>/dev/null)
-    if [ "$OLD_HEAD" != "$NEW_HEAD" ] && [ -n "$OLD_HEAD" ]; then
-        echo "[+] Changes pulled:"
-        git diff --stat "$OLD_HEAD" "$NEW_HEAD"
-    else
-        echo "[+] Already up to date."
+
+pull_git() {
+    git "${GIT_PROXY_OPTS[@]}" fetch origin main && git reset --hard origin/main
+}
+
+if ! pull_git; then
+    echo "[!] Не удалось выполнить git fetch напрямую."
+    if [ -t 0 ] && [ "$AUTO_MODE" -eq 0 ]; then
+        echo ""
+        echo "===================================================="
+        echo "🌐 НАСТРОЙКА ПОДКЛЮЧЕНИЯ К GITHUB (PROXY / VPN)"
+        echo "===================================================="
+        echo "Возможно, GitHub заблокирован провайдером или недоступен напрямую."
+        read -p "Введите адрес прокси/VPN (например, http://127.0.0.1:7890 или socks5://127.0.0.1:1080) [Enter для пропуска]: " USER_PROXY
+        if [ -n "$USER_PROXY" ]; then
+            PROXY_URL="$USER_PROXY"
+            export http_proxy="$PROXY_URL"
+            export https_proxy="$PROXY_URL"
+            export all_proxy="$PROXY_URL"
+            export HTTP_PROXY="$PROXY_URL"
+            export HTTPS_PROXY="$PROXY_URL"
+            export ALL_PROXY="$PROXY_URL"
+            GIT_PROXY_OPTS=("-c" "http.proxy=$PROXY_URL" "-c" "https.proxy=$PROXY_URL")
+            CORE_PROXY_ARG=("--proxy" "$PROXY_URL")
+            echo "[+] Повторная попытка git fetch через $PROXY_URL..."
+            pull_git || echo "[!] Ошибка: Не удалось обновить Git репозиторий даже через указанный прокси."
+        fi
     fi
-    echo "[+] Git update completed successfully."
-else
-    echo "[!] Git update failed. If you have local changes, stash them or resolve conflicts."
 fi
+
+NEW_HEAD=$(git rev-parse HEAD 2>/dev/null)
+if [ "$OLD_HEAD" != "$NEW_HEAD" ] && [ -n "$OLD_HEAD" ]; then
+    echo "[+] Changes pulled:"
+    git diff --stat "$OLD_HEAD" "$NEW_HEAD"
+else
+    echo "[+] Already up to date."
+fi
+echo "[+] Git update step completed."
 
 # 2. Update Python virtual environment dependencies
 echo "[+] Updating Python dependencies..."
@@ -86,11 +176,9 @@ fi
 echo "[+] Checking and updating sentinel-core engine..."
 if [ -f "bot/fetch_core.sh" ]; then
     chmod +x "bot/fetch_core.sh"
-    if [ -t 0 ]; then
-        bash "bot/fetch_core.sh"
-    else
-        bash "bot/fetch_core.sh" --auto
-    fi
+    FETCH_ARGS=("${CORE_PROXY_ARG[@]}")
+    [ "$AUTO_MODE" -eq 1 ] && FETCH_ARGS+=("--auto")
+    bash "bot/fetch_core.sh" "${FETCH_ARGS[@]}"
 else
     echo "[!] bot/fetch_core.sh not found. Skipping core update."
 fi
@@ -99,11 +187,9 @@ fi
 echo "[+] Checking and updating proxy engines (Sing-box / Xray-core)..."
 if [ -f "bot/fetch_proxy_core.sh" ]; then
     chmod +x "bot/fetch_proxy_core.sh"
-    if [ -t 0 ]; then
-        bash "bot/fetch_proxy_core.sh"
-    else
-        bash "bot/fetch_proxy_core.sh" --auto
-    fi
+    FETCH_PROXY_ARGS=("${CORE_PROXY_ARG[@]}")
+    [ "$AUTO_MODE" -eq 1 ] && FETCH_PROXY_ARGS+=("--auto")
+    bash "bot/fetch_proxy_core.sh" "${FETCH_PROXY_ARGS[@]}"
 fi
 
 # 4. Restart proxmox-lxc-bot service
