@@ -191,10 +191,14 @@ class SocksProxyRotator:
             with open(cfg_path, "w", encoding="utf-8") as f:
                 f.write(config_json)
 
+            env = os.environ.copy()
+            env["ENABLE_DEPRECATED_LEGACY_DNS_SERVERS"] = "true"
+
             self._singbox_proc = subprocess.Popen(
                 [engine_bin, "run", "-c", cfg_path],
                 stdout=subprocess.DEVNULL,
-                stderr=subprocess.PIPE
+                stderr=subprocess.PIPE,
+                env=env
             )
             # Wait 0.8s for socket binding
             await asyncio.sleep(0.8)
