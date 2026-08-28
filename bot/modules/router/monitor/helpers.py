@@ -117,7 +117,7 @@ async def is_local_bot_process(sport, dst_ip=None):
 
 async def check_is_bot_or_admin(src_ip, src_port, dst_host=None, dst_port=None):
     """Проверяет, является ли отправитель доверенным (администратором или легитимным процессом бота на хосте)."""
-    # 0. Проверяем, является ли это активной проверкой прокси ботом
+    # 1. Проверяем, является ли это активной проверкой прокси ботом
     if dst_host and dst_port:
         try:
             from modules.proxmox.monitor.state import active_proxy_checks
@@ -127,7 +127,7 @@ async def check_is_bot_or_admin(src_ip, src_port, dst_host=None, dst_port=None):
         except Exception as e:
             logging.error("check_is_bot_or_admin_error_checking_active_proxy_checks", e)
 
-    # 1. Проверяем белый список администраторов из настроек
+    # 2. Проверяем белый список администраторов из настроек
     if hasattr(settings, 'trusted_admin_ips'):
         trusted_ips = settings.trusted_admin_ips
         if isinstance(trusted_ips, str):
@@ -135,11 +135,11 @@ async def check_is_bot_or_admin(src_ip, src_port, dst_host=None, dst_port=None):
         if src_ip in trusted_ips:
             return True
             
-    # 2. Игнорируем IP самого роутера
+    # 3. Игнорируем IP самого роутера
     if src_ip == settings.router_ssh_host:
         return True
         
-    # Игнорируем собственный публичный IP-адрес бота (для предотвращения блокировки его NAT-сессий)
+    # 4. Игнорируем собственный публичный IP-адрес бота (для предотвращения блокировки его NAT-сессий)
     try:
         from modules.proxmox.monitor.remote.helpers import get_bot_public_ip
         bot_pub_ip = await get_bot_public_ip()
@@ -147,40 +147,9 @@ async def check_is_bot_or_admin(src_ip, src_port, dst_host=None, dst_port=None):
             return True
     except Exception:
         pass
-        
-    # 3. Если запрос идет с IP Proxmox хоста (где крутится бот),
-    # детально проверяем, является ли источник соединения самим процессом бота на хосте.
-    # Это предотвращает ложные срабатывания на собственные SSH-сессии бота,
-    # при этом сохраняя детекцию реальных угроз из NAT-контейнеров!
-    proxmox_ip = "127.0.0.1"
-    if settings.proxmox_host:
-        p_ip = settings.proxmox_host.split(':')[0]
-        if p_ip:
-            proxmox_ip = p_ip
-            
-    is_proxmox_host = (src_ip == proxmox_ip)
-    if not is_proxmox_host:
-        try:
-            local_ips = socket.gethostbyname_ex(socket.gethostname())[2]
-            if src_ip in local_ips:
-                is_proxmox_host = True
-        except Exception:
-            pass
-            
-    if is_proxmox_host:
-        # ПРЕВЕНТИВНЫЙ ОБХОД ДЛЯ СОБСТВЕННЫХ SSH-ПОДКЛЮЧЕНИЙ БОТА К РОУТЕРУ ИЛИ VPS!
-        # (Так как соединение в conntrack детектируется раньше, чем порт попадает в recent_bot_ports)
-        if dst_host and dst_port:
-            if dst_host == settings.router_ssh_host and dst_port == settings.router_ssh_port:
-                return True
-            remote_ips = []
-            if hasattr(settings, 'remote_servers') and settings.remote_servers:
-                remote_ips = [s.get('ip') if isinstance(s, dict) else getattr(s, 'ip', None) for s in settings.remote_servers]
-                remote_ips = [ip for ip in remote_ips if ip]
-            if dst_host in remote_ips and dst_port == 22:
-                return True
 
-        if await is_local_bot_process(src_port):
-            return True
+    # 5. Проверяем локальные процессы бота по порту
+    if await is_local_bot_process(src_port, dst_ip=dst_host):
+        return True
             
     return False
