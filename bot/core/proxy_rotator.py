@@ -243,10 +243,46 @@ class SocksProxyRotator:
             if not fetched:
                 logger.warning("Failed to fetch %s source %s", tier_name, base_url)
 
+    def _get_cache_file_path(self) -> str:
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        config_dir = os.path.join(base_dir, "config")
+        os.makedirs(config_dir, exist_ok=True)
+        return os.path.join(config_dir, "cached_vpn_nodes.json")
+
+    def _load_cached_nodes_from_disk(self) -> List[str]:
+        cache_file = self._get_cache_file_path()
+        if os.path.isfile(cache_file):
+            try:
+                with open(cache_file, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                    if isinstance(data, list):
+                        return [str(x) for x in data if x]
+            except Exception as e:
+                logger.debug("Failed to read cached VPN nodes: %s", e)
+        return []
+
+    def _save_working_nodes_to_disk(self, uris: List[str]):
+        if not uris:
+            return
+        cache_file = self._get_cache_file_path()
+        try:
+            existing = self._load_cached_nodes_from_disk()
+            combined = []
+            seen = set()
+            for u in uris + existing:
+                if u and u not in seen:
+                    seen.add(u)
+                    combined.append(u)
+            with open(cache_file, "w", encoding="utf-8") as f:
+                json.dump(combined[:50], f, indent=2, ensure_ascii=False)
+        except Exception as e:
+            logger.debug("Failed to write cached VPN nodes: %s", e)
+
+    async def _test_and_activate_nodes(self, uris: List[str], tier_name: str) -> Optional[str]:
+        """Тестирует список нод через ядро и активирует лучшую через Sing-box."""
         if not uris:
             return None
-
-        # Пакетная проверка всех нод через высокопроизводительное Go ядро
+        loop = asyncio.get_running_loop()
         results = await loop.run_in_executor(
             None,
             lambda: sentinel_core_bridge.check_proxies(uris, target_host="api.telegram.org", timeout_ms=2500, concurrency=64)
@@ -259,6 +295,10 @@ class SocksProxyRotator:
         working.sort(key=lambda x: x.get("latencyMs", 99999))
         best = working[0]
         logger.info("%s: %d / %d nodes alive. Best: %s (%.1f ms)", tier_name, len(working), len(uris), best.get("name") or best.get("proxyUrl"), best.get("latencyMs", 0))
+
+        # Сохраняем все рабочие ноды в дисковый кэш
+        working_urls = [w.get("proxyUrl") for w in working if w.get("proxyUrl")]
+        self._save_working_nodes_to_disk(working_urls)
 
         # Формируем ТОП-4 профилей для отказоустойчивой группы Sing-box на выделенном порту 10818
         top_profiles = []
@@ -283,6 +323,40 @@ class SocksProxyRotator:
                 self._last_working_source_tier = tier_name
                 return w.get("proxyUrl")
 
+        return None
+
+    async def _check_vpn_sources(self, sources: List[str], tier_name: str) -> Optional[str]:
+        """Загружает и проверяет через ядро список VPN-конфигураций."""
+        loop = asyncio.get_running_loop()
+        uris = []
+
+        for base_url in sources:
+            urls_to_try = [base_url]
+            if "raw.githubusercontent.com" in base_url:
+                urls_to_try.append(f"https://ghproxy.net/{base_url}")
+                urls_to_try.append(f"https://gh-proxy.com/{base_url}")
+                
+            fetched = False
+            for url in urls_to_try:
+                try:
+                    req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'})
+                    content = await loop.run_in_executor(
+                        None,
+                        lambda u=url: urllib.request.urlopen(req, timeout=6).read().decode('utf-8', errors='ignore')
+                    )
+                    for line in content.splitlines():
+                        line = line.strip()
+                        if line and not line.startswith('#') and not line.startswith('//'):
+                            uris.append(line)
+                    fetched = True
+                    break
+                except Exception:
+                    continue
+            if not fetched:
+                logger.warning("Failed to fetch %s source %s", tier_name, base_url)
+
+        return await self._test_and_activate_nodes(uris, tier_name=tier_name)
+
     async def start_tunnel_for_node(self, node_uri: str, port: int = 10818) -> bool:
         """
         Запускает локальный Sing-box / Xray туннель для конкретной VPN ссылки (ss://, vless://, trojan://, etc.).
@@ -295,9 +369,10 @@ class SocksProxyRotator:
         if not cfg_json:
             logger.warning("Failed to build client config for VPN node")
             return False
-        return await self.start_or_reload_singbox_tunnel(cfg_json, port=port)
-
-        return None
+        ok = await self.start_or_reload_singbox_tunnel(cfg_json, port=port)
+        if ok:
+            self._save_working_nodes_to_disk([node_uri])
+        return ok
 
     async def _check_socks5_sources(self) -> Optional[str]:
         """Крайний случай: скрапинг и проверка открытых SOCKS5 списков."""
@@ -333,15 +408,26 @@ class SocksProxyRotator:
         best_proxy = working[0]["proxyUrl"]
         self._last_working_source_tier = "Tier 3"
         logger.info("Tier 3 SOCKS5: found %d working proxies, best: %s (%.1f ms)", len(working), best_proxy, working[0]["latencyMs"])
+        self._save_working_nodes_to_disk([w.get("proxyUrl") for w in working if w.get("proxyUrl")])
         return best_proxy
 
     async def get_working_proxy(self) -> Optional[str]:
         """
-        3-Уровневый каскадный поиск рабочего соединения:
+        4-Уровневый каскадный поиск рабочего соединения:
+        0. ТИР 0: Локальный кэш на диске (bot/config/cached_vpn_nodes.json) - мгновенный старт без ожидания веб-скрейпинга.
         1. ТИР 1: Черные списки (Hysteria2, Trojan, VLESS, Shadowsocks).
         2. ТИР 2 (если ТИР 1 пуст): Белые списки (VLESS Reality).
         3. ТИР 3 (Крайний случай): Парсинг открытых SOCKS5 прокси.
         """
+        # ТИР 0: Быстрая проверка локального дискового кэша
+        cached = self._load_cached_nodes_from_disk()
+        if cached:
+            logger.info("checking_local_cached_nodes", len(cached))
+            cached_res = await self._test_and_activate_nodes(cached, tier_name="Disk Cache")
+            if cached_res:
+                logger.info("successfully_activated_cached_vpn_node", cached_res)
+                return cached_res
+
         # ТИР 1: Проверяем черные списки
         logger.info("starting_checking_tier1_black_lists")
         t1_proxy = await self._check_vpn_sources(BLACK_LIST_SOURCES, tier_name="Tier 1")
