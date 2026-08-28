@@ -3,21 +3,65 @@
 # ==============================================================================
 # Sentinel-Core Binary & Library Downloader for Controller Bot
 # Fetches compiled sentinel-core engine for current OS/Arch with interactive version selector
+# Supports HTTP/HTTPS/SOCKS5 Proxies, VPN, and GitHub Fast Mirrors
 # ==============================================================================
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BIN_DIR="$SCRIPT_DIR/bin"
 AUTO_MODE=0
+PROXY_URL=""
 
-for arg in "$@"; do
-    case "$arg" in
-        --auto|-y) AUTO_MODE=1 ;;
-        -*) ;;
-        *) BIN_DIR="$arg" ;;
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --auto|-y)
+            AUTO_MODE=1
+            shift
+            ;;
+        --proxy|-p)
+            PROXY_URL="$2"
+            shift 2
+            ;;
+        -*)
+            shift
+            ;;
+        *)
+            BIN_DIR="$1"
+            shift
+            ;;
     esac
 done
 
 mkdir -p "$BIN_DIR"
+
+# Check PROXY_URL from .env if not set via CLI
+if [ -z "$PROXY_URL" ]; then
+    for env_file in "$SCRIPT_DIR/config/.env" "$SCRIPT_DIR/../bot/config/.env" "$SCRIPT_DIR/../.env" ".env"; do
+        if [ -f "$env_file" ]; then
+            ENV_P=$(grep -E '^[[:space:]]*PROXY_URL=' "$env_file" 2>/dev/null | cut -d'=' -f2- | tr -d '"'\'' ')
+            if [ -n "$ENV_P" ]; then
+                PROXY_URL="$ENV_P"
+                break
+            fi
+        fi
+    done
+    if [ -z "$PROXY_URL" ]; then
+        PROXY_URL="${HTTPS_PROXY:-${HTTP_PROXY:-${ALL_PROXY:-${https_proxy:-${http_proxy:-${all_proxy:-}}}}}}"
+    fi
+fi
+
+CURL_OPTS=("-fsSL" "--connect-timeout" "10" "--retry" "2")
+WGET_OPTS=("-q" "-T" "10" "-t" "2")
+if [ -n "$PROXY_URL" ]; then
+    echo "[+] Использование прокси / VPN для загрузки: $PROXY_URL"
+    export http_proxy="$PROXY_URL"
+    export https_proxy="$PROXY_URL"
+    export all_proxy="$PROXY_URL"
+    export HTTP_PROXY="$PROXY_URL"
+    export HTTPS_PROXY="$PROXY_URL"
+    export ALL_PROXY="$PROXY_URL"
+    CURL_OPTS+=("-x" "$PROXY_URL")
+    WGET_OPTS+=("-e" "use_proxy=yes" "-e" "http_proxy=$PROXY_URL" "-e" "https_proxy=$PROXY_URL")
+fi
 
 # 1. Detect OS
 OS_TYPE="$(uname -s | tr '[:upper:]' '[:lower:]')"
@@ -75,10 +119,13 @@ echo "[+] Опрос GitHub Releases для $REPO..."
 # Use python3 to fetch and categorize releases safely
 if command -v python3 &>/dev/null; then
     RELEASE_DATA=$(python3 -c "
-import urllib.request, json, sys
+import urllib.request, json, os
+proxy = os.environ.get('HTTPS_PROXY') or os.environ.get('HTTP_PROXY') or os.environ.get('ALL_PROXY') or '$PROXY_URL'
+handlers = [urllib.request.ProxyHandler({'http': proxy, 'https': proxy})] if proxy else []
+opener = urllib.request.build_opener(*handlers)
 try:
     req = urllib.request.Request('https://api.github.com/repos/$REPO/releases', headers={'User-Agent': 'SentinelController'})
-    with urllib.request.urlopen(req, timeout=6) as response:
+    with opener.open(req, timeout=8) as response:
         releases = json.loads(response.read().decode('utf-8'))
         stable = next((r['tag_name'] for r in releases if not r.get('prerelease')), '')
         prerelease = next((r['tag_name'] for r in releases if r.get('prerelease')), '')
@@ -94,7 +141,12 @@ fi
 
 # Fallback with curl if python didn't get results
 if [ -z "$LATEST_ANY" ] && command -v curl &>/dev/null; then
-    LATEST_ANY=$(curl -fsSL --connect-timeout 5 "https://api.github.com/repos/$REPO/releases" 2>/dev/null | grep -m1 '"tag_name":' | cut -d'"' -f4 | tr -d '\r\n ')
+    LATEST_ANY=$(curl "${CURL_OPTS[@]}" "https://api.github.com/repos/$REPO/releases" 2>/dev/null | grep -m1 '"tag_name":' | cut -d'"' -f4 | tr -d '\r\n ')
+fi
+
+# Fallback with fast mirrors if direct GitHub is blocked
+if [ -z "$LATEST_ANY" ] && command -v curl &>/dev/null; then
+    LATEST_ANY=$(curl "${CURL_OPTS[@]}" "https://ghproxy.net/https://raw.githubusercontent.com/$REPO/main/VERSION" 2>/dev/null | tr -d '\r\n ')
 fi
 
 # 5. Interactive version selection UI
@@ -181,7 +233,7 @@ if [ -t 0 ] && [ "$AUTO_MODE" -eq 0 ]; then
         esac
     else
         echo "[-] Не удалось получить список версий через API."
-        echo "  1) Попробовать скачать последний релиз напрямую"
+        echo "  1) Попробовать скачать последний релиз напрямую / через зеркало"
         echo "  2) Ввести версию вручную"
         echo "  3) ⏹️  Оставить текущую версию (пропустить) [По умолчанию]"
         DEFAULT_CHOICE="3"
@@ -207,12 +259,17 @@ fi
 
 echo "[+] Выбранная версия для загрузки: ${SELECTED_TAG:-latest}"
 
-# 6. Build Candidate Download URLs
+# 6. Build Candidate Download URLs (Direct GitHub + Mirrors)
 URL_CANDIDATES=()
 if [ -n "$SELECTED_TAG" ]; then
     URL_CANDIDATES+=("https://github.com/$REPO/releases/download/$SELECTED_TAG")
+    URL_CANDIDATES+=("https://ghproxy.net/https://github.com/$REPO/releases/download/$SELECTED_TAG")
+    URL_CANDIDATES+=("https://gh-proxy.com/https://github.com/$REPO/releases/download/$SELECTED_TAG")
+    URL_CANDIDATES+=("https://mirror.ghproxy.com/https://github.com/$REPO/releases/download/$SELECTED_TAG")
 fi
 URL_CANDIDATES+=("https://github.com/$REPO/releases/latest/download")
+URL_CANDIDATES+=("https://ghproxy.net/https://github.com/$REPO/releases/latest/download")
+URL_CANDIDATES+=("https://gh-proxy.com/https://github.com/$REPO/releases/latest/download")
 
 # Helper function to download asset
 download_asset() {
@@ -227,11 +284,21 @@ download_asset() {
         rm -f "$TMP_FILE"
 
         if command -v curl &>/dev/null; then
-            curl -fsSL --connect-timeout 10 --retry 2 "$URL" -o "$TMP_FILE" 2>/dev/null
+            curl "${CURL_OPTS[@]}" "$URL" -o "$TMP_FILE" 2>/dev/null
         elif command -v wget &>/dev/null; then
-            wget -q -T 10 -t 2 "$URL" -O "$TMP_FILE" 2>/dev/null
+            wget "${WGET_OPTS[@]}" "$URL" -O "$TMP_FILE" 2>/dev/null
         elif command -v python3 &>/dev/null; then
-            python3 -c "import urllib.request; urllib.request.urlretrieve('$URL', '$TMP_FILE')" 2>/dev/null || true
+            python3 -c "
+import urllib.request, os
+proxy = os.environ.get('HTTPS_PROXY') or os.environ.get('HTTP_PROXY') or '$PROXY_URL'
+handlers = [urllib.request.ProxyHandler({'http': proxy, 'https': proxy})] if proxy else []
+opener = urllib.request.build_opener(*handlers)
+try:
+    with opener.open('$URL', timeout=10) as r, open('$TMP_FILE', 'wb') as f:
+        f.write(r.read())
+except Exception:
+    pass
+" 2>/dev/null || true
         fi
 
         if [ -s "$TMP_FILE" ]; then
