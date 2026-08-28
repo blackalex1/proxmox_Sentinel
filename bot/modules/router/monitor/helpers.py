@@ -148,8 +148,21 @@ async def check_is_bot_or_admin(src_ip, src_port, dst_host=None, dst_port=None):
     except Exception:
         pass
 
-    # 5. Проверяем локальные процессы бота по порту
-    if await is_local_bot_process(src_port, dst_ip=dst_host):
+    # 5. Превентивный обход для собственных SSH-подключений бота к роутеру или удаленным VPS!
+    if dst_host and dst_port:
+        is_bot_source = (src_ip in ("127.0.0.1", "::1") or (settings.proxmox_host and src_ip in settings.proxmox_host))
+        if is_bot_source:
+            if dst_host == settings.router_ssh_host and dst_port == settings.router_ssh_port:
+                return True
+            remote_ips = []
+            if hasattr(settings, 'remote_servers') and settings.remote_servers:
+                remote_ips = [s.get('ip') if isinstance(s, dict) else getattr(s, 'ip', None) for s in settings.remote_servers]
+                remote_ips = [ip for ip in remote_ips if ip]
+            if dst_host in remote_ips and dst_port == 22:
+                return True
+
+    # 6. Проверяем локальные процессы бота по порту
+    if src_port and await is_local_bot_process(src_port):
         return True
             
     return False
