@@ -46,10 +46,10 @@ while [[ $# -gt 0 ]]; do
         --help|-h)
             echo "Использование: sudo ./update.sh [опции]"
             echo "Опции:"
-            echo "  --proxy <URL>    Использовать HTTP/HTTPS/SOCKS5 прокси (например, http://127.0.0.1:7890 или socks5://127.0.0.1:1080)"
-            echo "  --vpn, --auto-vpn Автоматически найти рабочую VPN-ноду через Sentinel-Core и поднять локальный туннель"
-            echo "  --no-proxy       Игнорировать прокси из .env и окружения"
-            echo "  --auto, -y       Автоматический режим обновления без интерактива"
+            echo "  --proxy <URL>     Использовать HTTP/HTTPS/SOCKS5 прокси или ссылку на VPN-ноду (ss://, vless://, trojan://)"
+            echo "  --vpn, --auto-vpn Автоматически найти рабочую VPN-ноду через Sentinel-Core и поднять локальный Sing-box туннель"
+            echo "  --no-proxy        Игнорировать прокси из .env и окружения"
+            echo "  --auto, -y        Автоматический режим обновления без интерактива"
             exit 0
             ;;
         *)
@@ -74,8 +74,9 @@ if [ -z "$PROXY_URL" ] && [ "$NO_PROXY" -eq 0 ]; then
     fi
 fi
 
-# Function to check and launch auto VPN tunnel
-try_start_auto_vpn() {
+# Function to check and launch VPN tunnel (specific node or auto-rotator)
+try_start_vpn_tunnel() {
+    local TARGET_NODE="$1"
     local PY_EXEC="python3"
     [ -x "bot/venv/bin/python3" ] && PY_EXEC="bot/venv/bin/python3"
     [ -x "bot/venv/bin/python" ] && PY_EXEC="bot/venv/bin/python"
@@ -97,16 +98,20 @@ try_start_auto_vpn() {
     fi
 
     if [ "$CORE_FOUND" -eq 1 ] && [ "$ENGINE_FOUND" -eq 1 ]; then
-        echo "[+] Обнаружены компоненты: Sentinel-Core (ядро) и Sing-box/Xray (движок туннеля)!"
-        echo "[+] Поиск рабочего VPN-соединения и запуск локального моста..."
-        
         local LOG_FILE="/tmp/proxy_rotator_update.$$"
-        PYTHONPATH="${SCRIPT_DIR}/bot" "$PY_EXEC" -m core.proxy_rotator --find-and-start --port 10818 > "$LOG_FILE" 2>&1 &
-        TUNNEL_PID=$!
+        if [ -n "$TARGET_NODE" ]; then
+            echo "[+] Запуск локального Sing-box туннеля для ноды ${TARGET_NODE%%:*}..."
+            PYTHONPATH="${SCRIPT_DIR}/bot" "$PY_EXEC" -m core.proxy_rotator --node "$TARGET_NODE" --port 10818 > "$LOG_FILE" 2>&1 &
+            TUNNEL_PID=$!
+        else
+            echo "[+] Обнаружены Sentinel-Core и Sing-box/Xray. Поиск рабочего VPN-соединения..."
+            PYTHONPATH="${SCRIPT_DIR}/bot" "$PY_EXEC" -m core.proxy_rotator --find-and-start --port 10818 > "$LOG_FILE" 2>&1 &
+            TUNNEL_PID=$!
+        fi
         
-        # Wait up to 8 seconds for tunnel to become ready
+        # Wait up to 10 seconds for tunnel to become ready
         local READY=0
-        for i in {1..16}; do
+        for i in {1..20}; do
             if grep -q "PROXY_READY" "$LOG_FILE" 2>/dev/null; then
                 READY=1
                 break
@@ -125,12 +130,13 @@ try_start_auto_vpn() {
             export HTTP_PROXY="$VALID_PROXY"
             export HTTPS_PROXY="$VALID_PROXY"
             export ALL_PROXY="$VALID_PROXY"
+            GIT_PROXY_OPTS=("-c" "http.proxy=$VALID_PROXY" "-c" "https.proxy=$VALID_PROXY")
             CORE_PROXY_ARG=("--proxy" "$VALID_PROXY")
-            echo "[+] Временный VPN-туннель успешно поднят на $VALID_PROXY!"
+            echo "[+] VPN-туннель успешно поднят на $VALID_PROXY!"
             rm -f "$LOG_FILE"
             return 0
         else
-            echo "[-] Не удалось запустить VPN-туннель (таймаут или отсутствие связи)."
+            echo "[-] Не удалось запустить VPN-туннель."
             cleanup_tunnel
             rm -f "$LOG_FILE"
             return 1
@@ -139,30 +145,32 @@ try_start_auto_vpn() {
     return 1
 }
 
-# Validate proxy scheme: Git and Curl only support http, https, socks4, socks5, socks5h
 VALID_PROXY=""
+GIT_PROXY_OPTS=()
+CORE_PROXY_ARG=()
+
+# 1. Start VPN connection immediately if configured
 if [ -n "$PROXY_URL" ] && [ "$NO_PROXY" -eq 0 ]; then
     if [[ "$PROXY_URL" =~ ^(http|https|socks4|socks5|socks5h):// ]]; then
         VALID_PROXY="$PROXY_URL"
-        echo "[+] Настроено подключение через HTTP/SOCKS прокси: $VALID_PROXY"
+        echo "[+] Настроено прямое подключение через HTTP/SOCKS прокси: $VALID_PROXY"
         export http_proxy="$VALID_PROXY"
         export https_proxy="$VALID_PROXY"
         export all_proxy="$VALID_PROXY"
         export HTTP_PROXY="$VALID_PROXY"
         export HTTPS_PROXY="$VALID_PROXY"
         export ALL_PROXY="$VALID_PROXY"
-    else
-        echo "[ℹ️] В конфигурации указана VPN-нода (${PROXY_URL%%:*}:...). Для Git и Curl будут задействованы быстрые зеркала и прямые соединения."
+        GIT_PROXY_OPTS=("-c" "http.proxy=$VALID_PROXY" "-c" "https.proxy=$VALID_PROXY")
+        CORE_PROXY_ARG=("--proxy" "$VALID_PROXY")
+    elif [[ "$PROXY_URL" =~ ^(ss|vless|vmess|trojan|hy2|hysteria2|tuic|wireguard|wg):// ]]; then
+        echo "[+] В конфигурации задана VPN-нода (${PROXY_URL%%:*}). Подключение к VPN..."
+        if ! try_start_vpn_tunnel "$PROXY_URL"; then
+            echo "[!] Прямое подключение к ноде не удалось. Поиск резервной рабочей ноды через ротатор..."
+            try_start_vpn_tunnel "" || true
+        fi
     fi
-fi
-
-if [ "$USE_AUTO_VPN" -eq 1 ] && [ -z "$VALID_PROXY" ]; then
-    try_start_auto_vpn || true
-fi
-
-CORE_PROXY_ARG=()
-if [ -n "$VALID_PROXY" ]; then
-    CORE_PROXY_ARG=("--proxy" "$VALID_PROXY")
+elif [ "$USE_AUTO_VPN" -eq 1 ]; then
+    try_start_vpn_tunnel "" || true
 fi
 
 echo "===================================================="
@@ -195,9 +203,9 @@ else
     fi
 fi
 
-# If Git pull failed, try starting Auto VPN
+# If Git pull still failed, try starting Auto VPN
 if [ "$PULL_SUCCESS" -eq 0 ] && [ -z "$TUNNEL_PID" ]; then
-    if try_start_auto_vpn; then
+    if try_start_vpn_tunnel ""; then
         echo "[+] Повторная попытка git fetch через автоматический VPN-туннель..."
         pull_git && PULL_SUCCESS=1
     fi

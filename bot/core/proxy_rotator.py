@@ -283,6 +283,20 @@ class SocksProxyRotator:
                 self._last_working_source_tier = tier_name
                 return w.get("proxyUrl")
 
+    async def start_tunnel_for_node(self, node_uri: str, port: int = 10818) -> bool:
+        """
+        Запускает локальный Sing-box / Xray туннель для конкретной VPN ссылки (ss://, vless://, trojan://, etc.).
+        """
+        parsed = sentinel_core_bridge.parse_subscription(node_uri)
+        if not parsed:
+            logger.warning("Failed to parse VPN node URI: %s", node_uri)
+            return False
+        cfg_json = sentinel_core_bridge.build_failover_client_config(parsed, socks_port=port, http_port=port+1)
+        if not cfg_json:
+            logger.warning("Failed to build client config for VPN node")
+            return False
+        return await self.start_or_reload_singbox_tunnel(cfg_json, port=port)
+
         return None
 
     async def _check_socks5_sources(self) -> Optional[str]:
@@ -503,6 +517,7 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description="Sentinel Proxy Rotator CLI Helper")
     parser.add_argument("--find-and-start", action="store_true", help="Find working VPN node and start local Sing-box tunnel")
+    parser.add_argument("--node", type=str, help="Specific VPN node link (ss://, vless://, trojan://, etc.) to connect to")
     parser.add_argument("--port", type=int, default=10818, help="Local SOCKS5 port (default: 10818)")
     parser.add_argument("--test", type=str, help="Test proxy URL")
     args = parser.parse_args()
@@ -519,7 +534,7 @@ if __name__ == "__main__":
                 print("FAIL", file=sys.stderr)
                 sys.exit(1)
 
-        if args.find_and_start:
+        if args.node or args.find_and_start:
             # 1. Проверяем наличие ядра Sentinel-Core
             lib = sentinel_core_bridge.get_sentinel_lib()
             bin_path = sentinel_core_bridge._get_sentinel_core_bin()
@@ -533,7 +548,17 @@ if __name__ == "__main__":
                 print("ERROR: Neither sing-box nor xray binary found on host", file=sys.stderr)
                 sys.exit(3)
 
-            proxy = await proxy_rotator.get_working_proxy()
+            proxy = None
+            if args.node:
+                ok = await proxy_rotator.start_tunnel_for_node(args.node, port=args.port)
+                if ok:
+                    proxy = f"socks5://127.0.0.1:{args.port}"
+                else:
+                    print("ERROR: Failed to connect to specified node", file=sys.stderr)
+                    sys.exit(4)
+            else:
+                proxy = await proxy_rotator.get_working_proxy()
+
             if proxy:
                 print(f"PROXY_READY:{proxy}", flush=True)
                 # Keep tunnel active until killed by updater
@@ -547,7 +572,7 @@ if __name__ == "__main__":
                 sys.exit(0)
             else:
                 print("ERROR: No working proxy found across all tiers", file=sys.stderr)
-                sys.exit(4)
+                sys.exit(5)
 
     try:
         asyncio.run(cli_main())
