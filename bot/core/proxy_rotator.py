@@ -218,19 +218,30 @@ class SocksProxyRotator:
         loop = asyncio.get_running_loop()
         uris = []
 
-        for url in sources:
-            try:
-                req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'})
-                content = await loop.run_in_executor(
-                    None,
-                    lambda: urllib.request.urlopen(req, timeout=6).read().decode('utf-8', errors='ignore')
-                )
-                for line in content.splitlines():
-                    line = line.strip()
-                    if line and not line.startswith('#') and not line.startswith('//'):
-                        uris.append(line)
-            except Exception as e:
-                logger.warning("Failed to fetch %s source %s: %s", tier_name, url, e)
+        for base_url in sources:
+            urls_to_try = [base_url]
+            if "raw.githubusercontent.com" in base_url:
+                urls_to_try.append(f"https://ghproxy.net/{base_url}")
+                urls_to_try.append(f"https://gh-proxy.com/{base_url}")
+                
+            fetched = False
+            for url in urls_to_try:
+                try:
+                    req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'})
+                    content = await loop.run_in_executor(
+                        None,
+                        lambda u=url: urllib.request.urlopen(req, timeout=6).read().decode('utf-8', errors='ignore')
+                    )
+                    for line in content.splitlines():
+                        line = line.strip()
+                        if line and not line.startswith('#') and not line.startswith('//'):
+                            uris.append(line)
+                    fetched = True
+                    break
+                except Exception:
+                    continue
+            if not fetched:
+                logger.warning("Failed to fetch %s source %s", tier_name, base_url)
 
         if not uris:
             return None
@@ -479,3 +490,67 @@ async def proxy_monitor_loop(bot, primary_proxy, session_kwargs, start_active_pr
                         logging.info("proxy_monitor_main_proxy_is_still_unavailable")
         except Exception as e:
             logging.error("proxy_monitor_exception_in_monitoring_loop", e)
+
+
+if __name__ == "__main__":
+    import argparse
+    import sys
+
+    # Allow running directly as script: python3 bot/core/proxy_rotator.py
+    base_bot_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    if base_bot_dir not in sys.path:
+        sys.path.insert(0, base_bot_dir)
+
+    parser = argparse.ArgumentParser(description="Sentinel Proxy Rotator CLI Helper")
+    parser.add_argument("--find-and-start", action="store_true", help="Find working VPN node and start local Sing-box tunnel")
+    parser.add_argument("--port", type=int, default=10818, help="Local SOCKS5 port (default: 10818)")
+    parser.add_argument("--test", type=str, help="Test proxy URL")
+    args = parser.parse_args()
+
+    logging.basicConfig(level=logging.INFO, format="[%(levelname)s] %(message)s")
+
+    async def cli_main():
+        if args.test:
+            ok, lat = await proxy_rotator.test_proxy_alive(args.test)
+            if ok:
+                print(f"OK {lat:.1f}ms")
+                sys.exit(0)
+            else:
+                print("FAIL", file=sys.stderr)
+                sys.exit(1)
+
+        if args.find_and_start:
+            # 1. Проверяем наличие ядра Sentinel-Core
+            lib = sentinel_core_bridge.get_sentinel_lib()
+            bin_path = sentinel_core_bridge._get_sentinel_core_bin()
+            if not lib and (not bin_path or not os.path.isfile(bin_path)):
+                print("ERROR: sentinel-core binary/library not found on host", file=sys.stderr)
+                sys.exit(2)
+
+            # 2. Проверяем наличие прокси-движка (Sing-box / Xray)
+            engine_bin, engine_type = proxy_rotator._find_proxy_engine_bin()
+            if not engine_bin:
+                print("ERROR: Neither sing-box nor xray binary found on host", file=sys.stderr)
+                sys.exit(3)
+
+            proxy = await proxy_rotator.get_working_proxy()
+            if proxy:
+                print(f"PROXY_READY:{proxy}", flush=True)
+                # Keep tunnel active until killed by updater
+                try:
+                    while True:
+                        await asyncio.sleep(1)
+                except (asyncio.CancelledError, KeyboardInterrupt):
+                    pass
+                finally:
+                    proxy_rotator.stop_tunnel()
+                sys.exit(0)
+            else:
+                print("ERROR: No working proxy found across all tiers", file=sys.stderr)
+                sys.exit(4)
+
+    try:
+        asyncio.run(cli_main())
+    except KeyboardInterrupt:
+        proxy_rotator.stop_tunnel()
+        sys.exit(0)
