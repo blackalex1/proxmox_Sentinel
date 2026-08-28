@@ -265,22 +265,29 @@ async def handle_traffic_log_line(line):
             target_port = dpt
             
             buttons = []
-            # Строка 1: Белый список для всего IP (любые порты)
+            # Строка 1: Разрешить весь IP
             row1 = [
-                InlineKeyboardButton(text="🌍 Разрешить IP везде", callback_data=f"qwl:global:ip:{target_ip}")
+                InlineKeyboardButton(text="🟢 Разрешить IP везде", callback_data=f"qwl:global:ip:{target_ip}")
             ]
             if vmid != 0:
-                row1.append(InlineKeyboardButton(text=f"📦 Разрешить IP в LXC {vmid}", callback_data=f"qwl:lxc_{vmid}:ip:{target_ip}"))
+                row1.append(InlineKeyboardButton(text=f"🟢 В белый список LXC {vmid}", callback_data=f"qwl:lxc_{vmid}:ip:{target_ip}"))
             buttons.append(row1)
             
-            # Строка 2: Белый список конкретного IP:Порт
+            # Строка 2: Разрешить IP:Порт
             if target_port > 0:
                 row2 = [
-                    InlineKeyboardButton(text=f"🌍 IP:Порт ({target_port}) везде", callback_data=f"qwl:global:ipport:{target_ip}:{target_port}")
+                    InlineKeyboardButton(text=f"🛡️ IP:Порт ({target_port}) везде", callback_data=f"qwl:global:ipport:{target_ip}:{target_port}")
                 ]
                 if vmid != 0:
-                    row2.append(InlineKeyboardButton(text=f"📦 IP:Порт ({target_port}) в LXC {vmid}", callback_data=f"qwl:lxc_{vmid}:ipport:{target_ip}:{target_port}"))
+                    row2.append(InlineKeyboardButton(text=f"🛡️ В белый список LXC {vmid}", callback_data=f"qwl:lxc_{vmid}:ipport:{target_ip}:{target_port}"))
                 buttons.append(row2)
+                
+            # Строка 3: Блокировка и копирование
+            row3 = [
+                InlineKeyboardButton(text="🔴 Заблокировать IP", callback_data=f"qblock:ip:{target_ip}"),
+                InlineKeyboardButton(text="📋 Скопировать IP", callback_data=f"copy:ip:{target_ip}")
+            ]
+            buttons.append(row3)
                 
             kb = InlineKeyboardMarkup(inline_keyboard=buttons)
             

@@ -24,19 +24,23 @@ translation = {
     "router_autoblock_alert": (
         "# 🛑 Router Auto-Block\n"
         "---\n\n"
-        "### 🛑 [Router Security] Device blocked automatically!\n\n"
-        "🎯 **Reason:** Network violations limit exceeded ({threshold}+ attempts to access sensitive ports in 10 minutes).\n\n"
-        "👤 **Blocked IP:** `{src_ip}`\n"
-        "🧭 **Last Target:** `{dst_host}:{dst_port}` ({proto})\n\n"
+        "### 🛑 [Router Security] Device automatically blocked!\n\n"
+        "| Parameter | Value |\n"
+        "| :--- | :--- |\n"
+        "| **🎯 Reason** | Violation limit reached ({threshold}+ attempts in 10 min) |\n"
+        "| **👤 Blocked IP** | `{src_ip}` |\n"
+        "| **🧭 Last Target** | `{dst_host}:{dst_port}` (`{proto}`) |\n\n"
         "*Aegis Security Guard • Time: {timestamp}*"
     ),
     "router_port_alert": (
         "# 🚨 Router {type_str} Alert\n"
         "---\n\n"
-        "### 🚨 [Router Security: {type_str}] Access to sensitive port detected!\n\n"
-        "🔌 **Protocol:** `{proto}`\n"
-        "👤 **Source:** `{src_ip}:{src_port}`\n"
-        "🎯 **Target:** `{dst_host}:{dst_port}`\n\n"
+        "### 🚨 [Router Security: {type_str}] Access to sensitive port!\n\n"
+        "| Parameter | Value |\n"
+        "| :--- | :--- |\n"
+        "| **🔌 Protocol** | `{proto}` |\n"
+        "| **👤 Source** | `{src_ip}:{src_port}` |\n"
+        "| **🎯 Target** | `{dst_host}:{dst_port}` |\n\n"
         "*Aegis Security Guard • Time: {timestamp}*"
     ),
     "btn_unblock_ip_router": "🟢 Unblock IP on router",

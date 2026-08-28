@@ -25,7 +25,10 @@ async def test_handle_router_iptables_log_line_sensitive():
     
     line = "ROUTER-IPS: IN=br-lan OUT= SRC=192.168.1.150 DST=192.168.1.1 PROTO=TCP SPT=54321 DPT=22"
     
-    with patch("modules.router.monitor.router_handlers.send_alert_to_admins", AsyncMock()) as mock_alert:
+    with patch("modules.router.monitor.router_handlers.parse_router_iptables_line", return_value={
+        'src_ip': '192.168.1.150', 'src_port': 54321, 'dst_host': '192.168.1.1', 'dst_port': 22,
+        'proto': 'TCP', 'is_threat': True, 'should_autoban': False
+    }), patch("modules.router.monitor.router_handlers.send_alert_to_admins", AsyncMock()) as mock_alert:
         await handle_router_iptables_log_line(line)
         
         # Проверяем, что алерт безопасности БЫЛ вызван
@@ -193,7 +196,10 @@ async def test_handle_router_conntrack_log_line():
     # Sensitive port 22
     line = "[NEW] tcp      6 120 SYN_SENT src=192.168.1.69 dst=192.168.1.1 sport=33296 dport=22 [UNREPLIED]"
     
-    with patch("modules.router.monitor.router_handlers.send_alert_to_admins", AsyncMock()) as mock_alert:
+    with patch("modules.router.monitor.router_handlers.parse_router_conntrack_line", return_value={
+        'src_ip': '192.168.1.69', 'src_port': 33296, 'dst_host': '192.168.1.1', 'dst_port': 22,
+        'proto': 'TCP', 'is_threat': True, 'should_autoban': False
+    }), patch("modules.router.monitor.router_handlers.send_alert_to_admins", AsyncMock()) as mock_alert:
         await handle_router_conntrack_log_line(line)
         mock_alert.assert_called_once()
         alert_text = mock_alert.call_args[0][0]
