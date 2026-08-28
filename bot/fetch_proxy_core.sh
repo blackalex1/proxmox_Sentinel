@@ -58,7 +58,7 @@ if [ -z "$PROXY_URL" ]; then
 fi
 
 VALID_PROXY=""
-CURL_OPTS=("-fsSL" "--connect-timeout" "10" "--retry" "2")
+CURL_OPTS=("-fsSL" "--connect-timeout" "8" "--max-time" "30" "--speed-limit" "1024" "--speed-time" "6" "--retry" "1")
 
 if [ -n "$PROXY_URL" ]; then
     if [[ "$PROXY_URL" =~ ^(http|https|socks4|socks5|socks5h):// ]]; then
