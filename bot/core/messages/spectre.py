@@ -27,9 +27,9 @@ def _build_geo_rows(geoip_info):
     geo_label = "🗺️ Geo" if is_en else "🗺️ Гео"
     isp_label = "🏢 ISP" if is_en else "🏢 Провайдер"
 
-    rows = f'  <tr>\n    <td style="padding: 8px;"><b>{geo_label}</b></td>\n    <td style="padding: 8px;"><code>{html.escape(geo_str or "Неизвестно")}</code></td>\n  </tr>\n'
+    rows = f"<b>{geo_label}:</b> <code>{html.escape(geo_str or 'Неизвестно')}</code>\n"
     if isp_str:
-        rows += f'  <tr>\n    <td style="padding: 8px;"><b>{isp_label}</b></td>\n    <td style="padding: 8px;"><code>{html.escape(isp_str)}</code></td>\n  </tr>\n'
+        rows += f"<b>{isp_label}:</b> <code>{html.escape(isp_str)}</code>\n"
     return rows
 
 def get_new_ip_alert(protocol, panel_name, username, client_ip, timestamp_str, history_list, geoip_info=None):
