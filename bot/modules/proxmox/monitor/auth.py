@@ -75,10 +75,13 @@ async def handle_auth_log_line(line, vmid):
             # Если это успешный вход по SSH, добавляем кнопку сброса сессии
             reply_markup = None
             if event.get('type') == 'SUCCESS' and 'pid' in event and 'WEB_GUI' not in event.get('ip', ''):
-                from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+                from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CopyTextButton
                 target_key = "local" if vmid == 0 else f"lxc_{vmid}"
                 sshd_pid = event['pid']
-                kb = [[InlineKeyboardButton(text="❌ Сбросить SSH-сессию", callback_data=f"termssh:{target_key}:{sshd_pid}")]]
+                
+                action_row = [
+                    InlineKeyboardButton(text="🔴 Сбросить SSH-сессию", callback_data=f"termssh:{target_key}:{sshd_pid}", style="danger")
+                ]
                 
                 # Если вход выполнен по ключу, кэшируем его в БД и добавляем кнопку бана
                 if 'fingerprint' in event:
@@ -86,7 +89,18 @@ async def handle_auth_log_line(line, vmid):
                     cache = await get_state("ssh_key_cache", {})
                     cache[f"{target_key}:{sshd_pid}"] = [event['fingerprint'], event.get('user', 'root')]
                     await set_state("ssh_key_cache", cache)
-                    kb.append([InlineKeyboardButton(text="🚫 Заблокировать SSH-ключ", callback_data=f"bankey:{target_key}:{sshd_pid}")])
+                    action_row.append(InlineKeyboardButton(text="🔴 Заблокировать SSH-ключ", callback_data=f"bankey:{target_key}:{sshd_pid}", style="danger"))
+                
+                kb = [action_row]
+                
+                # Строка кнопок копирования
+                copy_row = []
+                if event.get('ip') and event['ip'] != 'WEB_GUI':
+                    copy_row.append(InlineKeyboardButton(text="📋 Скопировать IP", copy_text=CopyTextButton(text=event['ip'])))
+                if event.get('fingerprint'):
+                    copy_row.append(InlineKeyboardButton(text="📋 Скопировать ключ", copy_text=CopyTextButton(text=event['fingerprint'])))
+                if copy_row:
+                    kb.append(copy_row)
                 
                 reply_markup = InlineKeyboardMarkup(inline_keyboard=kb)
                 
