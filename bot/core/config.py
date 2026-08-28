@@ -69,8 +69,9 @@ class Settings(BaseSettings):
     # Альтернативный Bot API сервер (например, приватный реверс-прокси на Cloudflare Workers)
     telegram_api_server: str = Field(default='', validation_alias='TELEGRAM_API_SERVER')
 
-    # Включение автоматической ротации бесплатных SOCKS5 прокси при сбое основного прокси
+    # Включение автоматической ротации бесплатных SOCKS5/VPN прокси при сбое основного прокси
     enable_free_proxy_rotation: bool = Field(default=False, validation_alias='ENABLE_FREE_PROXY_ROTATION')
+    proxy_cache_refresh_interval: int = Field(default=3600, validation_alias='PROXY_CACHE_REFRESH_INTERVAL')
 
     # Доверенные IP-адреса администраторов
     trusted_admin_ips: List[str] | str = Field(default_factory=list, validation_alias='TRUSTED_ADMIN_IPS')

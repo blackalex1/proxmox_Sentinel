@@ -225,6 +225,10 @@ async def main():
         logging.info("proxy_monitor_starting_background_proxy_auto-rotation_tracking")
         asyncio.create_task(proxy_monitor_loop(bot, primary_proxy_endpoint, session_kwargs, active_proxy, using_fallback), name="proxy_monitor_loop")
         
+        # Фоновый воркер периодического обновления кэша рабочих VPN-нод (по умолчанию раз в 1 час)
+        refresh_interval = getattr(settings, "proxy_cache_refresh_interval", 3600)
+        asyncio.create_task(proxy_rotator.periodic_cache_refresh_loop(interval_seconds=refresh_interval), name="proxy_cache_refresh_loop")
+        
     # Запуск фоновой службы отложенной отправки сообщений (Outbox)
     from core.outbox import outbox_sender_loop
     asyncio.create_task(outbox_sender_loop(bot), name="outbox_sender_loop")
