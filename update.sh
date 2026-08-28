@@ -184,6 +184,12 @@ echo "===================================================="
 echo "🔄 UPDATING PROXMOX LXC MONITOR BOT (CONTROLLER)"
 echo "===================================================="
 
+# 0. Stop running bot service so it doesn't intercept network/proxy tests during update
+if systemctl is-active --quiet proxmox-lxc-bot 2>/dev/null; then
+    echo "[+] Приостановка службы proxmox-lxc-bot на время обновления..."
+    systemctl stop proxmox-lxc-bot 2>/dev/null || true
+fi
+
 # 1. Pull latest updates from Git
 echo "[+] Pulling latest updates from Git..."
 OLD_HEAD=$(git rev-parse HEAD 2>/dev/null)
