@@ -8,29 +8,51 @@ Markdown/HTML документов в валидный список блоков
 import re
 from typing import Union, List, Any
 
-from aiogram.types import (
-    InputRichMessage,
-    InputRichBlockSectionHeading,
-    InputRichBlockDivider,
-    InputRichBlockParagraph,
-    InputRichBlockTable,
-    RichBlockTableCell,
-    InputRichBlockDetails,
-    InputRichBlockPreformatted,
-    InputRichBlockList,
-    InputRichBlockListItem,
-    RichTextBold,
-    RichTextCode,
-    RichTextItalic,
-    RichTextUnderline,
-    RichTextStrikethrough,
-    RichTextSpoiler,
-    RichTextUrl,
-    RichTextUnion,
-)
+try:
+    from aiogram.types import (
+        InputRichMessage,
+        InputRichBlockSectionHeading,
+        InputRichBlockDivider,
+        InputRichBlockParagraph,
+        InputRichBlockTable,
+        RichBlockTableCell,
+        InputRichBlockDetails,
+        InputRichBlockPreformatted,
+        InputRichBlockList,
+        InputRichBlockListItem,
+        RichTextBold,
+        RichTextCode,
+        RichTextItalic,
+        RichTextUnderline,
+        RichTextStrikethrough,
+        RichTextSpoiler,
+        RichTextUrl,
+        RichTextUnion,
+    )
+    HAS_RICH_API = True
+except (ImportError, AttributeError):
+    HAS_RICH_API = False
+    InputRichMessage = None
+    InputRichBlockSectionHeading = None
+    InputRichBlockDivider = None
+    InputRichBlockParagraph = None
+    InputRichBlockTable = None
+    RichBlockTableCell = None
+    InputRichBlockDetails = None
+    InputRichBlockPreformatted = None
+    InputRichBlockList = None
+    InputRichBlockListItem = None
+    RichTextBold = str
+    RichTextCode = str
+    RichTextItalic = str
+    RichTextUnderline = str
+    RichTextStrikethrough = str
+    RichTextSpoiler = str
+    RichTextUrl = str
+    RichTextUnion = Any
 
 
-def parse_to_rich_text(text: str) -> RichTextUnion:
+def parse_to_rich_text(text: str) -> Any:
     """
     Парсит строку с HTML-тегами (<b>, <code>, <i>, <u>, <s>, <tg-spoiler>, <a href=...>)
     или Markdown-нотацией (**...**, `...`, *...*) в нативную структуру RichTextUnion.
@@ -38,6 +60,9 @@ def parse_to_rich_text(text: str) -> RichTextUnion:
     if not text:
         return ""
     if not isinstance(text, str):
+        return str(text)
+    if not HAS_RICH_API:
+        return text
         return str(text)
 
     # Нормализуем markdown в HTML для единообразного токенизатора
@@ -155,11 +180,13 @@ def _detect_code_language(code_text: str, explicit_lang: str = None) -> str:
     return 'bash'
 
 
-def build_rich_message(content: Any) -> InputRichMessage:
+def build_rich_message(content: Any) -> Any:
     """
     Преобразует произвольный контент (InputRichMessage, список блоков, или строку Markdown/HTML)
     в полноценный валидный объект InputRichMessage с блоками.
     """
+    if not HAS_RICH_API or InputRichMessage is None:
+        return content
     if isinstance(content, InputRichMessage):
         return content
     if isinstance(content, list):
