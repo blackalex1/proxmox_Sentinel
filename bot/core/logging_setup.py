@@ -8,6 +8,7 @@ class LocalizedFormatter(logging.Formatter):
     """Кастомный форматировщик, который локализует логи перед выводом."""
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.exact_map = {}
         self.patterns = []
         try:
             from core.config import settings
@@ -15,8 +16,11 @@ class LocalizedFormatter(logging.Formatter):
             try:
                 module = importlib.import_module(f"core.messages.locales.{lang}.logs")
                 translation_dict = getattr(module, "translation", {})
-                for pattern, repl in translation_dict.items():
-                    self.patterns.append((re.compile(pattern), repl))
+                self.exact_map = translation_dict
+                # Сортируем по длине ключа по убыванию, чтобы более длинные ключи (с суффиксами _1) имели приоритет
+                sorted_items = sorted(translation_dict.items(), key=lambda x: len(x[0]), reverse=True)
+                for pattern, repl in sorted_items:
+                    self.patterns.append((re.compile(r'\b' + re.escape(pattern) + r'\b'), repl))
             except ModuleNotFoundError:
                 pass
         except Exception:
@@ -25,13 +29,16 @@ class LocalizedFormatter(logging.Formatter):
 
     def format(self, record: logging.LogRecord) -> str:
         if not getattr(record, "localized", False):
-            if isinstance(record.msg, str) and self.patterns:
-                orig_msg = record.msg
-                for pattern, repl in self.patterns:
-                    new_msg = pattern.sub(repl, orig_msg)
-                    if new_msg != orig_msg:
-                        record.msg = new_msg
-                        break
+            if isinstance(record.msg, str):
+                if record.msg in self.exact_map:
+                    record.msg = self.exact_map[record.msg]
+                elif self.patterns:
+                    orig_msg = record.msg
+                    for pattern, repl in self.patterns:
+                        new_msg = pattern.sub(repl, orig_msg)
+                        if new_msg != orig_msg:
+                            record.msg = new_msg
+                            break
             record.localized = True
         
         # Сбрасываем предварительно отформатированное сообщение, если оно есть,

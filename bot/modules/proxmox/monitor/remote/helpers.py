@@ -144,8 +144,22 @@ def parse_tcp_file(file_path):
     return connections
 
 def get_active_ssh_ports_for_vps(vps_ip):
-    """Возвращает список всех исходящих локальных портов процессов ssh, запущенных ботом к данному VPS."""
+    """Возвращает список всех исходящих локальных портов процессов ssh / asyncssh, запущенных ботом к данному VPS."""
     ports = []
+    # 1. Проверяем активные соединения asyncssh
+    try:
+        from .ssh import _ssh_connections
+        conn = _ssh_connections.get(vps_ip)
+        if conn and not conn.is_closed():
+            sock = conn.get_extra_info('socket')
+            if sock:
+                sockname = sock.getsockname()
+                if sockname and isinstance(sockname, tuple):
+                    ports.append(sockname[1])
+    except Exception:
+        pass
+
+    # 2. Проверяем все сокеты процесса бота и его дочерних процессов
     try:
         my_pid = os.getpid()
         child_pids = get_child_pids(my_pid)
@@ -153,15 +167,6 @@ def get_active_ssh_ports_for_vps(vps_ip):
         
         for pid in all_pids:
             try:
-                comm_path = f"/proc/{pid}/comm"
-                if os.path.exists(comm_path):
-                    with open(comm_path, 'r') as f:
-                        comm = f.read().strip()
-                    if comm != 'ssh':
-                        continue
-                else:
-                    continue
-                
                 process_inodes = get_process_socket_inodes(pid)
                 if not process_inodes:
                     continue
