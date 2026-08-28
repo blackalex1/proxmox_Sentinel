@@ -35,26 +35,8 @@ OUTBOX_FILE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__fil
 import re
 
 def clean_markdown_tables(text: str) -> str:
-    """Преобразует Markdown-таблицы в аккуратные строки ключ-значение, чтобы Telegram не сворачивал их в кнопку 'Таблица'."""
-    if not text or '|' not in text:
-        return text
-    lines = text.split('\n')
-    out_lines = []
-    for line in lines:
-        trimmed = line.strip()
-        if trimmed.startswith('|') and trimmed.endswith('|'):
-            parts = [p.strip() for p in trimmed.strip('|').split('|')]
-            if any(p.startswith(':--') or p.startswith('---') for p in parts):
-                continue
-            if len(parts) == 2:
-                if parts[0] in ("Параметр", "Parameter", "Metric", "Показатель", "Свойство", "Property", "Key"):
-                    continue
-                out_lines.append(f"{parts[0]}: {parts[1]}")
-            else:
-                out_lines.append(" • ".join(parts))
-        else:
-            out_lines.append(line)
-    return '\n'.join(out_lines)
+    """Preserves Markdown tables as native markdown tables."""
+    return text
 
 def clean_mixed_html_to_markdown(text: str) -> str:
     if not text:

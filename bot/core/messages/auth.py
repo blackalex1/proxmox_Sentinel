@@ -14,12 +14,12 @@ def _build_auth_geo_rows(geoip_info):
         isp_str = isp_str.rstrip(")")
 
     is_en = settings.bot_language.lower() == "en"
-    geo_label = "🗺️ Geo" if is_en else "🗺️ Гео"
-    isp_label = "🏢 ISP" if is_en else "🏢 Провайдер"
+    geo_label = "**🗺️ Geo**" if is_en else "**🗺️ Гео**"
+    isp_label = "**🏢 ISP**" if is_en else "**🏢 Провайдер**"
 
-    rows = f"🗺️ <b>{geo_label}:</b> <code>{geo_str}</code>\n"
+    rows = f"| {geo_label} | `{geo_str}` |\n"
     if isp_str:
-        rows += f"🏢 <b>{isp_label}:</b> <code>{isp_str}</code>\n"
+        rows += f"| {isp_label} | `{isp_str}` |\n"
     return rows
 
 def get_vps_ssh_login_alert(ip, username, client_ip, auth_method, key_name, fingerprint, timestamp, security_warning_str, line, geoip_info=None):
@@ -64,9 +64,9 @@ def get_ssh_login_alert(title_str, emoji_str, target_str, user, ip, method, fing
     key_row = ""
     if fingerprint:
         if settings.bot_language.lower() == "en":
-            key_row = f"🔑 <b>Key Used:</b> <code>{fingerprint}</code>\n"
+            key_row = f"| **🔑 Key Used** | `{fingerprint}` |\n"
         else:
-            key_row = f"🔑 <b>Использован ключ:</b> <code>{fingerprint}</code>\n"
+            key_row = f"| **🔑 Использован ключ** | `{fingerprint}` |\n"
             
     geo_row = _build_auth_geo_rows(geoip_info)
             
@@ -99,9 +99,9 @@ def get_ssh_close_alert(target_str, user, ip, timestamp, line):
     ip_row = ""
     if ip:
         if settings.bot_language.lower() == "en":
-            ip_row = f"🌐 <b>IP Address:</b> <code>{ip}</code>\n"
+            ip_row = f"| **🌐 IP Address** | `{ip}` |\n"
         else:
-            ip_row = f"🌐 <b>IP-адрес:</b> <code>{ip}</code>\n"
+            ip_row = f"| **🌐 IP-адрес** | `{ip}` |\n"
             
     return _(
         "auth", "ssh_close_alert",
