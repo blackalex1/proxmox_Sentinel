@@ -168,9 +168,11 @@ if [ -n "$PROXY_URL" ] && [ "$NO_PROXY" -eq 0 ]; then
         GIT_PROXY_OPTS=("-c" "http.proxy=$VALID_PROXY" "-c" "https.proxy=$VALID_PROXY")
         CORE_PROXY_ARG=("--proxy" "$VALID_PROXY")
     elif [[ "$PROXY_URL" =~ ^(ss|vless|vmess|trojan|hy2|hysteria2|tuic|wireguard|wg):// ]]; then
-        echo "[+] В конфигурации задана VPN-нода (${PROXY_URL%%:*}). Подключение к VPN..."
+        NODE_TAG="${PROXY_URL#*#}"
+        [ "$NODE_TAG" = "$PROXY_URL" ] && NODE_TAG="${PROXY_URL%%:*}"
+        echo "[+] В конфигурации задана VPN-нода: $NODE_TAG (${PROXY_URL%%:*}). Подключение..."
         if ! try_start_vpn_tunnel "$PROXY_URL"; then
-            echo "[!] Прямое подключение к ноде не удалось. Поиск резервной рабочей ноды через ротатор..."
+            echo "[!] Прямое подключение к ноде $NODE_TAG не удалось. Поиск резервной рабочей ноды через ротатор..."
             try_start_vpn_tunnel "" || true
         fi
     fi
