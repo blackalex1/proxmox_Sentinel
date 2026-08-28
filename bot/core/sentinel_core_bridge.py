@@ -205,7 +205,7 @@ def _ffi_call_json(func_name: str, *args) -> Optional[Any]:
         return {"raw": raw}
 
 
-def run_core_command(args: List[str], input_data: Optional[str] = None) -> Dict[str, Any]:
+def run_core_command(args: List[str], input_data: Optional[str] = None, parse_json: bool = True) -> Any:
     """Executes sentinel-core CLI with given args and returns parsed JSON output or raw string."""
     import shutil
     bin_path = _get_sentinel_core_bin()
@@ -231,10 +231,12 @@ def run_core_command(args: List[str], input_data: Optional[str] = None) -> Dict[
         stdout, stderr = proc.communicate(input=input_data, timeout=10)
         output = (stdout or "").strip()
         if output:
+            if not parse_json:
+                return output
             try:
                 return json.loads(output)
             except json.JSONDecodeError:
-                pass
+                return output
 
         if proc.returncode != 0:
             err_msg = (stderr or "").strip() or f"Process exited with code {proc.returncode}"
