@@ -35,7 +35,7 @@ def _get_sentinel_core_bin() -> str:
     ]
 
     for p in candidate_paths:
-        if os.path.isfile(p):
+        if os.path.isfile(p) and os.path.getsize(p) > 300 * 1024:
             if os.name != 'nt' and not os.access(p, os.X_OK):
                 try:
                     os.chmod(p, 0o755)
@@ -44,7 +44,7 @@ def _get_sentinel_core_bin() -> str:
             return p
 
     which_path = shutil.which(bin_name) or shutil.which("sentinel-core")
-    if which_path:
+    if which_path and os.path.isfile(which_path) and os.path.getsize(which_path) > 300 * 1024:
         return which_path
 
     return os.path.join(base_dir, "bin", bin_name)
@@ -78,7 +78,7 @@ def _find_sentinel_core_lib_path() -> Optional[str]:
     for d in candidate_dirs:
         for name in lib_names:
             p = os.path.join(d, name)
-            if os.path.isfile(p):
+            if os.path.isfile(p) and os.path.getsize(p) > 300 * 1024:
                 return p
 
 
