@@ -332,9 +332,8 @@ class CoreManager:
             try:
                 curl_cmd = [
                     "curl", "-fsSL", "-k",
-                    "--connect-timeout", "6",
-                    "--max-time", "60",
-                    "--retry", "1",
+                    "--connect-timeout", "4",
+                    "--max-time", "25",
                     "-H", "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
                     "-o", tmp_dest,
                 ]
@@ -346,7 +345,7 @@ class CoreManager:
                 else:
                     curl_cmd.extend(["--noproxy", "*"])
                 curl_cmd.append(url)
-                res = subprocess.run(curl_cmd, capture_output=True, timeout=65.0)
+                res = subprocess.run(curl_cmd, capture_output=True, timeout=28.0)
                 if res.returncode == 0 and os.path.isfile(tmp_dest) and os.path.getsize(tmp_dest) > 0:
                     if os.name != "nt":
                         os.chmod(tmp_dest, 0o755)
