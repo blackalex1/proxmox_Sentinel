@@ -116,10 +116,10 @@ async def test_passive_refresh_disk_cache():
 
 
 @pytest.mark.asyncio
-async def test_singbox_config_domain_resolver_sanitization(tmp_path):
+async def test_start_or_reload_singbox_tunnel_passthrough(tmp_path):
     """
-    Проверяет, что перед запуском Sing-box устаревшее/неподдерживаемое поле
-    domain_resolver в dns.servers автоматически вычищается из JSON конфига.
+    Проверяет, что start_or_reload_singbox_tunnel напрямую и без искажений
+    записывает JSON-конфиг ядра в singbox_failover.json и запускает процесс.
     """
     rotator = SocksProxyRotator()
 
@@ -128,14 +128,8 @@ async def test_singbox_config_domain_resolver_sanitization(tmp_path):
             "servers": [
                 {
                     "tag": "dns-remote",
-                    "server": "1.1.1.1",
-                    "type": "https",
-                    "domain_resolver": "dns-direct"
-                },
-                {
-                    "tag": "dns-direct",
-                    "server": "8.8.8.8",
-                    "type": "udp"
+                    "address": "https://1.1.1.1/dns-query",
+                    "detour": "proxy"
                 }
             ]
         },
@@ -165,12 +159,7 @@ async def test_singbox_config_domain_resolver_sanitization(tmp_path):
 
         ok = await rotator.start_or_reload_singbox_tunnel(raw_cfg_str, port=10818)
         assert ok is True
-        assert written_content is not None
-        saved_cfg = json.loads(written_content)
-
-        # Проверяем, что domain_resolver вычищен из dns.servers[0]
-        assert "domain_resolver" not in saved_cfg["dns"]["servers"][0]
-        assert saved_cfg["dns"]["servers"][0]["tag"] == "dns-remote"
+        assert written_content == raw_cfg_str
 
 
 @pytest.mark.asyncio
