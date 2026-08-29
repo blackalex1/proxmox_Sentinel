@@ -17,11 +17,33 @@ if [ "$EUID" -ne 0 ]; then
     exit 1
 fi
 
+export PYTHONUNBUFFERED=1
+
 # 1. Fast bootstrap: auto-update git repository before launching updater
 if [ -z "${BOOTSTRAPPED:-}" ] && [ -d .git ] && command -v git &>/dev/null; then
+    echo -e "\033[0;36m[+] Проверка обновлений Git-репозитория...\033[0m"
     OLD_HEAD=$(git rev-parse HEAD 2>/dev/null || true)
-    for remote in origin "https://github.com/blackalex1/proxmox_Sentinel.git" "https://gh-proxy.com/https://github.com/blackalex1/proxmox_Sentinel.git" "https://ghfast.top/https://github.com/blackalex1/proxmox_Sentinel.git"; do
-        if git fetch "$remote" main 2>/dev/null; then
+    
+    # Check for proxy configuration in .env
+    for env_f in "bot/config/.env" "config/.env" ".env"; do
+        if [ -f "$env_f" ]; then
+            P_URL=$(grep -E '^[[:space:]]*PROXY_URL=' "$env_f" 2>/dev/null | cut -d'=' -f2- | tr -d '"'\'' ')
+            if [ -n "$P_URL" ]; then
+                export http_proxy="$P_URL"
+                export https_proxy="$P_URL"
+                export all_proxy="$P_URL"
+                break
+            fi
+        fi
+    done
+
+    # Fetch with strict timeout and fallback mirrors
+    for remote in origin "https://github.com/blackalex1/proxmox_Sentinel.git" "https://ghfast.top/https://github.com/blackalex1/proxmox_Sentinel.git" "https://gh-proxy.com/https://github.com/blackalex1/proxmox_Sentinel.git"; do
+        FETCH_CMD="git -c http.connectTimeout=4 -c http.timeout=8 fetch $remote main"
+        if command -v timeout &>/dev/null; then
+            FETCH_CMD="timeout 12 $FETCH_CMD"
+        fi
+        if $FETCH_CMD 2>/dev/null; then
             git reset --hard FETCH_HEAD 2>/dev/null || true
             break
         fi
