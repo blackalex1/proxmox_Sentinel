@@ -326,10 +326,38 @@ class CoreManager:
     def _download_file(self, url: str, dest: str) -> bool:
         """Downloads a single file from URL to destination path using atomic temp replacement."""
         tmp_dest = f"{dest}.tmp.{os.getpid()}"
+        
+        # 1. Try curl if available (handles Cloudflare, HTTP/2, redirects and SNI reliably)
+        if shutil.which("curl"):
+            try:
+                curl_cmd = [
+                    "curl", "-fsSL", "-k",
+                    "--connect-timeout", "6",
+                    "--max-time", "60",
+                    "--retry", "1",
+                    "-H", "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                    "-o", tmp_dest,
+                ]
+                if self.proxy_url:
+                    p = self.proxy_url
+                    if p.startswith("socks5://"):
+                        p = "socks5h://" + p[len("socks5://"):]
+                    curl_cmd.extend(["-x", p])
+                curl_cmd.append(url)
+                res = subprocess.run(curl_cmd, capture_output=True, timeout=65.0)
+                if res.returncode == 0 and os.path.isfile(tmp_dest) and os.path.getsize(tmp_dest) > 0:
+                    if os.name != "nt":
+                        os.chmod(tmp_dest, 0o755)
+                    os.replace(tmp_dest, dest)
+                    return True
+            except Exception:
+                pass
+
+        # 2. Fallback to urllib.request
         try:
             req = urllib.request.Request(
                 url,
-                headers={"User-Agent": "Sentinel-Controller-Updater/1.0"},
+                headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"},
             )
             opener = self._build_opener()
             with opener.open(req, timeout=30.0) as resp:
@@ -354,16 +382,12 @@ class CoreManager:
     def _download_with_fallback(self, base_url: str, dest_path: str, filename: str) -> bool:
         """Downloads a file with automatic failover to CDN proxy mirrors."""
         mirror_prefixes = [
-            "",  # Direct GitHub
-            "https://gh-proxy.com/",
             "https://ghfast.top/",
+            "https://gh-proxy.com/",
             "https://gh.ddlc.top/",
             "https://ghproxy.net/",
+            "",  # Direct GitHub
         ]
-
-        # Prioritize mirrors if direct connection was flagged as blocked
-        if self.direct_github_blocked and mirror_prefixes[0] == "":
-            mirror_prefixes = mirror_prefixes[1:] + [""]
 
         for prefix in mirror_prefixes:
             full_url = f"{prefix}{base_url}" if prefix else base_url
