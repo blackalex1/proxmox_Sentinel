@@ -343,6 +343,8 @@ class CoreManager:
                     if p.startswith("socks5://"):
                         p = "socks5h://" + p[len("socks5://"):]
                     curl_cmd.extend(["-x", p])
+                else:
+                    curl_cmd.extend(["--noproxy", "*"])
                 curl_cmd.append(url)
                 res = subprocess.run(curl_cmd, capture_output=True, timeout=65.0)
                 if res.returncode == 0 and os.path.isfile(tmp_dest) and os.path.getsize(tmp_dest) > 0:

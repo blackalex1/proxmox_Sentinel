@@ -29,13 +29,12 @@ if [ -z "${BOOTSTRAPPED:-}" ] && [ -d .git ] && command -v git &>/dev/null; then
     OLD_HEAD=$(git rev-parse HEAD 2>/dev/null || true)
     
     # Check for proxy configuration in .env
+    PROXY_OPT=""
     for env_f in "bot/config/.env" "config/.env" ".env"; do
         if [ -f "$env_f" ]; then
             P_URL=$(grep -E '^[[:space:]]*PROXY_URL=' "$env_f" 2>/dev/null | cut -d'=' -f2- | tr -d '"'\'' ')
             if [ -n "$P_URL" ]; then
-                export http_proxy="$P_URL"
-                export https_proxy="$P_URL"
-                export all_proxy="$P_URL"
+                PROXY_OPT="-c http.proxy=$P_URL -c https.proxy=$P_URL"
                 break
             fi
         fi
@@ -43,7 +42,7 @@ if [ -z "${BOOTSTRAPPED:-}" ] && [ -d .git ] && command -v git &>/dev/null; then
 
     # Fetch with strict timeout and fallback mirrors
     for remote in origin "https://github.com/blackalex1/proxmox_Sentinel.git" "https://ghfast.top/https://github.com/blackalex1/proxmox_Sentinel.git" "https://gh.ddlc.top/https://github.com/blackalex1/proxmox_Sentinel.git" "https://gh-proxy.com/https://github.com/blackalex1/proxmox_Sentinel.git"; do
-        FETCH_CMD="git -c http.connectTimeout=4 -c http.timeout=8 fetch $remote main"
+        FETCH_CMD="git $PROXY_OPT -c http.connectTimeout=4 -c http.timeout=8 fetch $remote main"
         if command -v timeout &>/dev/null; then
             FETCH_CMD="timeout 12 $FETCH_CMD"
         fi
@@ -94,7 +93,8 @@ if [ ! -f "installation/updater/main.py" ]; then
     exit 1
 fi
 
-# 4. Launch modern modular updater
+# 4. Clean proxy environment and launch modern modular updater
+unset http_proxy https_proxy all_proxy HTTP_PROXY HTTPS_PROXY ALL_PROXY
 BOOTSTRAP_FLAG=""
 if [ -n "${BOOTSTRAPPED:-}" ]; then
     BOOTSTRAP_FLAG="--bootstrapped"
