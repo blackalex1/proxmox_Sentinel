@@ -29,6 +29,7 @@ from .common import (
     log_success,
     log_warn,
 )
+from .downloader import Downloader
 
 
 class ProxyEngineManager:
@@ -44,25 +45,9 @@ class ProxyEngineManager:
         self.bin_dir = os.path.join(project_dir, "bot", "bin")
         self.proxy_url = proxy_url
         self.auto_mode = auto_mode
-        self.direct_github_blocked = False
+        self.downloader = Downloader(proxy_url=proxy_url)
 
         os.makedirs(self.bin_dir, exist_ok=True)
-
-    def _build_opener(self) -> urllib.request.OpenerDirector:
-        """Constructs an HTTP/HTTPS opener with proxy and SSL configuration."""
-        ctx = ssl.create_default_context()
-        ctx.check_hostname = False
-        ctx.verify_mode = ssl.CERT_NONE
-
-        handlers: list = [urllib.request.HTTPSHandler(context=ctx)]
-        if self.proxy_url:
-            p_dict = {
-                "http": self.proxy_url,
-                "https": self.proxy_url,
-            }
-            handlers.append(urllib.request.ProxyHandler(p_dict))
-
-        return urllib.request.build_opener(*handlers)
 
     def _get_platform_info(self) -> Tuple[str, str, str]:
         """Detects OS, Arch for singbox, and Arch for xray."""
@@ -137,122 +122,11 @@ class ProxyEngineManager:
 
     def fetch_latest_release(self, repo: str) -> Optional[str]:
         """Queries GitHub API to find the latest release tag for a repository."""
-        api_urls = [
-            f"https://api.github.com/repos/{repo}/releases/latest",
-            f"https://ghfast.top/https://api.github.com/repos/{repo}/releases/latest",
-            f"https://gh-proxy.com/https://api.github.com/repos/{repo}/releases/latest",
-            f"https://ghproxy.net/https://api.github.com/repos/{repo}/releases/latest",
-        ]
-
-        for url in api_urls:
-            # 1. Try curl
-            if shutil.which("curl"):
-                try:
-                    curl_cmd = [
-                        "curl", "-fsSL", "-k",
-                        "--connect-timeout", "4",
-                        "--max-time", "8",
-                        "-H", "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-                        "-H", "Accept: application/vnd.github.v3+json",
-                    ]
-                    if self.proxy_url:
-                        p = self.proxy_url
-                        if p.startswith("socks5://"):
-                            p = "socks5h://" + p[len("socks5://"):]
-                        curl_cmd.extend(["-x", p])
-                    else:
-                        curl_cmd.extend(["--noproxy", "*"])
-                    curl_cmd.append(url)
-                    res = subprocess.run(curl_cmd, capture_output=True, text=True, timeout=10.0)
-                    if res.returncode == 0 and res.stdout.strip():
-                        data = json.loads(res.stdout)
-                        tag = data.get("tag_name")
-                        if tag:
-                            return tag
-                except Exception:
-                    pass
-
-            # 2. Try urllib fallback
-            try:
-                req = urllib.request.Request(
-                    url,
-                    headers={
-                        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-                        "Accept": "application/vnd.github.v3+json",
-                    },
-                )
-                opener = self._build_opener()
-                with opener.open(req, timeout=5.0) as resp:
-                    if resp.status == 200:
-                        data = json.loads(resp.read().decode("utf-8"))
-                        tag = data.get("tag_name")
-                        if tag:
-                            return tag
-            except Exception:
-                continue
-
-        return None
-
-    def _download_bytes(self, url: str) -> Optional[bytes]:
-        """Downloads bytes from URL using curl or urllib fallback."""
-        if shutil.which("curl"):
-            try:
-                curl_cmd = [
-                    "curl", "-fsSL", "-k",
-                    "--connect-timeout", "4",
-                    "--max-time", "30",
-                    "-H", "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-                ]
-                if self.proxy_url:
-                    p = self.proxy_url
-                    if p.startswith("socks5://"):
-                        p = "socks5h://" + p[len("socks5://"):]
-                    curl_cmd.extend(["-x", p])
-                else:
-                    curl_cmd.extend(["--noproxy", "*"])
-                curl_cmd.append(url)
-                res = subprocess.run(curl_cmd, capture_output=True, timeout=35.0)
-                if res.returncode == 0 and res.stdout and len(res.stdout) > 1024:
-                    return res.stdout
-            except Exception:
-                pass
-
-        try:
-            req = urllib.request.Request(
-                url,
-                headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"},
-            )
-            opener = self._build_opener()
-            with opener.open(req, timeout=15.0) as resp:
-                if resp.status == 200:
-                    return resp.read()
-        except Exception:
-            return None
-        return None
-
-    def _download_with_mirrors(self, direct_url: str) -> Optional[bytes]:
-        """Downloads data with mirror failovers."""
-        mirrors = [
-            "",
-            "https://ghfast.top/",
-            "https://gh-proxy.com/",
-            "https://gh.ddlc.top/",
-            "https://ghproxy.net/",
-        ]
-
-        if self.direct_github_blocked and mirrors[0] == "":
-            mirrors = mirrors[1:] + [""]
-
-        for prefix in mirrors:
-            full_url = f"{prefix}{direct_url}" if prefix else direct_url
-            label = "Официальный GitHub" if not prefix else f"CDN-зеркало ({prefix.split('/')[2]})"
-            log_info(f"  ➜ Загрузка из {label}...")
-            data = self._download_bytes(full_url)
-            if data and len(data) > 1024:
-                return data
-            if not prefix:
-                self.direct_github_blocked = True
-
+        data = self.downloader.fetch_github_api(f"https://api.github.com/repos/{repo}/releases/latest")
+        if isinstance(data, dict):
+            tag = data.get("tag_name")
+            if tag:
+                return tag
         return None
 
     def download_singbox(self, tag: Optional[str] = None) -> bool:
@@ -273,7 +147,7 @@ class ProxyEngineManager:
             filename = f"sing-box-{clean_ver}-linux-{arch_sb}.tar.gz"
 
         direct_url = f"https://github.com/SagerNet/sing-box/releases/download/{tag}/{filename}"
-        data = self._download_with_mirrors(direct_url)
+        data = self.downloader.download_bytes_with_mirrors(direct_url, label_for_log=filename)
         if not data:
             log_error(f"Не удалось загрузить архив Sing-box {filename}")
             return False
@@ -300,7 +174,10 @@ class ProxyEngineManager:
 
             if os.path.isfile(target_bin) and os.path.getsize(target_bin) > 0:
                 if os_name != "windows":
-                    os.chmod(target_bin, 0o755)
+                    try:
+                        os.chmod(target_bin, 0o755)
+                    except Exception:
+                        pass
                 log_success(f"Sing-box {tag} успешно установлен -> {target_bin}")
                 return True
         except Exception as e:
@@ -325,7 +202,7 @@ class ProxyEngineManager:
             filename = f"Xray-linux-{arch_xray}.zip"
 
         direct_url = f"https://github.com/XTLS/Xray-core/releases/download/{tag}/{filename}"
-        data = self._download_with_mirrors(direct_url)
+        data = self.downloader.download_bytes_with_mirrors(direct_url, label_for_log=filename)
         if not data:
             log_error(f"Не удалось загрузить архив Xray-core {filename}")
             return False

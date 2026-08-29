@@ -29,6 +29,7 @@ from .common import (
     log_success,
     log_warn,
 )
+from .downloader import Downloader
 
 
 class CoreManager:
@@ -42,7 +43,7 @@ class CoreManager:
         self.proxy_url = proxy_url
         self.auto_mode = auto_mode
         self.force = force
-        self.direct_github_blocked = False
+        self.downloader = Downloader(proxy_url=proxy_url)
 
         os.makedirs(self.bin_dir, exist_ok=True)
 
@@ -323,131 +324,24 @@ class CoreManager:
 
         return os_name, arch, ext
 
-    def _download_file(self, url: str, dest: str) -> bool:
-        """Downloads a single file from URL to destination path using atomic temp replacement."""
-        tmp_dest = f"{dest}.tmp.{os.getpid()}"
-        
-        # 1. Try curl if available (handles Cloudflare, HTTP/2, redirects and SNI reliably)
-        if shutil.which("curl"):
-            try:
-                curl_cmd = [
-                    "curl", "-fsSL", "-k",
-                    "--connect-timeout", "4",
-                    "--max-time", "25",
-                    "-H", "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-                    "-o", tmp_dest,
-                ]
-                if self.proxy_url:
-                    p = self.proxy_url
-                    if p.startswith("socks5://"):
-                        p = "socks5h://" + p[len("socks5://"):]
-                    curl_cmd.extend(["-x", p])
-                else:
-                    curl_cmd.extend(["--noproxy", "*"])
-                curl_cmd.append(url)
-                res = subprocess.run(curl_cmd, capture_output=True, timeout=28.0)
-                if res.returncode == 0 and os.path.isfile(tmp_dest) and os.path.getsize(tmp_dest) > 0:
-                    if os.name != "nt":
-                        os.chmod(tmp_dest, 0o755)
-                    os.replace(tmp_dest, dest)
-                    return True
-            except Exception:
-                pass
-
-        # 2. Fallback to urllib.request
-        try:
-            req = urllib.request.Request(
-                url,
-                headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"},
-            )
-            opener = self._build_opener()
-            with opener.open(req, timeout=30.0) as resp:
-                if resp.status == 200:
-                    with open(tmp_dest, "wb") as f:
-                        shutil.copyfileobj(resp, f)
-                    if os.path.isfile(tmp_dest) and os.path.getsize(tmp_dest) > 0:
-                        if os.name != "nt":
-                            os.chmod(tmp_dest, 0o755)
-                        os.replace(tmp_dest, dest)
-                        return True
-        except Exception:
-            return False
-        finally:
-            if os.path.isfile(tmp_dest):
-                try:
-                    os.remove(tmp_dest)
-                except Exception:
-                    pass
-        return False
-
-    def _download_with_fallback(self, base_url: str, dest_path: str, filename: str) -> bool:
-        """Downloads a file with automatic failover to CDN proxy mirrors."""
-        mirror_prefixes = [
-            "",  # Direct GitHub
-            "https://ghfast.top/",
-            "https://gh-proxy.com/",
-            "https://gh.ddlc.top/",
-            "https://ghproxy.net/",
-        ]
-
-        for prefix in mirror_prefixes:
-            full_url = f"{prefix}{base_url}" if prefix else base_url
-            source_label = "Официальный GitHub" if not prefix else f"CDN-зеркало ({prefix.split('/')[2]})"
-
-            log_info(f"  ➜ Попытка загрузки {filename} из {source_label}...")
-            ok = self._download_file(full_url, dest_path)
-            if ok and os.path.isfile(dest_path) and os.path.getsize(dest_path) > 0:
-                return True
-
-            if not prefix:
-                self.direct_github_blocked = True
-
-        return False
-
-    def _compute_sha256(self, file_path: str) -> str:
-        """Calculates SHA-256 hash of a local file."""
-        h = hashlib.sha256()
-        with open(file_path, "rb") as f:
-            while chunk := f.read(65536):
-                h.update(chunk)
-        return h.hexdigest()
-
     def _fetch_release_digests(self, tag: str) -> Dict[str, str]:
         """Fetches native asset SHA-256 digests from GitHub release metadata."""
-        api_urls = [
-            f"https://api.github.com/repos/{self.REPO}/releases/tags/{tag}",
-            f"https://gh-proxy.com/https://api.github.com/repos/{self.REPO}/releases/tags/{tag}",
-            f"https://ghfast.top/https://api.github.com/repos/{self.REPO}/releases/tags/{tag}",
-            f"https://gh.ddlc.top/https://api.github.com/repos/{self.REPO}/releases/tags/{tag}",
-        ]
+        endpoint = f"https://api.github.com/repos/{self.REPO}/releases/tags/{tag}"
         if tag == "latest":
-            api_urls = [f"https://api.github.com/repos/{self.REPO}/releases/latest"] + [f"{m}https://api.github.com/repos/{self.REPO}/releases/latest" for m in ["https://gh-proxy.com/", "https://ghfast.top/", "https://gh.ddlc.top/"]]
+            endpoint = f"https://api.github.com/repos/{self.REPO}/releases/latest"
 
-        for url in api_urls:
-            try:
-                req = urllib.request.Request(
-                    url,
-                    headers={
-                        "User-Agent": "Sentinel-Controller-Updater/1.0",
-                        "Accept": "application/vnd.github.v3+json",
-                    },
-                )
-                opener = self._build_opener()
-                with opener.open(req, timeout=5.0) as resp:
-                    if resp.status == 200:
-                        data = json.loads(resp.read().decode("utf-8"))
-                        checksum_map: Dict[str, str] = {}
-                        for a in data.get("assets", []):
-                            name = a.get("name")
-                            digest = a.get("digest", "")
-                            if name and digest:
-                                if ":" in digest:
-                                    digest = digest.split(":", 1)[1]
-                                checksum_map[name] = digest
-                        if checksum_map:
-                            return checksum_map
-            except Exception:
-                continue
+        data = self.downloader.fetch_github_api(endpoint)
+        if isinstance(data, dict):
+            checksum_map: Dict[str, str] = {}
+            for a in data.get("assets", []):
+                name = a.get("name")
+                digest = a.get("digest", "")
+                if name and digest:
+                    if ":" in digest:
+                        digest = digest.split(":", 1)[1]
+                    checksum_map[name] = digest
+            if checksum_map:
+                return checksum_map
         return {}
 
     def download_core(self, tag: str) -> bool:
@@ -470,12 +364,15 @@ class CoreManager:
         target_header = os.path.join(self.bin_dir, header_asset)
 
         # Download Binary
-        bin_ok = self._download_with_fallback(f"{base_release_url}/{bin_asset}", target_bin, bin_asset)
+        bin_ok = self.downloader.download_file_with_mirrors(f"{base_release_url}/{bin_asset}", target_bin, bin_asset)
         if bin_ok:
             if os_name != "windows":
-                os.chmod(target_bin, 0o755)
+                try:
+                    os.chmod(target_bin, 0o755)
+                except Exception:
+                    pass
             if bin_asset in checksum_map:
-                actual = self._compute_sha256(target_bin)
+                actual = Downloader.compute_sha256(target_bin)
                 if actual.lower() == checksum_map[bin_asset].lower():
                     log_success(f"SHA-256 проверен ({actual[:16]}...)")
                 else:
@@ -485,12 +382,15 @@ class CoreManager:
             log_error(f"Не удалось загрузить бинарник {bin_asset}")
 
         # Download Shared Library
-        lib_ok = self._download_with_fallback(f"{base_release_url}/{lib_asset}", target_lib, lib_asset)
+        lib_ok = self.downloader.download_file_with_mirrors(f"{base_release_url}/{lib_asset}", target_lib, lib_asset)
         if lib_ok:
             if os_name != "windows":
-                os.chmod(target_lib, 0o755)
+                try:
+                    os.chmod(target_lib, 0o755)
+                except Exception:
+                    pass
             if lib_asset in checksum_map:
-                actual = self._compute_sha256(target_lib)
+                actual = Downloader.compute_sha256(target_lib)
                 if actual.lower() == checksum_map[lib_asset].lower():
                     log_success(f"SHA-256 проверен ({actual[:16]}...)")
                 else:
@@ -500,7 +400,7 @@ class CoreManager:
             log_warn(f"Shared library {lib_asset} не была загружена.")
 
         # Download Header
-        header_ok = self._download_with_fallback(f"{base_release_url}/{header_asset}", target_header, header_asset)
+        header_ok = self.downloader.download_file_with_mirrors(f"{base_release_url}/{header_asset}", target_header, header_asset)
         if header_ok:
             log_success(f"Успешно установлен {header_asset} -> {target_header}")
 
