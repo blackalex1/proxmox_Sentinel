@@ -114,6 +114,9 @@ def run_command(
         import shlex
         cmd = shlex.split(cmd)
 
+    if isinstance(cmd, list) and len(cmd) > 0 and cmd[0] == "git" and "-c" not in cmd:
+        cmd = ["git", "-c", "safe.directory=*"] + cmd[1:]
+
     if capture:
         return subprocess.run(
             cmd,

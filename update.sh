@@ -19,6 +19,10 @@ fi
 
 export PYTHONUNBUFFERED=1
 
+# Configure safe.directory for Git when running under sudo
+git config --global --add safe.directory "$SCRIPT_DIR" 2>/dev/null || true
+git config --global --add safe.directory "*" 2>/dev/null || true
+
 # 1. Fast bootstrap: auto-update git repository before launching updater
 if [ -z "${BOOTSTRAPPED:-}" ] && [ -d .git ] && command -v git &>/dev/null; then
     echo -e "\033[0;36m[+] Проверка обновлений Git-репозитория...\033[0m"
