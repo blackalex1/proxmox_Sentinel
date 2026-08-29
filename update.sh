@@ -38,7 +38,7 @@ if [ -z "${BOOTSTRAPPED:-}" ] && [ -d .git ] && command -v git &>/dev/null; then
     done
 
     # Fetch with strict timeout and fallback mirrors
-    for remote in origin "https://github.com/blackalex1/proxmox_Sentinel.git" "https://ghfast.top/https://github.com/blackalex1/proxmox_Sentinel.git" "https://gh-proxy.com/https://github.com/blackalex1/proxmox_Sentinel.git"; do
+    for remote in origin "https://github.com/blackalex1/proxmox_Sentinel.git" "https://ghfast.top/https://github.com/blackalex1/proxmox_Sentinel.git" "https://gh.ddlc.top/https://github.com/blackalex1/proxmox_Sentinel.git" "https://gh-proxy.com/https://github.com/blackalex1/proxmox_Sentinel.git"; do
         FETCH_CMD="git -c http.connectTimeout=4 -c http.timeout=8 fetch $remote main"
         if command -v timeout &>/dev/null; then
             FETCH_CMD="timeout 12 $FETCH_CMD"

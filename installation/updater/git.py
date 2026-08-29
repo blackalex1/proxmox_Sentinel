@@ -61,10 +61,10 @@ class GitManager:
         # Try updating from origin and fallback mirrors
         pull_success = False
         remotes = [
-            "https://ghfast.top/https://github.com/blackalex1/proxmox_Sentinel.git",
-            "https://gh.ddlc.top/https://github.com/blackalex1/proxmox_Sentinel.git",
             "origin",
             "https://github.com/blackalex1/proxmox_Sentinel.git",
+            "https://ghfast.top/https://github.com/blackalex1/proxmox_Sentinel.git",
+            "https://gh.ddlc.top/https://github.com/blackalex1/proxmox_Sentinel.git",
             "https://gh-proxy.com/https://github.com/blackalex1/proxmox_Sentinel.git",
         ]
 
