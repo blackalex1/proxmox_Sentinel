@@ -59,6 +59,14 @@ def main() -> int:
     except Exception:
         pass
 
+    # 0. Sync Git Codebase (only if not already bootstrapped by update.sh)
+    if not args.bootstrapped:
+        git_mgr = GitManager(project_dir=project_root)
+        updated = git_mgr.update_codebase(silent_if_uptodate=True)
+        if updated:
+            log_info("Перезапуск обновленного апдейтера...")
+            os.execv(sys.executable, [sys.executable, "-m", "installation.updater.main", "--bootstrapped"] + sys.argv[1:])
+
     network_mgr = NetworkManager(
         project_dir=project_root,
         proxy_arg=args.proxy,
@@ -79,12 +87,7 @@ def main() -> int:
         network_mgr.show_menu()
         active_proxy = network_mgr.setup_network()
 
-        # 2. Update Git Codebase (only if not already bootstrapped by update.sh)
-        if not args.bootstrapped:
-            git_mgr = GitManager(project_dir=project_root, proxy_url=active_proxy)
-            git_mgr.update_codebase(silent_if_uptodate=True)
-
-        # 3. Manage Sentinel-Core Binaries & Libraries
+        # 2. Manage Sentinel-Core Binaries & Libraries
         core_mgr = CoreManager(
             project_dir=project_root,
             proxy_url=active_proxy,

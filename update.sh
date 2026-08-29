@@ -29,12 +29,12 @@ if [ -z "${BOOTSTRAPPED:-}" ] && [ -d .git ] && command -v git &>/dev/null; then
     OLD_HEAD=$(git rev-parse HEAD 2>/dev/null || true)
     
     # Check for proxy configuration in .env
-    PROXY_OPT=""
+    FETCH_ARGS=(-c "safe.directory=*" -c "http.connectTimeout=4" -c "http.timeout=8")
     for env_f in "bot/config/.env" "config/.env" ".env"; do
         if [ -f "$env_f" ]; then
             P_URL=$(grep -E '^[[:space:]]*PROXY_URL=' "$env_f" 2>/dev/null | cut -d'=' -f2- | tr -d '"'\'' ')
             if [ -n "$P_URL" ]; then
-                PROXY_OPT="-c http.proxy=$P_URL -c https.proxy=$P_URL"
+                FETCH_ARGS+=(-c "http.proxy=$P_URL" -c "https.proxy=$P_URL")
                 break
             fi
         fi
@@ -42,11 +42,10 @@ if [ -z "${BOOTSTRAPPED:-}" ] && [ -d .git ] && command -v git &>/dev/null; then
 
     # Fetch with strict timeout and fallback mirrors
     for remote in origin "https://github.com/blackalex1/proxmox_Sentinel.git" "https://ghfast.top/https://github.com/blackalex1/proxmox_Sentinel.git" "https://gh.ddlc.top/https://github.com/blackalex1/proxmox_Sentinel.git" "https://gh-proxy.com/https://github.com/blackalex1/proxmox_Sentinel.git"; do
-        FETCH_CMD="git $PROXY_OPT -c http.connectTimeout=4 -c http.timeout=8 fetch $remote main"
-        if command -v timeout &>/dev/null; then
-            FETCH_CMD="timeout 12 $FETCH_CMD"
-        fi
-        if $FETCH_CMD 2>/dev/null; then
+        if timeout 12 git "${FETCH_ARGS[@]}" fetch "$remote" main 2>/dev/null; then
+            git reset --hard FETCH_HEAD 2>/dev/null || true
+            break
+        elif git "${FETCH_ARGS[@]}" fetch "$remote" main 2>/dev/null; then
             git reset --hard FETCH_HEAD 2>/dev/null || true
             break
         fi
