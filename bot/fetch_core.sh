@@ -328,16 +328,16 @@ URL_CANDIDATES=()
 if [ -n "$SELECTED_TAG" ]; then
     URL_CANDIDATES+=(
         "https://github.com/$REPO/releases/download/$SELECTED_TAG"
-        "https://ghproxy.net/https://github.com/$REPO/releases/download/$SELECTED_TAG"
         "https://gh-proxy.com/https://github.com/$REPO/releases/download/$SELECTED_TAG"
-        "https://mirror.ghproxy.com/https://github.com/$REPO/releases/download/$SELECTED_TAG"
+        "https://ghfast.top/https://github.com/$REPO/releases/download/$SELECTED_TAG"
+        "https://gh.ddlc.top/https://github.com/$REPO/releases/download/$SELECTED_TAG"
+        "https://ghproxy.net/https://github.com/$REPO/releases/download/$SELECTED_TAG"
     )
 fi
 URL_CANDIDATES+=(
     "https://github.com/$REPO/releases/latest/download"
-    "https://ghproxy.net/https://github.com/$REPO/releases/latest/download"
     "https://gh-proxy.com/https://github.com/$REPO/releases/latest/download"
-    "https://mirror.ghproxy.com/https://github.com/$REPO/releases/latest/download"
+    "https://ghfast.top/https://github.com/$REPO/releases/latest/download"
 )
 
 # Helper function to download asset with cryptographic verification
@@ -354,7 +354,7 @@ download_asset() {
 
         local IS_MIRROR=0
         local HOST_LABEL="Официальный GitHub"
-        if [[ "$BASE_URL" =~ (ghproxy|gh-proxy|mirror\.ghproxy|fastgit) ]]; then
+        if [[ "$BASE_URL" =~ (ghproxy|gh-proxy|ghfast|ddlc|mirror\.ghproxy|fastgit) ]]; then
             IS_MIRROR=1
             HOST_LABEL="CDN-зеркало ($(echo "$BASE_URL" | awk -F'/' '{print $3}'))"
         fi
@@ -365,10 +365,10 @@ download_asset() {
             # Snappy timeouts for direct connection without proxy to immediately bypass throttled AWS S3
             local CURL_OPTS=("-fsSL" "--connect-timeout" "4" "--max-time" "20" "--speed-limit" "10240" "--speed-time" "4")
             if [ "$IS_MIRROR" -eq 1 ]; then
-                CURL_OPTS=("-fsSL" "--connect-timeout" "8" "--max-time" "60" "--retry" "1")
+                CURL_OPTS=("-fsSL" "-k" "--connect-timeout" "6" "--max-time" "45" "--retry" "1")
                 curl "${CURL_OPTS[@]}" -x "" "$URL" -o "$TMP_FILE" 2>/dev/null || true
             elif [ -n "$VALID_PROXY" ]; then
-                CURL_OPTS=("-fsSL" "--connect-timeout" "10" "--max-time" "60" "--retry" "1")
+                CURL_OPTS=("-fsSL" "-k" "--connect-timeout" "10" "--max-time" "60" "--retry" "1")
                 curl "${CURL_OPTS[@]}" -x "$VALID_PROXY" "$URL" -o "$TMP_FILE" 2>/dev/null || true
             else
                 curl "${CURL_OPTS[@]}" "$URL" -o "$TMP_FILE" 2>/dev/null || true
