@@ -260,37 +260,56 @@ class SocksProxyRotator:
         if not uris:
             return None
 
-        logger.info("[Failover] Parsing %d nodes via sentinel-core...", len(uris[:50]))
-        profiles = []
-        for u in uris[:50]:
-            p = parse_vpn_uri(u)
-            if p:
-                p["proxyUrl"] = u
-                profiles.append(p)
+        valid_uris = []
+        for u in uris:
+            u_clean = u.strip()
+            if u_clean and "://" in u_clean and u_clean not in valid_uris:
+                valid_uris.append(u_clean)
+            if len(valid_uris) >= 60:
+                break
 
-        if not profiles:
+        if not valid_uris:
             return None
 
-        # Проверяем живые ноды параллельно через сокетный пинг ядра
+        logger.info("[%s] Checking %d nodes via sentinel-core...", tier_name, len(valid_uris))
+
+        # Проверяем живые ноды параллельно через сокетный пинг ядра (передаем список URI)
         loop = asyncio.get_running_loop()
         results = await loop.run_in_executor(
             None,
-            lambda: sentinel_core_bridge.check_proxies(profiles[:25], timeout_ms=3000)
+            lambda: sentinel_core_bridge.check_proxies(valid_uris, timeout_ms=3000, concurrency=32)
         )
 
-        working = [r for r in results if r.get("isAlive")]
+        working = [r for r in results if r.get("success") or r.get("isAlive")]
         if not working:
             return None
 
         working.sort(key=lambda x: x.get("latencyMs", 999999))
         best = working[0]
-        logger.info("%s: %d / %d nodes alive. Best: %s (%.1f ms)", tier_name, len(working), len(profiles[:25]), best.get("name") or best.get("address"), best.get("latencyMs", 0))
+        best_label = best.get("name") or (best.get("proxyUrl", "")[:35] if best.get("proxyUrl") else "Node")
+        logger.info("%s: %d / %d nodes alive. Best: %s (%.1f ms)", tier_name, len(working), len(valid_uris), best_label, best.get("latencyMs", 0))
 
-        logger.info("[Failover] Compiling Sing-box multi-node client config for %d alive nodes...", len(working[:10]))
+        # Парсим живые ноды в профили для генерации sing-box конфига
+        working_profiles = []
+        working_uris = []
+        for r in working:
+            u = r.get("proxyUrl")
+            if u:
+                p = parse_vpn_uri(u)
+                if p:
+                    working_profiles.append(p)
+                    working_uris.append(u)
+            if len(working_profiles) >= 10:
+                break
+
+        if not working_profiles:
+            return None
+
+        logger.info("[Failover] Compiling Sing-box multi-node client config for %d alive nodes...", len(working_profiles))
         client_cfg = None
         try:
             client_cfg = sentinel_core_bridge.build_failover_client_config(
-                working[:10],
+                working_profiles,
                 socks_port=10818,
                 http_port=10819,
                 health_url="https://www.gstatic.com/generate_204"
@@ -305,7 +324,6 @@ class SocksProxyRotator:
         logger.info("[Tunnel] Launching Sing-box client process and activating fastest route...")
         ok = await self.start_or_reload_singbox_tunnel(client_cfg, port=10818)
         if ok:
-            working_uris = [p["proxyUrl"] for p in working if p.get("proxyUrl")]
             if working_uris:
                 self._save_working_nodes_to_disk(working_uris)
             return "socks5://127.0.0.1:10818"
@@ -331,7 +349,7 @@ class SocksProxyRotator:
                 target_url,
                 headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) SentinelController/1.0"}
             )
-            with urllib.request.urlopen(req, timeout=2.0, context=ctx) as response:
+            with urllib.request.urlopen(req, timeout=3.0, context=ctx) as response:
                 return response.read().decode("utf-8", errors="ignore")
 
         for prefix in mirror_prefixes:
@@ -391,7 +409,7 @@ class SocksProxyRotator:
                         s.close()
                         return False, 999999.0
 
-                    # 2. SOCKS5 CONNECT to 1.1.1.1:443 (HTTPS) to verify real internet connectivity through VPN!
+                    # 2. SOCKS5 CONNECT to target host
                     ip_bytes = socket.inet_aton("1.1.1.1")
                     port_bytes = (443).to_bytes(2, byteorder="big")
                     req = b"\x05\x01\x00\x01" + ip_bytes + port_bytes
@@ -440,6 +458,12 @@ class SocksProxyRotator:
         t2_proxy = await self._check_vpn_sources(WHITE_LIST_SOURCES, tier_name="Tier 2")
         if t2_proxy:
             return t2_proxy
+
+        # ТИР 3: Открытые SOCKS5 прокси
+        logger.info("[Failover] Checking Tier 3: SOCKS5 Fallback proxies...")
+        t3_proxy = await self._check_vpn_sources(SOCKS5_FALLBACK_SOURCES, tier_name="Tier 3")
+        if t3_proxy:
+            return t3_proxy
 
         return None
 

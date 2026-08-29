@@ -103,8 +103,9 @@ def run_command(
     capture: bool = False,
     check: bool = True,
     shell: bool = False,
+    timeout: Optional[float] = None,
 ) -> subprocess.CompletedProcess:
-    """Runs a shell command with proper environment inheritance."""
+    """Runs a shell command with proper environment inheritance and timeout handling."""
     full_env = os.environ.copy()
     if env:
         full_env.update(env)
@@ -123,6 +124,7 @@ def run_command(
             text=True,
             check=check,
             shell=shell,
+            timeout=timeout,
         )
     else:
-        return subprocess.run(cmd, cwd=cwd, env=full_env, check=check, shell=shell)
+        return subprocess.run(cmd, cwd=cwd, env=full_env, check=check, shell=shell, timeout=timeout)

@@ -69,9 +69,9 @@ class GitManager:
 
         for remote in remotes:
             try:
-                res = run_command(["git", "fetch", remote, branch], cwd=self.project_dir, env=git_env, capture=True, check=False)
+                res = run_command(["git", "fetch", remote, branch], cwd=self.project_dir, env=git_env, capture=True, check=False, timeout=25.0)
                 if res.returncode == 0:
-                    merge_res = run_command(["git", "reset", "--hard", f"FETCH_HEAD"], cwd=self.project_dir, capture=True, check=False)
+                    merge_res = run_command(["git", "reset", "--hard", f"FETCH_HEAD"], cwd=self.project_dir, capture=True, check=False, timeout=15.0)
                     if merge_res.returncode == 0:
                         pull_success = True
                         break
