@@ -142,28 +142,62 @@ class SocksProxyRotator:
         os.makedirs(config_dir, exist_ok=True)
         return os.path.join(config_dir, "cached_vpn_nodes.json")
 
-    def _load_cached_nodes_from_disk(self) -> List[str]:
+    @staticmethod
+    def _get_env_proxy_uri() -> Optional[str]:
+        """Считывает настроенный PROXY_URL из .env файлов."""
+        env_paths = [
+            os.path.join(_bot_root, "config", ".env"),
+            os.path.join(_bot_root, ".env"),
+            os.path.join(os.path.dirname(_bot_root), ".env"),
+        ]
+        for p in env_paths:
+            if os.path.isfile(p):
+                try:
+                    with open(p, "r", encoding="utf-8") as f:
+                        for line in f:
+                            line = line.strip()
+                            if line.startswith("PROXY_URL="):
+                                val = line.split("=", 1)[1].strip(" '\"")
+                                if val:
+                                    return val
+                except Exception:
+                    pass
+        return None
+
+    def _load_cached_nodes_from_disk(self, exclude_env: bool = True) -> List[str]:
         cache_file = self._get_cache_file_path()
+        nodes = []
         if os.path.isfile(cache_file):
             try:
                 with open(cache_file, "r", encoding="utf-8") as f:
                     data = json.load(f)
                     if isinstance(data, list):
-                        return [str(x) for x in data if x]
+                        nodes = [str(x) for x in data if x]
             except Exception as e:
                 logger.debug("Failed to read cached VPN nodes: %s", e)
-        return []
+
+        if exclude_env:
+            env_uri = self._get_env_proxy_uri()
+            if env_uri:
+                env_clean = env_uri.strip()
+                nodes = [n for n in nodes if n.strip() != env_clean and env_clean not in n]
+
+        return nodes
 
     def _save_working_nodes_to_disk(self, uris: List[str]):
         if not uris:
             return
+        env_uri = self._get_env_proxy_uri()
+        env_clean = env_uri.strip() if env_uri else ""
         cache_file = self._get_cache_file_path()
         try:
-            existing = self._load_cached_nodes_from_disk()
+            existing = self._load_cached_nodes_from_disk(exclude_env=True)
             combined = []
             seen = set()
             for u in uris + existing:
                 if u and u not in seen:
+                    if env_clean and (u.strip() == env_clean or env_clean in u):
+                        continue
                     seen.add(u)
                     combined.append(u)
             with open(cache_file, "w", encoding="utf-8") as f:
@@ -382,7 +416,6 @@ class SocksProxyRotator:
                 if cfg_json:
                     ok = await self.start_or_reload_singbox_tunnel(cfg_json, port=port)
                     if ok:
-                        self._save_working_nodes_to_disk([node_uri])
                         return True
             except Exception as e:
                 logger.error("start_tunnel_for_node error: %s", e)
