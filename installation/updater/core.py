@@ -192,27 +192,27 @@ class CoreManager:
         is_installed, current_ver = self._get_installed_version()
         stable_ver, prerelease_ver, latest_any = self._fetch_releases()
 
-        fallback_default = "v0.0.1"
         current_tag_match = re.search(r"v\d+\.\d+(\.\d+)?(-[a-zA-Z0-9.]+)?", current_ver)
-        if current_tag_match:
-            fallback_default = current_tag_match.group(0)
+        current_tag = current_tag_match.group(0) if current_tag_match else ""
 
         # Non-interactive automated mode
         if not sys.stdin.isatty() or self.auto_mode:
-            target = stable_ver or prerelease_ver or latest_any or fallback_default
-            if not self.force and is_installed and target in current_ver:
+            target = stable_ver or prerelease_ver or latest_any
+            if not target:
+                log_error("Не удалось автоматически определить версию ядра с GitHub.")
+                return None
+            if not self.force and is_installed and current_tag and target == current_tag:
                 log_info(f"Текущая версия ядра ({current_ver}) уже актуальна ({target}). Обновление не требуется.")
                 return None
             return target
 
         log_banner("🛡️  ВЫБОР ВЕРСИИ ЯДРА SENTINEL-CORE")
         print(f"📌 Текущая версия:              {BOLD}{current_ver}{RESET}")
-        print(f"🟢 Последняя стабильная (Stable): {GREEN}{stable_ver or fallback_default}{RESET}")
+        print(f"🟢 Последняя стабильная (Stable): {GREEN}{stable_ver or 'Не определена'}{RESET}")
         print(f"🟡 Пре-релиз / Бета (Pre-release): {YELLOW}{prerelease_ver or 'Отсутствует'}{RESET}")
         print("=" * 60)
 
-        current_tag = current_tag_match.group(0) if current_tag_match else ""
-        is_up_to_date = bool(is_installed and (stable_ver or fallback_default) and current_tag == (stable_ver or fallback_default))
+        is_up_to_date = bool(is_installed and stable_ver and current_tag == stable_ver)
 
         if prerelease_ver and stable_ver:
             if not is_up_to_date:
@@ -243,26 +243,63 @@ class CoreManager:
                     return None
                 elif choice == "4":
                     while True:
-                        custom_tag = input(f"Введите точный тег версии (например {fallback_default}): ").strip()
+                        custom_tag = input("Введите точный тег версии (например v0.0.1): ").strip()
                         if custom_tag:
                             if not custom_tag.startswith("v"):
                                 custom_tag = "v" + custom_tag
                             return custom_tag
         else:
-            active_ver = stable_ver or latest_any or fallback_default
-            if not is_up_to_date:
-                default_choice = "1"
-                print(f"  1) 🟢 Установить последнюю версию ({active_ver}) [Рекомендуется / По умолчанию]")
-                print(f"  2) ⏹️  Оставить текущую версию (пропустить)")
-            else:
-                default_choice = "2"
-                print(f"  1) 🟢 Переустановить версию ({active_ver})")
-                print(f"  2) ⏹️  Оставить текущую версию ({active_ver}) [По умолчанию / Актуально]")
-            print(f"  3) ✏️  Ввести тег/версию вручную")
+            active_ver = stable_ver or latest_any
+            if active_ver:
+                if not is_up_to_date:
+                    default_choice = "1"
+                    print(f"  1) 🟢 Установить версию ({active_ver}) [Рекомендуется / По умолчанию]")
+                    print(f"  2) ⏹️  Оставить текущую версию (пропустить)")
+                else:
+                    default_choice = "2"
+                    print(f"  1) 🟢 Переустановить версию ({active_ver})")
+                    print(f"  2) ⏹️  Оставить текущую версию ({active_ver}) [По умолчанию / Актуально]")
+                print(f"  3) ✏️  Ввести тег/версию вручную")
 
-            while True:
-                try:
-                    raw = input(f"Выберите вариант [1-3] (по умолчанию {default_choice}): ").strip()
+                while True:
+                    try:
+                        raw = input(f"Выберите вариант [1-3] (по умолчанию {default_choice}): ").strip()
+                    except (EOFError, KeyboardInterrupt):
+                        print("")
+                        raw = default_choice
+                    choice = re.sub(r"[^1-3]", "", raw) or default_choice
+                    if choice == "1":
+                        return active_ver
+                    elif choice == "2":
+                        log_info("Обновление ядра пропущено.")
+                        return None
+                    elif choice == "3":
+                        while True:
+                            custom_tag = input("Введите точный тег версии (например v0.0.1): ").strip()
+                            if custom_tag:
+                                if not custom_tag.startswith("v"):
+                                    custom_tag = "v" + custom_tag
+                                return custom_tag
+            else:
+                print(f"  1) ✏️  Ввести тег/версию вручную")
+                print(f"  2) ⏹️  Пропустить обновление ядра")
+                while True:
+                    try:
+                        raw = input("Выберите вариант [1-2] (по умолчанию 1): ").strip()
+                    except (EOFError, KeyboardInterrupt):
+                        print("")
+                        raw = "1"
+                    choice = re.sub(r"[^1-2]", "", raw) or "1"
+                    if choice == "1":
+                        while True:
+                            custom_tag = input("Введите точный тег версии ядра (например v0.0.1): ").strip()
+                            if custom_tag:
+                                if not custom_tag.startswith("v"):
+                                    custom_tag = "v" + custom_tag
+                                return custom_tag
+                    elif choice == "2":
+                        log_info("Обновление ядра пропущено.")
+                        return None
                 except (EOFError, KeyboardInterrupt):
                     print("")
                     raw = default_choice
