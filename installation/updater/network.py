@@ -183,12 +183,18 @@ class NetworkManager:
 
     def setup_network(self) -> Optional[str]:
         """Activates chosen proxy mode or starts automated failover rotator."""
+        # Always clean dead environment proxies before activating selected mode
+        for k in ("http_proxy", "https_proxy", "all_proxy", "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY"):
+            os.environ.pop(k, None)
+
         if self.no_proxy:
             log_info("Используется прямое сетевое подключение к GitHub (с CDN-зеркалами при блокировке).")
             return None
 
         if self.custom_proxy:
             self.active_proxy_url = self.custom_proxy
+            for k in ("http_proxy", "https_proxy", "all_proxy", "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY"):
+                os.environ[k] = self.active_proxy_url
             log_info(f"Используется указанный прокси: {self.active_proxy_url}")
             return self.active_proxy_url
 

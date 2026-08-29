@@ -160,6 +160,8 @@ class ProxyEngineManager:
                         if p.startswith("socks5://"):
                             p = "socks5h://" + p[len("socks5://"):]
                         curl_cmd.extend(["-x", p])
+                    else:
+                        curl_cmd.extend(["--noproxy", "*"])
                     curl_cmd.append(url)
                     res = subprocess.run(curl_cmd, capture_output=True, text=True, timeout=10.0)
                     if res.returncode == 0 and res.stdout.strip():
@@ -207,6 +209,8 @@ class ProxyEngineManager:
                     if p.startswith("socks5://"):
                         p = "socks5h://" + p[len("socks5://"):]
                     curl_cmd.extend(["-x", p])
+                else:
+                    curl_cmd.extend(["--noproxy", "*"])
                 curl_cmd.append(url)
                 res = subprocess.run(curl_cmd, capture_output=True, timeout=125.0)
                 if res.returncode == 0 and res.stdout and len(res.stdout) > 1024:
