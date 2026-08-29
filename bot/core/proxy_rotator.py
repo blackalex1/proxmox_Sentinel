@@ -186,24 +186,6 @@ class SocksProxyRotator:
         os.makedirs(os.path.dirname(cfg_path), exist_ok=True)
 
         try:
-            # Sanitize config JSON for strict Sing-box 1.10+ schema compatibility
-            try:
-                cfg_obj = json.loads(config_json)
-                if isinstance(cfg_obj, dict):
-                    dns_obj = cfg_obj.get("dns")
-                    if isinstance(dns_obj, dict):
-                        servers = dns_obj.get("servers")
-                        if isinstance(servers, list):
-                            for s in servers:
-                                if isinstance(s, dict):
-                                    if "domain_resolver" in s:
-                                        s.pop("domain_resolver", None)
-                                        if "address_resolver" not in s and "server" in s and not str(s.get("server", "")).replace(".", "").isdigit():
-                                            s["address_resolver"] = "dns-direct"
-                    config_json = json.dumps(cfg_obj, indent=2, ensure_ascii=False)
-            except Exception:
-                pass
-
             with open(cfg_path, "w", encoding="utf-8") as f:
                 f.write(config_json)
 
