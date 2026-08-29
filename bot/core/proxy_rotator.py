@@ -445,8 +445,21 @@ class SocksProxyRotator:
                     req = b"\x05\x01\x00\x03" + bytes([len(host_bytes)]) + host_bytes + port_bytes
                     s.sendall(req)
                     connect_resp = s.recv(10)
-                    s.close()
-                    if len(connect_resp) >= 2 and connect_resp[1] == 0:
+                    if len(connect_resp) < 2 or connect_resp[1] != 0:
+                        s.close()
+                        return False, 999999.0
+
+                    # 3. Full TLS Handshake & HTTP probe to guarantee GitHub / Target domain connectivity
+                    ctx = ssl.create_default_context()
+                    ctx.check_hostname = False
+                    ctx.verify_mode = ssl.CERT_NONE
+                    tls_sock = ctx.wrap_socket(s, server_hostname=target_host)
+                    tls_sock.settimeout(timeout)
+                    http_probe = f"HEAD / HTTP/1.1\r\nHost: {target_host}\r\nUser-Agent: Mozilla/5.0\r\nConnection: close\r\n\r\n"
+                    tls_sock.sendall(http_probe.encode("utf-8"))
+                    http_resp = tls_sock.recv(16)
+                    tls_sock.close()
+                    if http_resp and (b"HTTP/" in http_resp or b"HTTP" in http_resp):
                         lat = (time.monotonic() - start) * 1000.0
                         return True, lat
                     return False, 999999.0
@@ -455,12 +468,24 @@ class SocksProxyRotator:
                     lat = (time.monotonic() - start) * 1000.0
                     return True, lat
                 else:
-                    # HTTP proxy probe
+                    # HTTP proxy probe with TLS wrap
                     s.sendall(f"CONNECT {target_host}:{target_port} HTTP/1.1\r\nHost: {target_host}:{target_port}\r\n\r\n".encode("utf-8"))
                     resp = s.recv(12)
+                    if b"200" in resp or b"HTTP" in resp:
+                        ctx = ssl.create_default_context()
+                        ctx.check_hostname = False
+                        ctx.verify_mode = ssl.CERT_NONE
+                        tls_sock = ctx.wrap_socket(s, server_hostname=target_host)
+                        tls_sock.settimeout(timeout)
+                        http_probe = f"HEAD / HTTP/1.1\r\nHost: {target_host}\r\nUser-Agent: Mozilla/5.0\r\nConnection: close\r\n\r\n"
+                        tls_sock.sendall(http_probe.encode("utf-8"))
+                        http_resp = tls_sock.recv(16)
+                        tls_sock.close()
+                        if http_resp and (b"HTTP/" in http_resp or b"HTTP" in http_resp):
+                            lat = (time.monotonic() - start) * 1000.0
+                            return True, lat
                     s.close()
-                    lat = (time.monotonic() - start) * 1000.0
-                    return b"200" in resp or b"HTTP" in resp, lat
+                    return False, 999999.0
             except Exception:
                 return False, 999999.0
 
