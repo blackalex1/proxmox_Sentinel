@@ -422,12 +422,33 @@ class SocksProxyRotator:
                 logger.error("start_tunnel_for_node error: %s", e)
         return False
 
-    async def test_proxy_alive(self, proxy_url: str, target_host: str = "objects.githubusercontent.com", target_port: int = 443, timeout: float = 3.5) -> Tuple[bool, float]:
-        """Проверяет доступность SOCKS5/HTTP прокси сокетным рукопожатием и сквозным соединением (E2E) к target_host."""
+    async def test_proxy_alive(self, proxy_url: str, target_host: str = "objects.githubusercontent.com", target_port: int = 443, timeout: float = 4.0) -> Tuple[bool, float]:
+        """Проверяет доступность SOCKS5/HTTP прокси через быстрый curl-проб с фолбэком на RFC 1928 сокет."""
         loop = asyncio.get_running_loop()
 
-        def _socket_probe():
+        def _probe():
             start = time.monotonic()
+            # 1. First try curl (robust TLS 1.3 + ALPN + SOCKS5h + SNI implementation)
+            if shutil.which("curl"):
+                try:
+                    p = proxy_url
+                    if p.startswith("socks5://"):
+                        p = "socks5h://" + p[len("socks5://"):]
+                    cmd = [
+                        "curl", "-sI", "-k",
+                        "--connect-timeout", "3",
+                        "--max-time", str(int(timeout)),
+                        "-x", p,
+                        f"https://{target_host}",
+                    ]
+                    res = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout + 1.0)
+                    if res.returncode == 0 and ("HTTP/" in res.stdout or "HTTP" in res.stdout):
+                        lat = (time.monotonic() - start) * 1000.0
+                        return True, lat
+                except Exception:
+                    pass
+
+            # 2. Raw socket fallback
             try:
                 parsed = urllib.parse.urlparse(proxy_url)
                 host = parsed.hostname or "127.0.0.1"
@@ -436,35 +457,33 @@ class SocksProxyRotator:
                 s.settimeout(timeout)
                 s.connect((host, port))
                 if proxy_url.startswith("socks5://") or proxy_url.startswith("socks5h://"):
-                    # 1. SOCKS5 greeting: VER=5, NMETHODS=1, NO_AUTH=0
+                    # SOCKS5 greeting
                     s.sendall(b"\x05\x01\x00")
                     resp = s.recv(2)
                     if resp != b"\x05\x00":
                         s.close()
                         return False, 999999.0
 
-                    # 2. SOCKS5 CONNECT to target host (FQDN type 0x03)
+                    # SOCKS5 CONNECT to target host (FQDN type 0x03)
                     host_bytes = target_host.encode("utf-8")
                     port_bytes = (target_port).to_bytes(2, byteorder="big")
                     req = b"\x05\x01\x00\x03" + bytes([len(host_bytes)]) + host_bytes + port_bytes
                     s.sendall(req)
 
-                    # Read exactly 4 bytes of SOCKS5 reply header
                     rep_hdr = s.recv(4)
                     if len(rep_hdr) < 4 or rep_hdr[1] != 0:
                         s.close()
                         return False, 999999.0
 
-                    # Discard bound address and port according to address type (RFC 1928)
                     atyp = rep_hdr[3]
-                    if atyp == 1:  # IPv4: 4 bytes IP + 2 bytes Port
+                    if atyp == 1:
                         bnd = b""
                         while len(bnd) < 6:
                             chunk = s.recv(6 - len(bnd))
                             if not chunk:
                                 break
                             bnd += chunk
-                    elif atyp == 3:  # FQDN: 1 byte len + N bytes + 2 bytes Port
+                    elif atyp == 3:
                         l_byte = s.recv(1)
                         if l_byte:
                             target_len = l_byte[0] + 2
@@ -474,7 +493,7 @@ class SocksProxyRotator:
                                 if not chunk:
                                     break
                                 bnd += chunk
-                    elif atyp == 4:  # IPv6: 16 bytes IP + 2 bytes Port
+                    elif atyp == 4:
                         bnd = b""
                         while len(bnd) < 18:
                             chunk = s.recv(18 - len(bnd))
@@ -482,7 +501,6 @@ class SocksProxyRotator:
                                 break
                             bnd += chunk
 
-                    # 3. Full TLS Handshake & HTTP probe to guarantee GitHub / Target domain connectivity
                     ctx = ssl.create_default_context()
                     ctx.check_hostname = False
                     ctx.verify_mode = ssl.CERT_NONE
@@ -501,7 +519,6 @@ class SocksProxyRotator:
                     lat = (time.monotonic() - start) * 1000.0
                     return True, lat
                 else:
-                    # HTTP proxy probe with TLS wrap
                     s.sendall(f"CONNECT {target_host}:{target_port} HTTP/1.1\r\nHost: {target_host}:{target_port}\r\n\r\n".encode("utf-8"))
                     resp = s.recv(12)
                     if b"200" in resp or b"HTTP" in resp:
@@ -523,7 +540,7 @@ class SocksProxyRotator:
                 logger.debug("test_proxy_alive error for %s (%s): %s", proxy_url, target_host, e)
                 return False, 999999.0
 
-        return await loop.run_in_executor(None, _socket_probe)
+        return await loop.run_in_executor(None, _probe)
 
     async def _check_socks5_sources(self, sources: List[str]) -> Optional[str]:
         """Парсит и тестирует открытые SOCKS5 источники (Tier 3)."""
