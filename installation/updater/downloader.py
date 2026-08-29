@@ -1,4 +1,4 @@
-﻿"""Direct GitHub Downloader for Sentinel Controller Updater."""
+"""Direct GitHub Downloader for Sentinel Controller Updater."""
 
 from __future__ import annotations
 
@@ -45,36 +45,50 @@ class Downloader:
         os.makedirs(os.path.dirname(os.path.abspath(dest)), exist_ok=True)
         tmp_dest = f"{dest}.tmp.{os.getpid()}"
 
-        # 1. Try curl (fast, reliable TLS and proxy support)
+        # 1. Try curl (fast, reliable TLS, redirect follow and proxy support)
         if shutil.which("curl"):
-            try:
-                curl_cmd = [
-                    "curl", "-fsSL", "-k",
-                    "--connect-timeout", "6",
-                    "--max-time", str(int(timeout)),
-                    "-H", f"User-Agent: {USER_AGENT}",
-                    "-o", tmp_dest,
-                ]
-                if self.proxy_url:
-                    p = self.proxy_url
-                    if p.startswith("socks5://"):
-                        p = "socks5h://" + p[len("socks5://"):]
-                    curl_cmd.extend(["-x", p])
-                else:
-                    curl_cmd.extend(["--noproxy", "*"])
+            proxy_candidates = []
+            if self.proxy_url:
+                p = self.proxy_url
+                if p.startswith("socks5://"):
+                    p = "socks5h://" + p[len("socks5://"):]
+                proxy_candidates.append(p)
+                # Also try HTTP inbound port if socks5 on 10818
+                if "10818" in p:
+                    proxy_candidates.append(p.replace("10818", "10819").replace("socks5h://", "http://").replace("socks5://", "http://"))
+            else:
+                proxy_candidates.append(None)
 
-                curl_cmd.append(url)
-                res = subprocess.run(curl_cmd, capture_output=True, timeout=timeout + 3.0)
-                if res.returncode == 0 and os.path.isfile(tmp_dest) and os.path.getsize(tmp_dest) > 0:
-                    if platform.system() != "Windows":
-                        try:
-                            os.chmod(tmp_dest, 0o755)
-                        except Exception:
-                            pass
-                    os.replace(tmp_dest, dest)
-                    return True
-            except Exception:
-                pass
+            for p_opt in proxy_candidates:
+                try:
+                    curl_cmd = [
+                        "curl", "-sSL", "-k",
+                        "--connect-timeout", "8",
+                        "--max-time", str(int(timeout)),
+                        "--retry", "2",
+                        "--retry-delay", "1",
+                        "-H", f"User-Agent: {USER_AGENT}",
+                        "-o", tmp_dest,
+                    ]
+                    if p_opt:
+                        curl_cmd.extend(["-x", p_opt])
+                    else:
+                        curl_cmd.extend(["--noproxy", "*"])
+
+                    curl_cmd.append(url)
+                    res = subprocess.run(curl_cmd, capture_output=True, text=True, timeout=timeout + 6.0)
+                    if res.returncode == 0 and os.path.isfile(tmp_dest) and os.path.getsize(tmp_dest) > 0:
+                        if platform.system() != "Windows":
+                            try:
+                                os.chmod(tmp_dest, 0o755)
+                            except Exception:
+                                pass
+                        os.replace(tmp_dest, dest)
+                        return True
+                    elif res.stderr:
+                        log_warn(f"  [curl] {res.stderr.strip()}")
+                except Exception as e:
+                    log_warn(f"  [curl exception] {e}")
 
         # 2. Fallback to urllib.request
         try:
@@ -110,27 +124,38 @@ class Downloader:
         """Downloads data from GitHub URL into memory."""
         # 1. Try curl
         if shutil.which("curl"):
-            try:
-                curl_cmd = [
-                    "curl", "-fsSL", "-k",
-                    "--connect-timeout", "6",
-                    "--max-time", str(int(timeout)),
-                    "-H", f"User-Agent: {USER_AGENT}",
-                ]
-                if self.proxy_url:
-                    p = self.proxy_url
-                    if p.startswith("socks5://"):
-                        p = "socks5h://" + p[len("socks5://"):]
-                    curl_cmd.extend(["-x", p])
-                else:
-                    curl_cmd.extend(["--noproxy", "*"])
+            proxy_candidates = []
+            if self.proxy_url:
+                p = self.proxy_url
+                if p.startswith("socks5://"):
+                    p = "socks5h://" + p[len("socks5://"):]
+                proxy_candidates.append(p)
+                if "10818" in p:
+                    proxy_candidates.append(p.replace("10818", "10819").replace("socks5h://", "http://").replace("socks5://", "http://"))
+            else:
+                proxy_candidates.append(None)
 
-                curl_cmd.append(url)
-                res = subprocess.run(curl_cmd, capture_output=True, timeout=timeout + 3.0)
-                if res.returncode == 0 and res.stdout and len(res.stdout) > 1024:
-                    return res.stdout
-            except Exception:
-                pass
+            for p_opt in proxy_candidates:
+                try:
+                    curl_cmd = [
+                        "curl", "-sSL", "-k",
+                        "--connect-timeout", "8",
+                        "--max-time", str(int(timeout)),
+                        "--retry", "2",
+                        "--retry-delay", "1",
+                        "-H", f"User-Agent: {USER_AGENT}",
+                    ]
+                    if p_opt:
+                        curl_cmd.extend(["-x", p_opt])
+                    else:
+                        curl_cmd.extend(["--noproxy", "*"])
+
+                    curl_cmd.append(url)
+                    res = subprocess.run(curl_cmd, capture_output=True, timeout=timeout + 6.0)
+                    if res.returncode == 0 and res.stdout and len(res.stdout) > 1024:
+                        return res.stdout
+                except Exception:
+                    pass
 
         # 2. Fallback to urllib.request
         try:

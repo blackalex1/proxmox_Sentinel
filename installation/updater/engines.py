@@ -132,7 +132,15 @@ class ProxyEngineManager:
     def download_singbox(self, tag: Optional[str] = None) -> bool:
         """Downloads and installs Sing-box proxy engine binary into bot/bin/."""
         if not tag:
-            tag = self.fetch_latest_release("SagerNet/sing-box") or "v1.11.4"
+            tag = self.fetch_latest_release("SagerNet/sing-box")
+            if not tag:
+                tag = input("Не удалось определить версию Sing-box с GitHub. Введите тег версии (например v1.13.20): ").strip()
+                if not tag:
+                    log_error("Версия Sing-box не указана.")
+                    return False
+
+        if not tag.startswith("v") and not tag.startswith("V"):
+            tag = "v" + tag
 
         clean_ver = tag.lstrip("v")
         os_name, arch_sb, _ = self._get_platform_info()
@@ -189,7 +197,15 @@ class ProxyEngineManager:
     def download_xray(self, tag: Optional[str] = None) -> bool:
         """Downloads and installs Xray-core proxy engine binary into bot/bin/."""
         if not tag:
-            tag = self.fetch_latest_release("XTLS/Xray-core") or "v1.8.24"
+            tag = self.fetch_latest_release("XTLS/Xray-core")
+            if not tag:
+                tag = input("Не удалось определить версию Xray-core с GitHub. Введите тег версии (например v26.3.27): ").strip()
+                if not tag:
+                    log_error("Версия Xray-core не указана.")
+                    return False
+
+        if not tag.startswith("v") and not tag.startswith("V"):
+            tag = "v" + tag
 
         os_name, _, arch_xray = self._get_platform_info()
         log_info(f"Загрузка Xray-core {BOLD}{tag}{RESET} для {os_name}/{arch_xray}...")
@@ -240,30 +256,36 @@ class ProxyEngineManager:
                 self.download_singbox()
             return
 
-        sb_latest = self.fetch_latest_release("SagerNet/sing-box") or "v1.11.4"
-        xray_latest = self.fetch_latest_release("XTLS/Xray-core") or "v1.8.24"
+        sb_latest = self.fetch_latest_release("SagerNet/sing-box")
+        xray_latest = self.fetch_latest_release("XTLS/Xray-core")
 
         log_banner("🚀  ВЫБОР PROXY / VPN ДВИЖКА (FAILOVER МОСТ)")
         sb_display = f"{GREEN}{sb_cur}{RESET}" if sb_cur else f"{RED}Не установлен{RESET}"
         xray_display = f"{GREEN}{xray_cur}{RESET}" if xray_cur else f"{RED}Не установлен{RESET}"
 
+        sb_latest_disp = f"{CYAN}{sb_latest}{RESET}" if sb_latest else f"{YELLOW}Не определена{RESET}"
+        xray_latest_disp = f"{CYAN}{xray_latest}{RESET}" if xray_latest else f"{YELLOW}Не определена{RESET}"
+
         print(f"📌 Текущее состояние:")
-        print(f"  • Sing-box:  {sb_display} (Последняя: {CYAN}{sb_latest}{RESET})")
-        print(f"  • Xray-core: {xray_display} (Последняя: {CYAN}{xray_latest}{RESET})")
+        print(f"  • Sing-box:  {sb_display} (Последняя на GitHub: {sb_latest_disp})")
+        print(f"  • Xray-core: {xray_display} (Последняя на GitHub: {xray_latest_disp})")
         print("=" * 60)
 
         is_sb_installed = bool(sb_cur)
         default_choice = "4" if is_sb_installed else "1"
 
+        sb_opt_label = f"Sing-box ({sb_latest})" if sb_latest else "Sing-box"
+        xray_opt_label = f"Xray-core ({xray_latest})" if xray_latest else "Xray-core"
+
         if not is_sb_installed:
-            print(f"  1) 🟢 Установить Sing-box ({sb_latest}) [Рекомендуется / По умолчанию]")
-            print(f"  2) 🟢 Установить Xray-core ({xray_latest})")
-            print(f"  3) 🌐 Установить оба движка (Sing-box + Xray-core)")
+            print(f"  1) 🟢 Установить {sb_opt_label} [Рекомендуется / По умолчанию]")
+            print(f"  2) 🟢 Установить {xray_opt_label}")
+            print(f"  3) 🌐 Установить оба движка ({sb_opt_label} + {xray_opt_label})")
             print(f"  4) ⏹️  Пропустить установку движков")
         else:
-            print(f"  1) 🔄 Обновить / переустановить Sing-box ({sb_latest})")
-            print(f"  2) 🔄 Обновить / переустановить Xray-core ({xray_latest})")
-            print(f"  3) 🌐 Установить / обновить оба движка (Sing-box + Xray-core)")
+            print(f"  1) 🔄 Обновить / переустановить {sb_opt_label}")
+            print(f"  2) 🔄 Обновить / переустановить {xray_opt_label}")
+            print(f"  3) 🌐 Установить / обновить оба движка")
             print(f"  4) ⏹️  Оставить текущие версии [По умолчанию / Пропустить]")
 
         while True:
