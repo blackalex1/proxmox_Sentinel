@@ -32,6 +32,7 @@ class NetworkManager:
     def __init__(self, project_dir: str, proxy_arg: Optional[str] = None, no_proxy: bool = False, auto_mode: bool = False) -> None:
         self.project_dir = project_dir
         self.custom_proxy: Optional[str] = proxy_arg
+        self.configured_vpn_node: Optional[str] = None
         self.no_proxy: bool = no_proxy
         self.auto_mode: bool = auto_mode
         self.use_rotator: bool = True if not (no_proxy or proxy_arg) else False
@@ -57,11 +58,16 @@ class NetworkManager:
                                 if line.startswith("PROXY_URL="):
                                     val = line.split("=", 1)[1].strip(" '\"")
                                     if val:
-                                        self.custom_proxy = val
+                                        vpn_prefixes = ("ss://", "vless://", "trojan://", "hysteria2://", "hy2://", "vmess://", "tuic://", "wireguard://", "wg://")
+                                        if any(val.lower().startswith(pref) for pref in vpn_prefixes):
+                                            self.configured_vpn_node = val
+                                            self.use_rotator = True
+                                        elif re.match(r"^(http|https|socks4|socks5|socks5h)://", val, re.IGNORECASE):
+                                            self.custom_proxy = val
                                         break
                     except Exception:
                         pass
-                if self.custom_proxy:
+                if self.custom_proxy or self.configured_vpn_node:
                     break
 
     def show_menu(self) -> None:
@@ -71,7 +77,11 @@ class NetworkManager:
 
         log_banner("🌐 НАСТРОЙКА СЕТИ И ПРОКСИ ДЛЯ ОБНОВЛЕНИЯ КОНТРОЛЛЕРА")
         print("Выберите режим подключения к GitHub для загрузки релизов:")
-        print(f"  1) {GREEN}🟢 Автоматический VPN / Прокси ротатор{RESET} [Рекомендуется / По умолчанию]")
+        if self.configured_vpn_node:
+            node_name = self.configured_vpn_node.split("#")[-1] if "#" in self.configured_vpn_node else self.configured_vpn_node[:30]
+            print(f"  1) {GREEN}🟢 Использовать настроенную VPN-ноду ({node_name}) с авто-ротацией{RESET} [Рекомендуется / По умолчанию]")
+        else:
+            print(f"  1) {GREEN}🟢 Автоматический VPN / Прокси ротатор{RESET} [Рекомендуется / По умолчанию]")
         print(f"  2) 🌐 Прямое соединение к GitHub (с авто-фолбэком на CDN-зеркала при блокировке)")
         print(f"  3) 🔌 Использовать существующий HTTP / SOCKS5 прокси\n")
 
@@ -127,13 +137,12 @@ class NetworkManager:
         if os.path.isfile(venv_py):
             py_bin = venv_py
 
-        rotator_script = (
-            "import sys, os, asyncio\n"
-            "bot_dir = os.path.join(os.getcwd(), 'bot')\n"
-            "if bot_dir not in sys.path: sys.path.insert(0, bot_dir)\n"
-            "from core.proxy_rotator import start_rotator_foreground\n"
-            "asyncio.run(start_rotator_foreground(port=10818, auto_rotate=False))\n"
-        )
+        rotator_py = os.path.join(self.project_dir, "bot", "core", "proxy_rotator.py")
+        cmd = [py_bin, "-u", rotator_py]
+        if self.configured_vpn_node:
+            cmd.extend(["--node", self.configured_vpn_node, "--port", "10818"])
+        else:
+            cmd.extend(["--find-and-start", "--port", "10818"])
 
         try:
             extra_kwargs = {}
@@ -141,7 +150,7 @@ class NetworkManager:
                 extra_kwargs["preexec_fn"] = os.setsid
 
             self.rotator_proc = subprocess.Popen(
-                [py_bin, "-u", "-c", rotator_script],
+                cmd,
                 cwd=self.project_dir,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,

@@ -102,6 +102,28 @@ class CoreManager:
             except Exception:
                 continue
 
+        # Fallback to curl if available
+        if shutil.which("curl"):
+            for url in api_urls:
+                try:
+                    curl_cmd = ["curl", "-fsSL", "-k", "--connect-timeout", "4", "--max-time", "8", "-H", "User-Agent: Sentinel-Controller-Updater/1.0", "-H", "Accept: application/vnd.github.v3+json"]
+                    if self.proxy_url:
+                        p = self.proxy_url
+                        if p.startswith("socks5://"):
+                            p = "socks5h://" + p[len("socks5://"):]
+                        curl_cmd.extend(["-x", p])
+                    curl_cmd.append(url)
+                    res = subprocess.run(curl_cmd, capture_output=True, text=True, timeout=9.0)
+                    if res.returncode == 0 and res.stdout.strip():
+                        releases = json.loads(res.stdout)
+                        if isinstance(releases, list) and len(releases) > 0:
+                            stable = next((r["tag_name"] for r in releases if not r.get("prerelease")), "")
+                            prerelease = releases[0]["tag_name"] if releases[0].get("prerelease") else ""
+                            latest_any = releases[0]["tag_name"]
+                            return stable, prerelease, latest_any
+                except Exception:
+                    continue
+
         return "", "", ""
 
     def select_version(self) -> Optional[str]:
