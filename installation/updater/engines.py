@@ -199,9 +199,8 @@ class ProxyEngineManager:
             try:
                 curl_cmd = [
                     "curl", "-fsSL", "-k",
-                    "--connect-timeout", "6",
-                    "--max-time", "120",
-                    "--retry", "1",
+                    "--connect-timeout", "4",
+                    "--max-time", "30",
                     "-H", "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
                 ]
                 if self.proxy_url:
@@ -212,7 +211,7 @@ class ProxyEngineManager:
                 else:
                     curl_cmd.extend(["--noproxy", "*"])
                 curl_cmd.append(url)
-                res = subprocess.run(curl_cmd, capture_output=True, timeout=125.0)
+                res = subprocess.run(curl_cmd, capture_output=True, timeout=35.0)
                 if res.returncode == 0 and res.stdout and len(res.stdout) > 1024:
                     return res.stdout
             except Exception:
@@ -224,7 +223,7 @@ class ProxyEngineManager:
                 headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"},
             )
             opener = self._build_opener()
-            with opener.open(req, timeout=35.0) as resp:
+            with opener.open(req, timeout=15.0) as resp:
                 if resp.status == 200:
                     return resp.read()
         except Exception:
@@ -235,8 +234,8 @@ class ProxyEngineManager:
         """Downloads data with mirror failovers."""
         mirrors = [
             "",
-            "https://gh-proxy.com/",
             "https://ghfast.top/",
+            "https://gh-proxy.com/",
             "https://gh.ddlc.top/",
             "https://ghproxy.net/",
         ]
