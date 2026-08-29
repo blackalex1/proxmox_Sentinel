@@ -61,8 +61,10 @@ class Downloader:
 
             for p_opt in proxy_candidates:
                 try:
+                    is_interactive = sys.stdout.isatty()
+                    progress_flag = "-#" if is_interactive else "-s"
                     curl_cmd = [
-                        "curl", "-sSL", "-k",
+                        "curl", progress_flag, "-L", "-k",
                         "--connect-timeout", "10",
                         "--max-time", str(int(timeout)),
                         "--speed-time", "20",
@@ -78,16 +80,24 @@ class Downloader:
                         curl_cmd.extend(["--noproxy", "*"])
 
                     curl_cmd.append(url)
-                    res = subprocess.run(curl_cmd, capture_output=True, text=True, timeout=timeout + 10.0)
+                    
+                    if is_interactive:
+                        # Allow curl progress bar to render live to terminal stderr
+                        res = subprocess.run(curl_cmd, timeout=timeout + 10.0)
+                    else:
+                        res = subprocess.run(curl_cmd, capture_output=True, text=True, timeout=timeout + 10.0)
+
                     if res.returncode == 0 and os.path.isfile(tmp_dest) and os.path.getsize(tmp_dest) > 0:
+                        size_mb = os.path.getsize(tmp_dest) / (1024 * 1024)
                         if platform.system() != "Windows":
                             try:
                                 os.chmod(tmp_dest, 0o755)
                             except Exception:
                                 pass
                         os.replace(tmp_dest, dest)
+                        log_info(f"  [✓] Загружено: {size_mb:.1f} MB")
                         return True
-                    elif res.stderr:
+                    elif hasattr(res, 'stderr') and res.stderr:
                         log_warn(f"  [curl] {res.stderr.strip()}")
                 except Exception as e:
                     log_warn(f"  [curl exception] {e}")
