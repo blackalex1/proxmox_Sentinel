@@ -40,7 +40,7 @@ class Downloader:
 
         return urllib.request.build_opener(*handlers)
 
-    def download_file(self, url: str, dest: str, timeout: float = 30.0) -> bool:
+    def download_file(self, url: str, dest: str, timeout: float = 180.0) -> bool:
         """Downloads a file directly from GitHub to destination path using atomic temp replacement."""
         os.makedirs(os.path.dirname(os.path.abspath(dest)), exist_ok=True)
         tmp_dest = f"{dest}.tmp.{os.getpid()}"
@@ -63,8 +63,10 @@ class Downloader:
                 try:
                     curl_cmd = [
                         "curl", "-sSL", "-k",
-                        "--connect-timeout", "8",
+                        "--connect-timeout", "10",
                         "--max-time", str(int(timeout)),
+                        "--speed-time", "20",
+                        "--speed-limit", "500",
                         "--retry", "2",
                         "--retry-delay", "1",
                         "-H", f"User-Agent: {USER_AGENT}",
@@ -76,7 +78,7 @@ class Downloader:
                         curl_cmd.extend(["--noproxy", "*"])
 
                     curl_cmd.append(url)
-                    res = subprocess.run(curl_cmd, capture_output=True, text=True, timeout=timeout + 6.0)
+                    res = subprocess.run(curl_cmd, capture_output=True, text=True, timeout=timeout + 10.0)
                     if res.returncode == 0 and os.path.isfile(tmp_dest) and os.path.getsize(tmp_dest) > 0:
                         if platform.system() != "Windows":
                             try:
@@ -120,7 +122,7 @@ class Downloader:
 
         return False
 
-    def download_bytes(self, url: str, timeout: float = 30.0) -> Optional[bytes]:
+    def download_bytes(self, url: str, timeout: float = 180.0) -> Optional[bytes]:
         """Downloads data from GitHub URL into memory."""
         # 1. Try curl
         if shutil.which("curl"):
@@ -139,8 +141,10 @@ class Downloader:
                 try:
                     curl_cmd = [
                         "curl", "-sSL", "-k",
-                        "--connect-timeout", "8",
+                        "--connect-timeout", "10",
                         "--max-time", str(int(timeout)),
+                        "--speed-time", "20",
+                        "--speed-limit", "500",
                         "--retry", "2",
                         "--retry-delay", "1",
                         "-H", f"User-Agent: {USER_AGENT}",
@@ -151,7 +155,7 @@ class Downloader:
                         curl_cmd.extend(["--noproxy", "*"])
 
                     curl_cmd.append(url)
-                    res = subprocess.run(curl_cmd, capture_output=True, timeout=timeout + 6.0)
+                    res = subprocess.run(curl_cmd, capture_output=True, timeout=timeout + 10.0)
                     if res.returncode == 0 and res.stdout and len(res.stdout) > 1024:
                         return res.stdout
                 except Exception:
@@ -176,13 +180,13 @@ class Downloader:
         """Downloads a file directly from GitHub releases."""
         log_name = filename_for_log or os.path.basename(dest_path)
         log_info(f"  ➜ Загрузка {log_name} с GitHub...")
-        return self.download_file(direct_url, dest_path, timeout=35.0)
+        return self.download_file(direct_url, dest_path, timeout=180.0)
 
     def download_bytes_with_mirrors(self, direct_url: str, label_for_log: str = "") -> Optional[bytes]:
         """Downloads bytes directly from GitHub releases."""
         if label_for_log:
             log_info(f"  ➜ Загрузка {label_for_log} с GitHub...")
-        return self.download_bytes(direct_url, timeout=35.0)
+        return self.download_bytes(direct_url, timeout=180.0)
 
     def fetch_github_api(self, endpoint_url: str, timeout: float = 8.0) -> Optional[Any]:
         """Queries GitHub REST API directly."""
