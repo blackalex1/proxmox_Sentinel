@@ -61,17 +61,19 @@ class GitManager:
         # Try updating from origin and fallback mirrors
         pull_success = False
         remotes = [
+            "https://ghfast.top/https://github.com/blackalex1/proxmox_Sentinel.git",
+            "https://gh.ddlc.top/https://github.com/blackalex1/proxmox_Sentinel.git",
             "origin",
             "https://github.com/blackalex1/proxmox_Sentinel.git",
             "https://gh-proxy.com/https://github.com/blackalex1/proxmox_Sentinel.git",
-            "https://ghfast.top/https://github.com/blackalex1/proxmox_Sentinel.git",
         ]
 
         for remote in remotes:
             try:
-                res = run_command(["git", "fetch", remote, branch], cwd=self.project_dir, env=git_env, capture=True, check=False, timeout=25.0)
+                fetch_cmd = ["git", "-c", "http.connectTimeout=4", "-c", "http.timeout=8", "fetch", remote, branch]
+                res = run_command(fetch_cmd, cwd=self.project_dir, env=git_env, capture=True, check=False, timeout=12.0)
                 if res.returncode == 0:
-                    merge_res = run_command(["git", "reset", "--hard", f"FETCH_HEAD"], cwd=self.project_dir, capture=True, check=False, timeout=15.0)
+                    merge_res = run_command(["git", "reset", "--hard", "FETCH_HEAD"], cwd=self.project_dir, capture=True, check=False, timeout=10.0)
                     if merge_res.returncode == 0:
                         pull_success = True
                         break
@@ -87,10 +89,10 @@ class GitManager:
                     pass
             return False
 
-        # Pop stash if it was created
+        # Drop stash on clean reset so old local files do not overwrite fresh code
         if stashed:
             try:
-                run_command(["git", "stash", "pop"], cwd=self.project_dir, check=False)
+                run_command(["git", "stash", "drop"], cwd=self.project_dir, check=False)
             except Exception:
                 pass
 
