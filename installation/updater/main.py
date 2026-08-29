@@ -24,6 +24,7 @@ from .common import (
 )
 from .core import CoreManager
 from .dependencies import DependencyManager
+from .engines import ProxyEngineManager
 from .git import GitManager
 from .network import NetworkManager
 from .service import ServiceManager
@@ -87,15 +88,23 @@ def main() -> int:
             if not core_ok:
                 log_warn("Не удалось обновить некоторые компоненты ядра. Продолжаем развертывание...")
 
-        # 4. Update Python Dependencies (bot/requirements.txt)
+        # 4. Manage Sing-box & Xray-core Proxy Engines
+        engine_mgr = ProxyEngineManager(
+            project_dir=project_root,
+            proxy_url=active_proxy,
+            auto_mode=args.auto,
+        )
+        engine_mgr.manage_engines()
+
+        # 5. Update Python Dependencies (bot/requirements.txt)
         dep_mgr = DependencyManager(project_dir=project_root, proxy_url=active_proxy)
         dep_mgr.update_dependencies()
 
-        # 5. Register / Restart Systemd Service
+        # 6. Register / Restart Systemd Service
         service_mgr = ServiceManager(project_dir=project_root)
         service_mgr.register_and_restart_service()
 
-        # 6. Success Banner
+        # 7. Success Banner
         log_banner("✅ ОБНОВЛЕНИЕ SENTINEL CONTROLLER УСПЕШНО ЗАВЕРШЕНО!")
         print(f"{GREEN}Все компоненты, ядро и служба контроллера успешно обновлены и перезапущены.{RESET}\n")
 
