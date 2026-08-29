@@ -179,13 +179,31 @@ class SocksProxyRotator:
 
         engine_bin, engine_type = self._find_proxy_engine_bin()
         if not engine_bin:
-            logger.error("Бинарник sing-box/xray не найден в %s/bin", _bot_root)
+            logger.error("Binary sing-box/xray not found in %s/bin", _bot_root)
             return False
 
         cfg_path = os.path.join(_bot_root, "bin", f"{engine_type}_failover.json")
         os.makedirs(os.path.dirname(cfg_path), exist_ok=True)
 
         try:
+            # Sanitize config JSON for strict Sing-box 1.10+ schema compatibility
+            try:
+                cfg_obj = json.loads(config_json)
+                if isinstance(cfg_obj, dict):
+                    dns_obj = cfg_obj.get("dns")
+                    if isinstance(dns_obj, dict):
+                        servers = dns_obj.get("servers")
+                        if isinstance(servers, list):
+                            for s in servers:
+                                if isinstance(s, dict):
+                                    if "domain_resolver" in s:
+                                        s.pop("domain_resolver", None)
+                                        if "address_resolver" not in s and "server" in s and not str(s.get("server", "")).replace(".", "").isdigit():
+                                            s["address_resolver"] = "dns-direct"
+                    config_json = json.dumps(cfg_obj, indent=2, ensure_ascii=False)
+            except Exception:
+                pass
+
             with open(cfg_path, "w", encoding="utf-8") as f:
                 f.write(config_json)
 
@@ -318,7 +336,7 @@ class SocksProxyRotator:
             logger.error("Core build_failover_client_config exception: %s", e)
 
         if not client_cfg:
-            logger.error("Не удалось скомпилировать Sing-box конфиг через sentinel-core.")
+            logger.error("Failed to compile Sing-box config via sentinel-core.")
             return None
 
         logger.info("[Tunnel] Launching Sing-box client process and activating fastest route...")
@@ -436,6 +454,26 @@ class SocksProxyRotator:
 
         return await loop.run_in_executor(None, _socket_probe)
 
+    async def _check_socks5_sources(self, sources: List[str]) -> Optional[str]:
+        """Парсит и тестирует открытые SOCKS5 источники (Tier 3)."""
+        return await self._check_vpn_sources(sources, tier_name="Tier 3")
+
+    async def refresh_disk_cache(self) -> int:
+        """Пассивно скачивает свежие конфигурации и обновляет дисковый кэш."""
+        all_sources = BLACK_LIST_SOURCES + WHITE_LIST_SOURCES
+        tasks = [self._fetch_single_source(url) for url in all_sources]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        nodes = []
+        for r in results:
+            if isinstance(r, list):
+                for u in r:
+                    u_clean = u.strip()
+                    if u_clean and "://" in u_clean and u_clean not in nodes:
+                        nodes.append(u_clean)
+        if nodes:
+            self._save_working_nodes_to_disk(nodes)
+        return len(nodes)
+
     async def get_working_proxy(self) -> Optional[str]:
         """4-Уровневый каскадный поиск рабочего соединения."""
         # ТИР 0: Дисковый кэш
@@ -461,7 +499,7 @@ class SocksProxyRotator:
 
         # ТИР 3: Открытые SOCKS5 прокси
         logger.info("[Failover] Checking Tier 3: SOCKS5 Fallback proxies...")
-        t3_proxy = await self._check_vpn_sources(SOCKS5_FALLBACK_SOURCES, tier_name="Tier 3")
+        t3_proxy = await self._check_socks5_sources(SOCKS5_FALLBACK_SOURCES)
         if t3_proxy:
             return t3_proxy
 

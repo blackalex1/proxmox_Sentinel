@@ -1,5 +1,6 @@
 import pytest
 import asyncio
+import json
 import time
 from unittest.mock import MagicMock, patch, AsyncMock
 
@@ -14,55 +15,29 @@ def test_proxy_rotation_config():
     assert hasattr(settings, 'enable_free_proxy_rotation')
     assert isinstance(settings.enable_free_proxy_rotation, bool)
 
-class MockResponse:
-    def __init__(self, status):
-        self.status = status
-    async def __aenter__(self):
-        return self
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
-        pass
-
-class MockSession:
-    def __init__(self, response):
-        self.response = response
-    def get(self, url):
-        return self.response
-    async def __aenter__(self):
-        return self
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
-        pass
 
 @pytest.mark.asyncio
 async def test_proxy_alive_check():
     """
     Проверяет тест-кейс функции проверки прокси test_proxy_alive
-    на примере успешного и провального запроса.
+    на примере успешного сокетного ответа SOCKS5 и провала.
     """
     rotator = SocksProxyRotator()
 
-    # Сценарий 1: Прокси успешно работает (status = 200)
-    mock_session_ok = MockSession(MockResponse(200))
-    with patch('aiohttp.ClientSession', return_value=mock_session_ok):
-        is_alive, latency = await rotator.test_proxy_alive("socks5://1.2.3.4:1080")
+    # Сценарий 1: SOCKS5 прокси успешно отвечает (рукопожатие 0x05, 0x00 + CONNECT 0x05 0x00)
+    mock_sock_ok = MagicMock()
+    mock_sock_ok.recv.side_effect = [b"\x05\x00", b"\x05\x00\x00\x01\x7f\x00\x00\x01\x01\xbb"]
+    with patch('socket.socket', return_value=mock_sock_ok):
+        is_alive, latency = await rotator.test_proxy_alive("socks5://127.0.0.1:10808", timeout=1.0)
         assert is_alive is True
         assert latency >= 0
 
-    # Сценарий 2: Прокси возвращает ошибку (status = 500)
-    mock_session_err = MockSession(MockResponse(500))
-    with patch('aiohttp.ClientSession', return_value=mock_session_err):
-        is_alive, latency = await rotator.test_proxy_alive("socks5://5.6.7.8:1080")
+    # Сценарий 2: Ошибка подключения сокета (Exception)
+    with patch('socket.socket', side_effect=ConnectionRefusedError("Connection refused")):
+        is_alive, latency = await rotator.test_proxy_alive("socks5://127.0.0.1:10808", timeout=1.0)
         assert is_alive is False
+        assert latency >= 999999
 
-    # Сценарий 3: Возникает исключение при подключении (таймаут)
-    class MockSessionException:
-        async def __aenter__(self):
-            raise asyncio.TimeoutError()
-        async def __aexit__(self, exc_type, exc_val, exc_tb):
-            pass
-
-    with patch('aiohttp.ClientSession', return_value=MockSessionException()):
-        is_alive, latency = await rotator.test_proxy_alive("socks5://9.9.9.9:1080")
-        assert is_alive is False
 
 @pytest.mark.asyncio
 async def test_3tier_cascade_tier1_success():
@@ -75,12 +50,14 @@ async def test_3tier_cascade_tier1_success():
     with patch.object(rotator, '_check_vpn_sources', AsyncMock(side_effect=[
         "socks5://127.0.0.1:10818", # Tier 1 success
         None                        # Tier 2 (should not be reached)
-    ])) as mock_vpn, patch.object(rotator, '_check_socks5_sources', AsyncMock(return_value=None)) as mock_socks:
+    ])) as mock_vpn, patch.object(rotator, '_check_socks5_sources', AsyncMock(return_value=None)) as mock_socks, \
+         patch.object(rotator, '_load_cached_nodes_from_disk', return_value=[]):
 
         proxy = await rotator.get_working_proxy()
         assert proxy == "socks5://127.0.0.1:10818"
         assert mock_vpn.call_count == 1
         mock_socks.assert_not_called()
+
 
 @pytest.mark.asyncio
 async def test_3tier_cascade_tier2_fallback():
@@ -93,12 +70,14 @@ async def test_3tier_cascade_tier2_fallback():
     with patch.object(rotator, '_check_vpn_sources', AsyncMock(side_effect=[
         None,                        # Tier 1 failed
         "socks5://127.0.0.1:10818"  # Tier 2 success
-    ])) as mock_vpn, patch.object(rotator, '_check_socks5_sources', AsyncMock(return_value=None)) as mock_socks:
+    ])) as mock_vpn, patch.object(rotator, '_check_socks5_sources', AsyncMock(return_value=None)) as mock_socks, \
+         patch.object(rotator, '_load_cached_nodes_from_disk', return_value=[]):
 
         proxy = await rotator.get_working_proxy()
         assert proxy == "socks5://127.0.0.1:10818"
         assert mock_vpn.call_count == 2
         mock_socks.assert_not_called()
+
 
 @pytest.mark.asyncio
 async def test_3tier_cascade_tier3_lazy_socks_fallback():
@@ -111,7 +90,8 @@ async def test_3tier_cascade_tier3_lazy_socks_fallback():
     with patch.object(rotator, '_check_vpn_sources', AsyncMock(side_effect=[
         None, # Tier 1 failed
         None  # Tier 2 failed
-    ])) as mock_vpn, patch.object(rotator, '_check_socks5_sources', AsyncMock(return_value="socks5://198.51.100.1:1080")) as mock_socks:
+    ])) as mock_vpn, patch.object(rotator, '_check_socks5_sources', AsyncMock(return_value="socks5://198.51.100.1:1080")) as mock_socks, \
+         patch.object(rotator, '_load_cached_nodes_from_disk', return_value=[]):
 
         proxy = await rotator.get_working_proxy()
         assert proxy == "socks5://198.51.100.1:1080"
@@ -136,6 +116,105 @@ async def test_passive_refresh_disk_cache():
 
 
 @pytest.mark.asyncio
+async def test_singbox_config_domain_resolver_sanitization(tmp_path):
+    """
+    Проверяет, что перед запуском Sing-box устаревшее/неподдерживаемое поле
+    domain_resolver в dns.servers автоматически вычищается из JSON конфига.
+    """
+    rotator = SocksProxyRotator()
+
+    raw_cfg = {
+        "dns": {
+            "servers": [
+                {
+                    "tag": "dns-remote",
+                    "server": "1.1.1.1",
+                    "type": "https",
+                    "domain_resolver": "dns-direct"
+                },
+                {
+                    "tag": "dns-direct",
+                    "server": "8.8.8.8",
+                    "type": "udp"
+                }
+            ]
+        },
+        "inbounds": [{"type": "socks", "tag": "socks-in", "listen_port": 10818}]
+    }
+    raw_cfg_str = json.dumps(raw_cfg)
+
+    written_content = None
+    def mock_open_file(path, mode="r", *args, **kwargs):
+        nonlocal written_content
+        m = MagicMock()
+        def write_side(data):
+            nonlocal written_content
+            written_content = data
+        m.__enter__.return_value.write.side_effect = write_side
+        return m
+
+    with patch.object(rotator, '_find_proxy_engine_bin', return_value=("sing-box", "singbox")), \
+         patch('builtins.open', side_effect=mock_open_file), \
+         patch('subprocess.Popen') as mock_popen, \
+         patch.object(rotator, 'test_proxy_alive', AsyncMock(return_value=(True, 20.0))):
+
+        mock_proc = MagicMock()
+        mock_proc.poll.return_value = None
+        mock_proc.stdout.readline.return_value = ""
+        mock_popen.return_value = mock_proc
+
+        ok = await rotator.start_or_reload_singbox_tunnel(raw_cfg_str, port=10818)
+        assert ok is True
+        assert written_content is not None
+        saved_cfg = json.loads(written_content)
+
+        # Проверяем, что domain_resolver вычищен из dns.servers[0]
+        assert "domain_resolver" not in saved_cfg["dns"]["servers"][0]
+        assert saved_cfg["dns"]["servers"][0]["tag"] == "dns-remote"
+
+
+@pytest.mark.asyncio
+async def test_node_testing_and_activation_with_core():
+    """
+    Проверяет связку _test_and_activate_nodes с sentinel_core_bridge:
+    передачу списка URI в check_proxies, проверку success и запуск sing-box.
+    """
+    rotator = SocksProxyRotator()
+    sample_uris = ["vless://uuid@1.2.3.4:443?type=tcp&security=reality#Node1"]
+
+    mock_check_results = [
+        {
+            "proxyUrl": sample_uris[0],
+            "protocol": "vless",
+            "name": "Node1",
+            "success": True,
+            "latencyMs": 45.0
+        }
+    ]
+
+    mock_parsed_profile = {
+        "protocol": "vless",
+        "address": "1.2.3.4",
+        "port": 443,
+        "name": "Node1"
+    }
+
+    with patch('core.sentinel_core_bridge.check_proxies', return_value=mock_check_results) as mock_check, \
+         patch('core.proxy_rotator.parse_vpn_uri', return_value=mock_parsed_profile), \
+         patch('core.sentinel_core_bridge.build_failover_client_config', return_value='{"dns":{}}'), \
+         patch.object(rotator, 'start_or_reload_singbox_tunnel', AsyncMock(return_value=True)) as mock_tunnel, \
+         patch.object(rotator, '_save_working_nodes_to_disk'):
+
+        proxy_url = await rotator._test_and_activate_nodes(sample_uris, tier_name="TestTier")
+        assert proxy_url == "socks5://127.0.0.1:10818"
+        mock_check.assert_called_once()
+        # Проверяем, что в check_proxies передан список URI
+        passed_uris = mock_check.call_args[0][0]
+        assert passed_uris == sample_uris
+        mock_tunnel.assert_called_once()
+
+
+@pytest.mark.asyncio
 async def test_proxy_selection_scope_and_router_bypass():
     """
     Проверяет, что proxy_selection_scope активирует временное окно игнорирования,
@@ -152,3 +231,4 @@ async def test_proxy_selection_scope_and_router_bypass():
         # Локальный хост во время подбора прокси признается легитимным
         is_trusted = await check_is_bot_or_admin("127.0.0.1", 54321, "8.8.8.8", 443)
         assert is_trusted is True
+
