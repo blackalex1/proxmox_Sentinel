@@ -98,7 +98,7 @@ class NetworkManager:
                 print(f"  1) {GREEN}🟢 Прокси из .env: {BOLD}{self.configured_proxy}{RESET} [Рекомендуется / По умолчанию]")
 
             print(f"  2) 🔄 Автоматический поиск рабочего VPN / Прокси (ротатор)")
-            print(f"  3) 🌐 Прямое соединение к GitHub (с авто-фолбэком на CDN-зеркала)")
+            print(f"  3) 🌐 Прямое соединение к GitHub")
             print(f"  4) 🔌 Ввести другой адрес прокси вручную\n")
 
             while True:
@@ -145,7 +145,7 @@ class NetworkManager:
                     break
         else:
             print(f"  1) {GREEN}🟢 Автоматический VPN / Прокси ротатор{RESET} [Рекомендуется / По умолчанию]")
-            print(f"  2) 🌐 Прямое соединение к GitHub (с авто-фолбэком на CDN-зеркала)")
+            print(f"  2) 🌐 Прямое соединение к GitHub")
             print(f"  3) 🔌 Ввести адрес HTTP / SOCKS5 прокси вручную\n")
 
             while True:
