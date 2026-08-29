@@ -40,8 +40,15 @@ if [ -z "${BOOTSTRAPPED:-}" ] && [ -d .git ] && command -v git &>/dev/null; then
         fi
     done
 
-    # Fetch directly from official GitHub repository
-    if timeout 15 git "${FETCH_ARGS[@]}" fetch origin main 2>/dev/null || git "${FETCH_ARGS[@]}" fetch origin main 2>/dev/null; then
+    # Fetch directly from official GitHub repository with proxy and direct fallback
+    FETCH_OK=0
+    if timeout 10 git "${FETCH_ARGS[@]}" fetch origin main 2>/dev/null; then
+        FETCH_OK=1
+    elif timeout 10 git -c "safe.directory=*" -c "http.proxy=" -c "https.proxy=" fetch origin main 2>/dev/null; then
+        FETCH_OK=1
+    fi
+
+    if [ "$FETCH_OK" -eq 1 ]; then
         git reset --hard FETCH_HEAD 2>/dev/null || true
     fi
     NEW_HEAD=$(git rev-parse HEAD 2>/dev/null || true)
