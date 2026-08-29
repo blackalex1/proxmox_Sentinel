@@ -147,6 +147,43 @@ class CoreManager:
                 except Exception:
                     continue
 
+        # Fallback to git ls-remote via mirrors
+        if shutil.which("git"):
+            remotes = [
+                f"https://github.com/{self.REPO}.git",
+                f"https://ghfast.top/https://github.com/{self.REPO}.git",
+                f"https://gh-proxy.com/https://github.com/{self.REPO}.git",
+                f"https://ghproxy.net/https://github.com/{self.REPO}.git",
+            ]
+            for remote in remotes:
+                try:
+                    cmd = ["git", "-c", "http.connectTimeout=4", "-c", "http.timeout=8", "ls-remote", "--tags", remote]
+                    env = os.environ.copy()
+                    if self.proxy_url:
+                        env["http_proxy"] = self.proxy_url
+                        env["https_proxy"] = self.proxy_url
+                        env["all_proxy"] = self.proxy_url
+                    res = subprocess.run(cmd, capture_output=True, text=True, timeout=9.0, env=env)
+                    if res.returncode == 0 and res.stdout.strip():
+                        tags = []
+                        for line in res.stdout.splitlines():
+                            parts = line.strip().split()
+                            if len(parts) == 2 and "refs/tags/" in parts[1]:
+                                raw_t = parts[1].split("refs/tags/")[1]
+                                if not raw_t.endswith("^{}"):
+                                    tags.append(raw_t)
+                        if tags:
+                            def _ver_key(v: str):
+                                nums = [int(x) for x in re.findall(r"\d+", v)]
+                                return nums or [0]
+                            tags.sort(key=_ver_key, reverse=True)
+                            stable = next((t for t in tags if not any(x in t.lower() for x in ["beta", "alpha", "rc", "dev", "pre"])), "")
+                            prerelease = next((t for t in tags if any(x in t.lower() for x in ["beta", "alpha", "rc", "dev", "pre"])), "")
+                            latest_any = tags[0]
+                            return stable, prerelease, latest_any
+                except Exception:
+                    continue
+
         return "", "", ""
 
     def select_version(self) -> Optional[str]:
@@ -154,9 +191,14 @@ class CoreManager:
         is_installed, current_ver = self._get_installed_version()
         stable_ver, prerelease_ver, latest_any = self._fetch_releases()
 
+        fallback_default = "v0.0.1"
+        current_tag_match = re.search(r"v\d+\.\d+(\.\d+)?(-[a-zA-Z0-9.]+)?", current_ver)
+        if current_tag_match:
+            fallback_default = current_tag_match.group(0)
+
         # Non-interactive automated mode
         if not sys.stdin.isatty() or self.auto_mode:
-            target = stable_ver or prerelease_ver or latest_any or "v0.0.8"
+            target = stable_ver or prerelease_ver or latest_any or fallback_default
             if not self.force and is_installed and target in current_ver:
                 log_info(f"Текущая версия ядра ({current_ver}) уже актуальна ({target}). Обновление не требуется.")
                 return None
@@ -164,13 +206,12 @@ class CoreManager:
 
         log_banner("🛡️  ВЫБОР ВЕРСИИ ЯДРА SENTINEL-CORE")
         print(f"📌 Текущая версия:              {BOLD}{current_ver}{RESET}")
-        print(f"🟢 Последняя стабильная (Stable): {GREEN}{stable_ver or 'Отсутствует'}{RESET}")
+        print(f"🟢 Последняя стабильная (Stable): {GREEN}{stable_ver or fallback_default}{RESET}")
         print(f"🟡 Пре-релиз / Бета (Pre-release): {YELLOW}{prerelease_ver or 'Отсутствует'}{RESET}")
         print("=" * 60)
 
-        current_tag_match = re.search(r"v\d+\.\d+(\.\d+)?(-[a-zA-Z0-9.]+)?", current_ver)
         current_tag = current_tag_match.group(0) if current_tag_match else ""
-        is_up_to_date = bool(is_installed and stable_ver and current_tag == stable_ver)
+        is_up_to_date = bool(is_installed and (stable_ver or fallback_default) and current_tag == (stable_ver or fallback_default))
 
         if prerelease_ver and stable_ver:
             if not is_up_to_date:
@@ -201,13 +242,13 @@ class CoreManager:
                     return None
                 elif choice == "4":
                     while True:
-                        custom_tag = input("Введите точный тег версии (например v0.0.8): ").strip()
+                        custom_tag = input(f"Введите точный тег версии (например {fallback_default}): ").strip()
                         if custom_tag:
                             if not custom_tag.startswith("v"):
                                 custom_tag = "v" + custom_tag
                             return custom_tag
         else:
-            active_ver = stable_ver or latest_any or "v0.0.8"
+            active_ver = stable_ver or latest_any or fallback_default
             if not is_up_to_date:
                 default_choice = "1"
                 print(f"  1) 🟢 Установить последнюю версию ({active_ver}) [Рекомендуется / По умолчанию]")
