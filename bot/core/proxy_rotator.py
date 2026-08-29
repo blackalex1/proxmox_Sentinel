@@ -269,17 +269,21 @@ class SocksProxyRotator:
             log_thread = threading.Thread(target=_stream_logs, daemon=True)
             log_thread.start()
 
-            for _ in range(16):
-                await asyncio.sleep(0.6)
+            # Brief settle time for Sing-box engine inbounds to bind
+            await asyncio.sleep(1.0)
+
+            for _ in range(12):
                 if self._singbox_proc.poll() is not None:
                     logger.warning("%s process terminated with exit code %d (see %s)", engine_type, self._singbox_proc.returncode, log_path)
                     self._singbox_proc = None
                     return False
 
-                ok, lat = await self.test_proxy_alive(f"socks5://127.0.0.1:{port}", target_host=target_host, timeout=2.5)
+                ok, lat = await self.test_proxy_alive(f"socks5://127.0.0.1:{port}", target_host=target_host, timeout=4.0)
                 if ok:
                     logger.info("Started local %s failover tunnel on port %d (latency: %.1f ms)", engine_type, port, lat)
                     return True
+
+                await asyncio.sleep(0.8)
 
             logger.warning("%s started on port %d but failed health probe to %s.", engine_type, port, target_host)
             self.stop_tunnel()
@@ -454,13 +458,29 @@ class SocksProxyRotator:
                     # Discard bound address and port according to address type (RFC 1928)
                     atyp = rep_hdr[3]
                     if atyp == 1:  # IPv4: 4 bytes IP + 2 bytes Port
-                        _ = s.recv(4 + 2)
+                        bnd = b""
+                        while len(bnd) < 6:
+                            chunk = s.recv(6 - len(bnd))
+                            if not chunk:
+                                break
+                            bnd += chunk
                     elif atyp == 3:  # FQDN: 1 byte len + N bytes + 2 bytes Port
                         l_byte = s.recv(1)
                         if l_byte:
-                            _ = s.recv(l_byte[0] + 2)
+                            target_len = l_byte[0] + 2
+                            bnd = b""
+                            while len(bnd) < target_len:
+                                chunk = s.recv(target_len - len(bnd))
+                                if not chunk:
+                                    break
+                                bnd += chunk
                     elif atyp == 4:  # IPv6: 16 bytes IP + 2 bytes Port
-                        _ = s.recv(16 + 2)
+                        bnd = b""
+                        while len(bnd) < 18:
+                            chunk = s.recv(18 - len(bnd))
+                            if not chunk:
+                                break
+                            bnd += chunk
 
                     # 3. Full TLS Handshake & HTTP probe to guarantee GitHub / Target domain connectivity
                     ctx = ssl.create_default_context()
@@ -470,7 +490,7 @@ class SocksProxyRotator:
                     tls_sock.settimeout(timeout)
                     http_probe = f"HEAD / HTTP/1.1\r\nHost: {target_host}\r\nUser-Agent: Mozilla/5.0\r\nConnection: close\r\n\r\n"
                     tls_sock.sendall(http_probe.encode("utf-8"))
-                    http_resp = tls_sock.recv(16)
+                    http_resp = tls_sock.recv(64)
                     tls_sock.close()
                     if http_resp and (b"HTTP/" in http_resp or b"HTTP" in http_resp):
                         lat = (time.monotonic() - start) * 1000.0
