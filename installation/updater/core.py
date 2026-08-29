@@ -300,22 +300,6 @@ class CoreManager:
                     elif choice == "2":
                         log_info("Обновление ядра пропущено.")
                         return None
-                except (EOFError, KeyboardInterrupt):
-                    print("")
-                    raw = default_choice
-                choice = re.sub(r"[^1-3]", "", raw) or default_choice
-                if choice == "1":
-                    return active_ver
-                elif choice == "2":
-                    log_info("Обновление ядра пропущено.")
-                    return None
-                elif choice == "3":
-                    while True:
-                        custom_tag = input("Введите точный тег версии (например v0.0.8): ").strip()
-                        if custom_tag:
-                            if not custom_tag.startswith("v"):
-                                custom_tag = "v" + custom_tag
-                            return custom_tag
 
     def _build_opener(self) -> urllib.request.OpenerDirector:
         """Constructs an HTTP/HTTPS opener with proxy and SSL configuration."""
