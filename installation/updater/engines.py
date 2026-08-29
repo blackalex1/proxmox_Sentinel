@@ -139,17 +139,43 @@ class ProxyEngineManager:
         """Queries GitHub API to find the latest release tag for a repository."""
         api_urls = [
             f"https://api.github.com/repos/{repo}/releases/latest",
-            f"https://gh-proxy.com/https://api.github.com/repos/{repo}/releases/latest",
             f"https://ghfast.top/https://api.github.com/repos/{repo}/releases/latest",
+            f"https://gh-proxy.com/https://api.github.com/repos/{repo}/releases/latest",
             f"https://ghproxy.net/https://api.github.com/repos/{repo}/releases/latest",
         ]
 
         for url in api_urls:
+            # 1. Try curl
+            if shutil.which("curl"):
+                try:
+                    curl_cmd = [
+                        "curl", "-fsSL", "-k",
+                        "--connect-timeout", "4",
+                        "--max-time", "8",
+                        "-H", "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+                        "-H", "Accept: application/vnd.github.v3+json",
+                    ]
+                    if self.proxy_url:
+                        p = self.proxy_url
+                        if p.startswith("socks5://"):
+                            p = "socks5h://" + p[len("socks5://"):]
+                        curl_cmd.extend(["-x", p])
+                    curl_cmd.append(url)
+                    res = subprocess.run(curl_cmd, capture_output=True, text=True, timeout=10.0)
+                    if res.returncode == 0 and res.stdout.strip():
+                        data = json.loads(res.stdout)
+                        tag = data.get("tag_name")
+                        if tag:
+                            return tag
+                except Exception:
+                    pass
+
+            # 2. Try urllib fallback
             try:
                 req = urllib.request.Request(
                     url,
                     headers={
-                        "User-Agent": "Sentinel-Controller-Updater/1.0",
+                        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
                         "Accept": "application/vnd.github.v3+json",
                     },
                 )
@@ -166,9 +192,33 @@ class ProxyEngineManager:
         return None
 
     def _download_bytes(self, url: str) -> Optional[bytes]:
-        """Downloads bytes from URL."""
+        """Downloads bytes from URL using curl or urllib fallback."""
+        if shutil.which("curl"):
+            try:
+                curl_cmd = [
+                    "curl", "-fsSL", "-k",
+                    "--connect-timeout", "6",
+                    "--max-time", "120",
+                    "--retry", "1",
+                    "-H", "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                ]
+                if self.proxy_url:
+                    p = self.proxy_url
+                    if p.startswith("socks5://"):
+                        p = "socks5h://" + p[len("socks5://"):]
+                    curl_cmd.extend(["-x", p])
+                curl_cmd.append(url)
+                res = subprocess.run(curl_cmd, capture_output=True, timeout=125.0)
+                if res.returncode == 0 and res.stdout and len(res.stdout) > 1024:
+                    return res.stdout
+            except Exception:
+                pass
+
         try:
-            req = urllib.request.Request(url, headers={"User-Agent": "Sentinel-Controller-Updater/1.0"})
+            req = urllib.request.Request(
+                url,
+                headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"},
+            )
             opener = self._build_opener()
             with opener.open(req, timeout=35.0) as resp:
                 if resp.status == 200:
