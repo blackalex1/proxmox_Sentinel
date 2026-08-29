@@ -40,12 +40,21 @@ class DependencyManager:
         if not os.path.isfile(py_bin):
             log_info(f"Создание виртуального окружения Python: {self.venv_dir}...")
             os.makedirs(os.path.dirname(self.venv_dir), exist_ok=True)
-            run_command([sys.executable, "-m", "venv", self.venv_dir], cwd=self.project_dir, check=True)
+            run_command([sys.executable, "-m", "venv", self.venv_dir], cwd=self.project_dir, check=True, timeout=60.0)
 
         return py_bin
 
+    def _verify_installed_packages(self, py_bin: str) -> bool:
+        """Checks if critical bot dependencies are already available in the virtualenv."""
+        test_script = "import aiogram, requests, proxmoxer, pydantic, aiohttp"
+        try:
+            res = subprocess.run([py_bin, "-c", test_script], capture_output=True, timeout=5.0)
+            return res.returncode == 0
+        except Exception:
+            return False
+
     def update_dependencies(self) -> bool:
-        """Updates Python dependencies using uv (fast) or pip."""
+        """Updates Python dependencies using uv (fast) or pip with timeout and failover."""
         if not os.path.isfile(self.requirements_path):
             log_warn(f"Файл {self.requirements_path} не найден. Пропуск обновления зависимостей.")
             return True
@@ -54,12 +63,19 @@ class DependencyManager:
 
         log_info("Обновление зависимостей Python (bot/requirements.txt)...")
 
-        env_dict: Dict[str, str] = {}
+        env_dict: Dict[str, str] = {
+            "UV_HTTP_TIMEOUT": "20",
+            "UV_NO_KEYRING": "1",
+            "PYTHON_KEYRING_BACKEND": "keyring.backends.null.Keyring",
+            "PIP_DEFAULT_TIMEOUT": "20",
+        }
         if self.proxy_url:
             env_dict["http_proxy"] = self.proxy_url
             env_dict["https_proxy"] = self.proxy_url
+            env_dict["all_proxy"] = self.proxy_url
             env_dict["HTTP_PROXY"] = self.proxy_url
             env_dict["HTTPS_PROXY"] = self.proxy_url
+            env_dict["ALL_PROXY"] = self.proxy_url
 
         # Check for uv binary
         uv_bin = shutil.which("uv")
@@ -77,24 +93,32 @@ class DependencyManager:
         if uv_bin:
             try:
                 log_info(f"Использование uv для быстрой установки зависимостей ({uv_bin})...")
-                # Avoid unnecessary --upgrade queries on direct connection to prevent PyPI timeouts
                 uv_cmd = [
                     uv_bin, "pip", "install",
                     "--python", self.venv_dir,
-                    "-r", self.requirements_path
+                    "-r", self.requirements_path,
                 ]
                 if not self.proxy_url:
-                    uv_cmd.extend(["--extra-index-url", "https://mirror.yandex.ru/pypi/simple"])
+                    # Prioritize fast mirror directly to avoid PyPI connection hangs
+                    uv_cmd.extend([
+                        "--index-url", "https://mirror.yandex.ru/pypi/simple",
+                        "--extra-index-url", "https://pypi.org/simple",
+                    ])
 
                 res = run_command(
                     uv_cmd,
                     cwd=self.project_dir,
                     env=env_dict,
                     check=False,
+                    timeout=90.0,
                 )
                 if res.returncode == 0:
                     log_success("Зависимости Python успешно обновлены через uv!")
                     return True
+                else:
+                    log_warn("uv завершился с кодом ошибки. Переключение на стандартный pip...")
+            except subprocess.TimeoutExpired:
+                log_warn("Превышено время ожидания ответа сети в uv (таймаут 90с). Переключение на pip...")
             except Exception as e:
                 log_warn(f"Сбой установки через uv: {e}. Переключение на стандартный pip...")
 
@@ -106,17 +130,29 @@ class DependencyManager:
         pip_cmd = [pip_bin] if os.path.isfile(pip_bin) else [py_bin, "-m", "pip"]
 
         try:
-            pip_args = pip_cmd + ["install", "--default-timeout=15", "-r", self.requirements_path]
+            pip_args = pip_cmd + ["install", "--default-timeout=20", "--retries=2", "-r", self.requirements_path]
             if not self.proxy_url:
-                pip_args.extend(["--extra-index-url", "https://mirror.yandex.ru/pypi/simple"])
+                pip_args.extend([
+                    "--index-url", "https://mirror.yandex.ru/pypi/simple",
+                    "--extra-index-url", "https://pypi.org/simple",
+                ])
 
-            res = run_command(pip_args, cwd=self.project_dir, env=env_dict, check=False)
+            res = run_command(pip_args, cwd=self.project_dir, env=env_dict, check=False, timeout=120.0)
             if res.returncode == 0:
                 log_success("Зависимости Python успешно обновлены через pip!")
                 return True
             else:
-                log_error("Ошибка при обновлении зависимостей через pip.")
-                return False
+                log_warn("Ошибка при обновлении зависимостей через pip.")
+        except subprocess.TimeoutExpired:
+            log_warn("Превышено время ожидания ответа сети в pip (таймаут 120с).")
         except Exception as e:
-            log_error(f"Не удалось обновить зависимости Python: {e}")
-            return False
+            log_warn(f"Не удалось обновить зависимости Python через pip: {e}")
+
+        # Check if existing venv packages are already functional
+        if self._verify_installed_packages(py_bin):
+            log_warn("Сетевое обновление пакетов не удалось, но существующие библиотеки в venv работоспособны.")
+            log_success("Используются текущие установленные зависимости.")
+            return True
+
+        log_error("Критическая ошибка: необходимые Python-пакеты не установлены и сеть недоступна.")
+        return False

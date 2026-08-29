@@ -64,9 +64,9 @@ class ServiceManager:
                 log_warn(f"Не удалось обновить unit-файл {self.systemd_target}: {e}")
 
         try:
-            run_command(["systemctl", "daemon-reload"], check=False)
-            run_command(["systemctl", "enable", self.SERVICE_NAME], check=False)
-            res = run_command(["systemctl", "restart", self.SERVICE_NAME], check=False)
+            run_command(["systemctl", "daemon-reload"], check=False, timeout=10.0)
+            run_command(["systemctl", "enable", self.SERVICE_NAME], check=False, timeout=10.0)
+            res = run_command(["systemctl", "restart", self.SERVICE_NAME], check=False, timeout=25.0)
             if res.returncode == 0:
                 log_success(f"Служба {self.SERVICE_NAME}.service успешно перезапущена!")
                 return True
