@@ -186,6 +186,37 @@ class SocksProxyRotator:
         os.makedirs(os.path.dirname(cfg_path), exist_ok=True)
 
         try:
+            try:
+                cfg_obj = json.loads(config_json)
+                if isinstance(cfg_obj, dict):
+                    dns_obj = cfg_obj.get("dns")
+                    if isinstance(dns_obj, dict):
+                        servers = dns_obj.get("servers")
+                        if isinstance(servers, list):
+                            for s in servers:
+                                if isinstance(s, dict):
+                                    s.pop("domain_resolver", None)
+                                    s.pop("address_resolver", None)
+                                    if "server" in s:
+                                        srv = s.pop("server")
+                                        stype = s.pop("type", "udp")
+                                        s.pop("server_port", None)
+                                        path = s.pop("path", "")
+                                        if "address" not in s:
+                                            if stype == "https":
+                                                s["address"] = f"https://{srv}{path or '/dns-query'}"
+                                            elif stype == "tls":
+                                                s["address"] = f"tls://{srv}"
+                                            elif stype == "tcp":
+                                                s["address"] = f"tcp://{srv}"
+                                            else:
+                                                s["address"] = str(srv)
+                                        else:
+                                            s.pop("type", None)
+                    config_json = json.dumps(cfg_obj, indent=2, ensure_ascii=False)
+            except Exception:
+                pass
+
             with open(cfg_path, "w", encoding="utf-8") as f:
                 f.write(config_json)
 

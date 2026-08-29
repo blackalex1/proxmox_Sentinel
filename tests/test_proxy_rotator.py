@@ -159,7 +159,7 @@ async def test_start_or_reload_singbox_tunnel_passthrough(tmp_path):
 
         ok = await rotator.start_or_reload_singbox_tunnel(raw_cfg_str, port=10818)
         assert ok is True
-        assert written_content == raw_cfg_str
+        assert json.loads(written_content) == raw_cfg
 
 
 @pytest.mark.asyncio

@@ -50,8 +50,8 @@ def main() -> int:
     log_banner("🔄 ОБНОВЛЕНИЕ SENTINEL CONTROLLER")
 
     try:
-        head_proc = subprocess.run(["git", "rev-parse", "--short", "HEAD"], cwd=project_root, capture_output=True, text=True)
-        recent_proc = subprocess.run(["git", "log", "-n", "3", "--pretty=format:  • \033[1;33m%h\033[0m %s \033[2m(%cr)\033[0m"], cwd=project_root, capture_output=True, text=True)
+        head_proc = subprocess.run(["git", "-c", "safe.directory=*", "rev-parse", "--short", "HEAD"], cwd=project_root, capture_output=True, text=True)
+        recent_proc = subprocess.run(["git", "-c", "safe.directory=*", "log", "-n", "3", "--pretty=format:  • \033[1;33m%h\033[0m %s \033[2m(%cr)\033[0m"], cwd=project_root, capture_output=True, text=True)
         if head_proc.returncode == 0 and head_proc.stdout.strip():
             print(f"📌 Текущая ревизия контроллера: {BOLD}{head_proc.stdout.strip()}{RESET}")
         if recent_proc.returncode == 0 and recent_proc.stdout.strip():
