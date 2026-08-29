@@ -115,8 +115,59 @@ async def is_local_bot_process(sport, dst_ip=None):
         logging.error("error_checking_local_bot_process", e)
     return False
 
+_host_local_ips_cache = set()
+_host_local_ips_last_check = 0.0
+
+def get_host_local_ips() -> set:
+    """Возвращает набор локальных IP-адресов текущего хоста."""
+    global _host_local_ips_cache, _host_local_ips_last_check
+    import time
+    if not _host_local_ips_cache or (time.time() - _host_local_ips_last_check >= 300):
+        ips = {"127.0.0.1", "::1", "localhost"}
+        try:
+            import socket
+            hostname = socket.gethostname()
+            for ip in socket.gethostbyname_ex(hostname)[2]:
+                ips.add(ip)
+        except Exception:
+            pass
+
+        try:
+            import subprocess
+            out = subprocess.check_output(["hostname", "-I"], timeout=1, stderr=subprocess.DEVNULL).decode('utf-8', errors='ignore')
+            for part in out.split():
+                if part.strip():
+                    ips.add(part.strip())
+        except Exception:
+            pass
+        _host_local_ips_cache = ips
+        _host_local_ips_last_check = time.time()
+
+    res = set(_host_local_ips_cache)
+    if getattr(settings, 'proxmox_host', None):
+        h = settings.proxmox_host
+        if '://' in h:
+            h = h.split('://', 1)[1]
+        if ':' in h:
+            h = h.split(':', 1)[0]
+        if h:
+            res.add(h.strip())
+    return res
+
+
 async def check_is_bot_or_admin(src_ip, src_port, dst_host=None, dst_port=None):
     """Проверяет, является ли отправитель доверенным (администратором или легитимным процессом бота на хосте)."""
+    # 0. Проверяем временное окно активного подбора прокси ботом (Failover / проверка нод)
+    try:
+        from modules.proxmox.monitor.state import is_proxy_selection_in_progress
+        if is_proxy_selection_in_progress():
+            host_ips = get_host_local_ips()
+            if src_ip in host_ips:
+                logging.debug("check_is_bot_or_admin_match_found_during_proxy_selection: src=%s, dst=%s:%s", src_ip, dst_host, dst_port)
+                return True
+    except Exception as e:
+        logging.error("check_is_bot_or_admin_error_checking_proxy_selection", e)
+
     # 1. Проверяем, является ли это активной проверкой прокси ботом
     if dst_host and dst_port:
         try:
@@ -150,7 +201,8 @@ async def check_is_bot_or_admin(src_ip, src_port, dst_host=None, dst_port=None):
 
     # 5. Превентивный обход для собственных SSH-подключений бота к роутеру или удаленным VPS!
     if dst_host and dst_port:
-        is_bot_source = (src_ip in ("127.0.0.1", "::1") or (settings.proxmox_host and src_ip in settings.proxmox_host))
+        host_ips = get_host_local_ips()
+        is_bot_source = (src_ip in host_ips or src_ip in ("127.0.0.1", "::1") or (settings.proxmox_host and src_ip in settings.proxmox_host))
         if is_bot_source:
             if dst_host == settings.router_ssh_host and dst_port == settings.router_ssh_port:
                 return True
@@ -166,3 +218,5 @@ async def check_is_bot_or_admin(src_ip, src_port, dst_host=None, dst_port=None):
         return True
             
     return False
+
+

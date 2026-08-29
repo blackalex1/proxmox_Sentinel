@@ -474,66 +474,37 @@ class SocksProxyRotator:
 
     async def refresh_disk_cache(self) -> int:
         """
-        Фоново скачивает свежие списки нод из репозиториев (Tier 1 и Tier 2),
-        проверяет их через высокоскоростное C-FFI ядро и сохраняет все живые
-        ноды в bot/config/cached_vpn_nodes.json.
-        Возвращает количество сохраненных рабочих нод.
+        Фоново скачивает свежие списки нод из репозиториев (Tier 1 и Tier 2)
+        и сохраняет сырые URI кандидатов в bot/config/cached_vpn_nodes.json.
+        Не производит массовое фоновое сканирование портов.
+        Возвращает количество загруженных нод.
         """
-        loop = asyncio.get_running_loop()
         sources = BLACK_LIST_SOURCES + WHITE_LIST_SOURCES
+        tasks = [self._fetch_single_source(url) for url in sources]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
         uris = []
-
-        for base_url in sources:
-            urls_to_try = [base_url]
-            if "raw.githubusercontent.com" in base_url:
-                urls_to_try.append(f"https://ghproxy.net/{base_url}")
-                urls_to_try.append(f"https://gh-proxy.com/{base_url}")
-
-            for url in urls_to_try:
-                try:
-                    req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'})
-                    content = await loop.run_in_executor(
-                        None,
-                        lambda u=url: urllib.request.urlopen(req, timeout=6).read().decode('utf-8', errors='ignore')
-                    )
-                    for line in content.splitlines():
-                        line = line.strip()
-                        if line and not line.startswith('#') and not line.startswith('//'):
-                            uris.append(line)
-                    break
-                except Exception:
-                    continue
+        for r in results:
+            if isinstance(r, list):
+                uris.extend(r)
 
         if not uris:
+            logger.info("Proxy cache auto-refresh: no raw nodes fetched from Git sources")
             return 0
 
         # Убираем дубликаты
         unique_uris = list(dict.fromkeys(uris))
-
-        # Пакетная проверка всех нод через высокопроизводительное Go ядро
-        results = await loop.run_in_executor(
-            None,
-            lambda: sentinel_core_bridge.check_proxies(unique_uris, target_host="api.telegram.org", timeout_ms=2500, concurrency=64)
-        )
-        working = [r for r in results if r.get("success")]
-        if not working:
-            logger.info("Proxy cache auto-refresh: checked %d nodes, none responsive", len(unique_uris))
-            return 0
-
-        working.sort(key=lambda x: x.get("latencyMs", 99999))
-        working_urls = [w.get("proxyUrl") for w in working if w.get("proxyUrl")]
-        self._save_working_nodes_to_disk(working_urls)
+        self._save_working_nodes_to_disk(unique_uris)
         logger.info(
-            "Proxy cache auto-refresh completed: %d / %d alive nodes saved to local disk cache (best: %.1f ms)",
-            len(working_urls), len(unique_uris), working[0].get("latencyMs", 0)
+            "Proxy cache refreshed from Git sources: loaded %d raw candidate nodes without background port scanning",
+            len(unique_uris)
         )
-        return len(working_urls)
+        return len(unique_uris)
 
     async def periodic_cache_refresh_loop(self, interval_seconds: int = 3600):
         """
-        Фоновый воркер периодического автообновления кэша рабочих VPN-нод.
+        Фоновый воркер периодического автообновления кэша сырых VPN-нод с Git.
         Запускается периодически (по умолчанию раз в 1 час), чтобы при сбое VPN
-        в локальном кэше всегда были свежие рабочие ноды.
+        в локальном файле кэша всегда были свежие списки кандидатов.
         """
         logger.info("Starting background proxy cache refresh loop (interval: %d seconds)...", interval_seconds)
         # Ждём 60 секунд после старта бота, чтобы дать спокойно запуститься всем остальным сервисам
@@ -553,35 +524,38 @@ class SocksProxyRotator:
         2. ТИР 2 (если ТИР 1 пуст): Белые списки (VLESS Reality).
         3. ТИР 3 (Крайний случай): Парсинг открытых SOCKS5 прокси.
         """
-        # ТИР 0: Быстрая проверка локального дискового кэша
-        cached = self._load_cached_nodes_from_disk()
-        if cached:
-            logger.info("[Failover] Checking %d local cached VPN nodes...", len(cached))
-            cached_res = await self._test_and_activate_nodes(cached, tier_name="Disk Cache")
-            if cached_res:
-                logger.info("[Failover] Successfully activated cached VPN node: %s", cached_res)
-                return cached_res
+        from modules.proxmox.monitor.state import proxy_selection_scope
+        async with proxy_selection_scope(duration=120.0):
+            # ТИР 0: Быстрая проверка локального дискового кэша
+            cached = self._load_cached_nodes_from_disk()
+            if cached:
+                logger.info("[Failover] Checking %d local cached VPN nodes...", len(cached))
+                cached_res = await self._test_and_activate_nodes(cached, tier_name="Disk Cache")
+                if cached_res:
+                    logger.info("[Failover] Successfully activated cached VPN node: %s", cached_res)
+                    return cached_res
 
-        # ТИР 1: Проверяем черные списки
-        logger.info("[Failover] Checking Tier 1: Black lists (Hysteria 2 / Trojan / VLESS Reality)...")
-        t1_proxy = await self._check_vpn_sources(BLACK_LIST_SOURCES, tier_name="Tier 1")
-        if t1_proxy:
-            return t1_proxy
+            # ТИР 1: Проверяем черные списки
+            logger.info("[Failover] Checking Tier 1: Black lists (Hysteria 2 / Trojan / VLESS Reality)...")
+            t1_proxy = await self._check_vpn_sources(BLACK_LIST_SOURCES, tier_name="Tier 1")
+            if t1_proxy:
+                return t1_proxy
 
-        # ТИР 2: Проверяем белые списки
-        logger.info("[Failover] Checking Tier 2: White lists (VLESS Reality)...")
-        t2_proxy = await self._check_vpn_sources(WHITE_LIST_SOURCES, tier_name="Tier 2")
-        if t2_proxy:
-            return t2_proxy
+            # ТИР 2: Проверяем белые списки
+            logger.info("[Failover] Checking Tier 2: White lists (VLESS Reality)...")
+            t2_proxy = await self._check_vpn_sources(WHITE_LIST_SOURCES, tier_name="Tier 2")
+            if t2_proxy:
+                return t2_proxy
 
-        # ТИР 3: Крайний случай - парсинг открытых SOCKS5
-        logger.info("[Failover] Checking Tier 3: Public SOCKS5 proxy lists...")
-        t3_proxy = await self._check_socks5_sources()
-        if t3_proxy:
-            return t3_proxy
+            # ТИР 3: Крайний случай - парсинг открытых SOCKS5
+            logger.info("[Failover] Checking Tier 3: Public SOCKS5 proxy lists...")
+            t3_proxy = await self._check_socks5_sources()
+            if t3_proxy:
+                return t3_proxy
 
-        logger.error("all_checked_free_proxies_non_working")
-        return None
+            logger.error("all_checked_free_proxies_non_working")
+            return None
+
 
 
 # Глобальный экземпляр ротатора
