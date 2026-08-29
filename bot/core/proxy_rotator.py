@@ -205,7 +205,7 @@ class SocksProxyRotator:
         except Exception as e:
             logger.debug("Failed to write cached VPN nodes: %s", e)
 
-    async def start_or_reload_singbox_tunnel(self, config_json: str, port: int = 10818) -> bool:
+    async def start_or_reload_singbox_tunnel(self, config_json: str, port: int = 10818, target_host: str = "objects.githubusercontent.com") -> bool:
         """Запускает клиентский процесс Sing-box с failover-группой."""
         self.stop_tunnel()
         _free_port(port)
@@ -276,12 +276,12 @@ class SocksProxyRotator:
                     self._singbox_proc = None
                     return False
 
-                ok, lat = await self.test_proxy_alive(f"socks5://127.0.0.1:{port}", timeout=2.5)
+                ok, lat = await self.test_proxy_alive(f"socks5://127.0.0.1:{port}", target_host=target_host, timeout=2.5)
                 if ok:
                     logger.info("Started local %s failover tunnel on port %d (latency: %.1f ms)", engine_type, port, lat)
                     return True
 
-            logger.warning("%s started on port %d but failed health probe.", engine_type, port)
+            logger.warning("%s started on port %d but failed health probe to %s.", engine_type, port, target_host)
             self.stop_tunnel()
             return False
         except Exception as e:
@@ -289,7 +289,7 @@ class SocksProxyRotator:
             self.stop_tunnel()
             return False
 
-    async def _test_and_activate_nodes(self, uris: List[str], tier_name: str = "Tier") -> Optional[str]:
+    async def _test_and_activate_nodes(self, uris: List[str], tier_name: str = "Tier", target_host: str = "objects.githubusercontent.com") -> Optional[str]:
         """Тестирует список нод через ядро и поднимает отказоустойчивую группу Sing-box."""
         if not uris:
             return None
@@ -346,7 +346,7 @@ class SocksProxyRotator:
                 working_profiles,
                 socks_port=10818,
                 http_port=10819,
-                health_url="https://www.gstatic.com/generate_204"
+                health_url=f"https://{target_host}" if target_host else "https://api.github.com"
             )
         except Exception as e:
             logger.error("Core build_failover_client_config exception: %s", e)
@@ -356,7 +356,7 @@ class SocksProxyRotator:
             return None
 
         logger.info("[Tunnel] Launching Sing-box client process and activating fastest route...")
-        ok = await self.start_or_reload_singbox_tunnel(client_cfg, port=10818)
+        ok = await self.start_or_reload_singbox_tunnel(client_cfg, port=10818, target_host=target_host)
         if ok:
             if working_uris:
                 self._save_working_nodes_to_disk(working_uris)
@@ -365,14 +365,8 @@ class SocksProxyRotator:
         return None
 
     async def _fetch_single_source(self, base_url: str) -> List[str]:
-        """Скачивает файл подписки через быстрые CDN-зеркала с таймаутом 3.5с."""
+        """Скачивает файл подписки напрямую с таймаутом 4с."""
         loop = asyncio.get_running_loop()
-        mirror_prefixes = [
-            "https://ghfast.top/",
-            "https://gh-proxy.com/",
-            "https://gh.ddlc.top/",
-            "",
-        ]
 
         def _fetch_url(target_url: str) -> str:
             import ssl
@@ -383,17 +377,15 @@ class SocksProxyRotator:
                 target_url,
                 headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) SentinelController/1.0"}
             )
-            with urllib.request.urlopen(req, timeout=3.0, context=ctx) as response:
+            with urllib.request.urlopen(req, timeout=4.0, context=ctx) as response:
                 return response.read().decode("utf-8", errors="ignore")
 
-        for prefix in mirror_prefixes:
-            full_url = f"{prefix}{base_url}" if prefix else base_url
-            try:
-                content = await loop.run_in_executor(None, _fetch_url, full_url)
-                if content and len(content) > 10:
-                    return [line.strip() for line in content.splitlines() if line.strip() and not line.startswith("#")]
-            except Exception:
-                continue
+        try:
+            content = await loop.run_in_executor(None, _fetch_url, base_url)
+            if content and len(content) > 10:
+                return [line.strip() for line in content.splitlines() if line.strip() and not line.startswith("#")]
+        except Exception:
+            pass
         return []
 
     async def _check_vpn_sources(self, sources: List[str], tier_name: str = "Tier") -> Optional[str]:
@@ -407,22 +399,27 @@ class SocksProxyRotator:
 
         return await self._test_and_activate_nodes(uris, tier_name=tier_name)
 
-    async def start_tunnel_for_node(self, node_uri: str, port: int = 10818) -> bool:
+    async def start_tunnel_for_node(self, node_uri: str, port: int = 10818, target_host: str = "objects.githubusercontent.com") -> bool:
         """Запускает туннель для конкретной VPN ссылки через ядро sentinel-core."""
         parsed = parse_vpn_uri(node_uri)
         if parsed:
             try:
-                cfg_json = sentinel_core_bridge.build_failover_client_config([parsed], socks_port=port, http_port=port+1, health_url="https://www.gstatic.com/generate_204")
+                cfg_json = sentinel_core_bridge.build_failover_client_config(
+                    [parsed],
+                    socks_port=port,
+                    http_port=port + 1,
+                    health_url=f"https://{target_host}" if target_host else "https://api.github.com",
+                )
                 if cfg_json:
-                    ok = await self.start_or_reload_singbox_tunnel(cfg_json, port=port)
+                    ok = await self.start_or_reload_singbox_tunnel(cfg_json, port=port, target_host=target_host)
                     if ok:
                         return True
             except Exception as e:
                 logger.error("start_tunnel_for_node error: %s", e)
         return False
 
-    async def test_proxy_alive(self, proxy_url: str, timeout: float = 3.0) -> Tuple[bool, float]:
-        """Проверяет доступность SOCKS5/HTTP прокси сокетным рукопожатием и сквозным соединением (E2E)."""
+    async def test_proxy_alive(self, proxy_url: str, target_host: str = "objects.githubusercontent.com", target_port: int = 443, timeout: float = 3.5) -> Tuple[bool, float]:
+        """Проверяет доступность SOCKS5/HTTP прокси сокетным рукопожатием и сквозным соединением (E2E) к target_host."""
         loop = asyncio.get_running_loop()
 
         def _socket_probe():
@@ -442,10 +439,10 @@ class SocksProxyRotator:
                         s.close()
                         return False, 999999.0
 
-                    # 2. SOCKS5 CONNECT to target host
-                    ip_bytes = socket.inet_aton("1.1.1.1")
-                    port_bytes = (443).to_bytes(2, byteorder="big")
-                    req = b"\x05\x01\x00\x01" + ip_bytes + port_bytes
+                    # 2. SOCKS5 CONNECT to target host (FQDN type 0x03)
+                    host_bytes = target_host.encode("utf-8")
+                    port_bytes = (target_port).to_bytes(2, byteorder="big")
+                    req = b"\x05\x01\x00\x03" + bytes([len(host_bytes)]) + host_bytes + port_bytes
                     s.sendall(req)
                     connect_resp = s.recv(10)
                     s.close()
@@ -459,7 +456,7 @@ class SocksProxyRotator:
                     return True, lat
                 else:
                     # HTTP proxy probe
-                    s.sendall(b"CONNECT 1.1.1.1:443 HTTP/1.1\r\nHost: 1.1.1.1:443\r\n\r\n")
+                    s.sendall(f"CONNECT {target_host}:{target_port} HTTP/1.1\r\nHost: {target_host}:{target_port}\r\n\r\n".encode("utf-8"))
                     resp = s.recv(12)
                     s.close()
                     lat = (time.monotonic() - start) * 1000.0
@@ -489,13 +486,13 @@ class SocksProxyRotator:
             self._save_working_nodes_to_disk(nodes)
         return len(nodes)
 
-    async def get_working_proxy(self) -> Optional[str]:
-        """4-Уровневый каскадный поиск рабочего соединения."""
+    async def get_working_proxy(self, target_host: str = "objects.githubusercontent.com") -> Optional[str]:
+        """4-Уровневый каскадный поиск рабочего соединения с валидацией целевого хоста."""
         # ТИР 0: Дисковый кэш
-        cached = self._load_cached_nodes_from_disk()
+        cached = self._load_cached_nodes_from_disk(exclude_env=True)
         if cached:
             logger.info("[Failover] Checking %d local cached VPN nodes...", len(cached))
-            cached_res = await self._test_and_activate_nodes(cached, tier_name="Disk Cache")
+            cached_res = await self._test_and_activate_nodes(cached, tier_name="Disk Cache", target_host=target_host)
             if cached_res:
                 logger.info("[Failover] Successfully activated cached VPN node: %s", cached_res)
                 return cached_res
@@ -530,6 +527,7 @@ if __name__ == "__main__":
     parser.add_argument("--find-and-start", action="store_true", help="Find best working VPN node and start local Sing-box tunnel")
     parser.add_argument("--node", type=str, default="", help="Specific VPN node URI (ss://, vless://, etc.) to start tunnel for")
     parser.add_argument("--port", type=int, default=10818, help="Local SOCKS5 port to bind (default 10818)")
+    parser.add_argument("--target-host", type=str, default="objects.githubusercontent.com", help="Target domain for E2E health probe")
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
@@ -537,7 +535,7 @@ if __name__ == "__main__":
     async def _cli_main():
         if args.node:
             print(f"[Rotator] Starting local tunnel for node on port {args.port}...", file=sys.stderr, flush=True)
-            ok = await proxy_rotator.start_tunnel_for_node(args.node, port=args.port)
+            ok = await proxy_rotator.start_tunnel_for_node(args.node, port=args.port, target_host=args.target_host)
             if ok:
                 print(f"PROXY_READY:socks5://127.0.0.1:{args.port}", flush=True)
                 while True:
@@ -546,8 +544,8 @@ if __name__ == "__main__":
                 print(f"[Rotator] Failed to start tunnel for node, falling back to rotation...", file=sys.stderr, flush=True)
 
         if args.find_and_start or args.node:
-            print(f"[Rotator] Searching for working VPN node on port {args.port}...", file=sys.stderr, flush=True)
-            proxy = await proxy_rotator.get_working_proxy()
+            print(f"[Rotator] Searching for working VPN node on port {args.port} (target: {args.target_host})...", file=sys.stderr, flush=True)
+            proxy = await proxy_rotator.get_working_proxy(target_host=args.target_host)
             if proxy:
                 print(f"PROXY_READY:{proxy}", flush=True)
                 while True:

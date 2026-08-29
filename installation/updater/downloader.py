@@ -1,4 +1,4 @@
-﻿"""Unified Network Downloader & Mirror Manager for Sentinel Updater."""
+﻿"""Direct GitHub Downloader for Sentinel Controller Updater."""
 
 from __future__ import annotations
 
@@ -10,31 +10,22 @@ import shutil
 import ssl
 import subprocess
 import urllib.request
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, Optional
 
 from .common import BOLD, RESET, log_error, log_info, log_success, log_warn
 
 
 USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 
-CDN_MIRRORS = [
-    "",  # Direct GitHub
-    "https://ghfast.top/",
-    "https://gh-proxy.com/",
-    "https://gh.ddlc.top/",
-    "https://ghproxy.net/",
-]
-
 
 class Downloader:
-    """Handles file downloads, HTTP API requests, CDN mirror failover, and SHA-256 validation."""
+    """Handles file downloads, HTTP API requests, and SHA-256 validation directly from GitHub."""
 
     def __init__(self, proxy_url: Optional[str] = None) -> None:
         self.proxy_url = proxy_url
-        self.direct_blocked = False
 
     def _build_opener(self) -> urllib.request.OpenerDirector:
-        """Builds an urllib opener configured with SSL ignore and optional proxy."""
+        """Builds an urllib opener configured with SSL and optional proxy."""
         ctx = ssl.create_default_context()
         ctx.check_hostname = False
         ctx.verify_mode = ssl.CERT_NONE
@@ -50,16 +41,16 @@ class Downloader:
         return urllib.request.build_opener(*handlers)
 
     def download_file(self, url: str, dest: str, timeout: float = 30.0) -> bool:
-        """Downloads a single URL directly to dest path using atomic temp file replacement."""
+        """Downloads a file directly from GitHub to destination path using atomic temp replacement."""
         os.makedirs(os.path.dirname(os.path.abspath(dest)), exist_ok=True)
         tmp_dest = f"{dest}.tmp.{os.getpid()}"
 
-        # 1. Try curl (fastest, robust Cloudflare & TLS 1.3 support)
+        # 1. Try curl (fast, reliable TLS and proxy support)
         if shutil.which("curl"):
             try:
                 curl_cmd = [
                     "curl", "-fsSL", "-k",
-                    "--connect-timeout", "4",
+                    "--connect-timeout", "6",
                     "--max-time", str(int(timeout)),
                     "-H", f"User-Agent: {USER_AGENT}",
                     "-o", tmp_dest,
@@ -116,13 +107,13 @@ class Downloader:
         return False
 
     def download_bytes(self, url: str, timeout: float = 30.0) -> Optional[bytes]:
-        """Downloads data from URL into memory."""
+        """Downloads data from GitHub URL into memory."""
         # 1. Try curl
         if shutil.which("curl"):
             try:
                 curl_cmd = [
                     "curl", "-fsSL", "-k",
-                    "--connect-timeout", "4",
+                    "--connect-timeout", "6",
                     "--max-time", str(int(timeout)),
                     "-H", f"User-Agent: {USER_AGENT}",
                 ]
@@ -157,100 +148,59 @@ class Downloader:
         return None
 
     def download_file_with_mirrors(self, direct_url: str, dest_path: str, filename_for_log: str = "") -> bool:
-        """Downloads a file with automated failover across direct GitHub and CDN mirrors."""
-        mirrors = list(CDN_MIRRORS)
-        if self.direct_blocked and mirrors[0] == "":
-            mirrors = mirrors[1:] + [""]
-
-        for prefix in mirrors:
-            full_url = f"{prefix}{direct_url}" if prefix else direct_url
-            source_label = "Официальный GitHub" if not prefix else f"CDN-зеркало ({prefix.split('/')[2]})"
-
-            log_name = filename_for_log or os.path.basename(dest_path)
-            log_info(f"  ➜ Попытка загрузки {log_name} из {source_label}...")
-
-            ok = self.download_file(full_url, dest_path, timeout=30.0)
-            if ok and os.path.isfile(dest_path) and os.path.getsize(dest_path) > 0:
-                return True
-
-            if not prefix:
-                self.direct_blocked = True
-
-        return False
+        """Downloads a file directly from GitHub releases."""
+        log_name = filename_for_log or os.path.basename(dest_path)
+        log_info(f"  ➜ Загрузка {log_name} с GitHub...")
+        return self.download_file(direct_url, dest_path, timeout=35.0)
 
     def download_bytes_with_mirrors(self, direct_url: str, label_for_log: str = "") -> Optional[bytes]:
-        """Downloads in-memory data with automated failover across CDN mirrors."""
-        mirrors = list(CDN_MIRRORS)
-        if self.direct_blocked and mirrors[0] == "":
-            mirrors = mirrors[1:] + [""]
+        """Downloads bytes directly from GitHub releases."""
+        if label_for_log:
+            log_info(f"  ➜ Загрузка {label_for_log} с GitHub...")
+        return self.download_bytes(direct_url, timeout=35.0)
 
-        for prefix in mirrors:
-            full_url = f"{prefix}{direct_url}" if prefix else direct_url
-            source_label = "Официальный GitHub" if not prefix else f"CDN-зеркало ({prefix.split('/')[2]})"
-
-            if label_for_log:
-                log_info(f"  ➜ Загрузка {label_for_log} из {source_label}...")
-
-            data = self.download_bytes(full_url, timeout=30.0)
-            if data and len(data) > 1024:
-                return data
-
-            if not prefix:
-                self.direct_blocked = True
-
-        return None
-
-    def fetch_github_api(self, endpoint_url: str, timeout: float = 6.0) -> Optional[Any]:
-        """Queries GitHub REST API endpoints with mirror failover and JSON decoding."""
-        api_urls = [
-            endpoint_url,
-            f"https://ghfast.top/{endpoint_url}",
-            f"https://gh-proxy.com/{endpoint_url}",
-            f"https://gh.ddlc.top/{endpoint_url}",
-            f"https://ghproxy.net/{endpoint_url}",
-        ]
-
-        for url in api_urls:
-            # 1. Try curl
-            if shutil.which("curl"):
-                try:
-                    curl_cmd = [
-                        "curl", "-fsSL", "-k",
-                        "--connect-timeout", "3",
-                        "--max-time", str(int(timeout)),
-                        "-H", f"User-Agent: {USER_AGENT}",
-                        "-H", "Accept: application/vnd.github.v3+json",
-                    ]
-                    if self.proxy_url:
-                        p = self.proxy_url
-                        if p.startswith("socks5://"):
-                            p = "socks5h://" + p[len("socks5://"):]
-                        curl_cmd.extend(["-x", p])
-                    else:
-                        curl_cmd.extend(["--noproxy", "*"])
-
-                    curl_cmd.append(url)
-                    res = subprocess.run(curl_cmd, capture_output=True, text=True, timeout=timeout + 2.0)
-                    if res.returncode == 0 and res.stdout.strip():
-                        return json.loads(res.stdout)
-                except Exception:
-                    pass
-
-            # 2. Try urllib fallback
+    def fetch_github_api(self, endpoint_url: str, timeout: float = 8.0) -> Optional[Any]:
+        """Queries GitHub REST API directly."""
+        # 1. Try curl
+        if shutil.which("curl"):
             try:
-                req = urllib.request.Request(
-                    url,
-                    headers={
-                        "User-Agent": USER_AGENT,
-                        "Accept": "application/vnd.github.v3+json",
-                    },
-                )
-                opener = self._build_opener()
-                with opener.open(req, timeout=timeout) as resp:
-                    if resp.status == 200:
-                        return json.loads(resp.read().decode("utf-8"))
+                curl_cmd = [
+                    "curl", "-fsSL", "-k",
+                    "--connect-timeout", "4",
+                    "--max-time", str(int(timeout)),
+                    "-H", f"User-Agent: {USER_AGENT}",
+                    "-H", "Accept: application/vnd.github.v3+json",
+                ]
+                if self.proxy_url:
+                    p = self.proxy_url
+                    if p.startswith("socks5://"):
+                        p = "socks5h://" + p[len("socks5://"):]
+                    curl_cmd.extend(["-x", p])
+                else:
+                    curl_cmd.extend(["--noproxy", "*"])
+
+                curl_cmd.append(endpoint_url)
+                res = subprocess.run(curl_cmd, capture_output=True, text=True, timeout=timeout + 2.0)
+                if res.returncode == 0 and res.stdout.strip():
+                    return json.loads(res.stdout)
             except Exception:
-                continue
+                pass
+
+        # 2. Try urllib fallback
+        try:
+            req = urllib.request.Request(
+                endpoint_url,
+                headers={
+                    "User-Agent": USER_AGENT,
+                    "Accept": "application/vnd.github.v3+json",
+                },
+            )
+            opener = self._build_opener()
+            with opener.open(req, timeout=timeout) as resp:
+                if resp.status == 200:
+                    return json.loads(resp.read().decode("utf-8"))
+        except Exception:
+            return None
 
         return None
 

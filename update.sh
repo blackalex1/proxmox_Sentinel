@@ -40,16 +40,10 @@ if [ -z "${BOOTSTRAPPED:-}" ] && [ -d .git ] && command -v git &>/dev/null; then
         fi
     done
 
-    # Fetch with strict timeout and fallback mirrors
-    for remote in origin "https://github.com/blackalex1/proxmox_Sentinel.git" "https://ghfast.top/https://github.com/blackalex1/proxmox_Sentinel.git" "https://gh.ddlc.top/https://github.com/blackalex1/proxmox_Sentinel.git" "https://gh-proxy.com/https://github.com/blackalex1/proxmox_Sentinel.git"; do
-        if timeout 12 git "${FETCH_ARGS[@]}" fetch "$remote" main 2>/dev/null; then
-            git reset --hard FETCH_HEAD 2>/dev/null || true
-            break
-        elif git "${FETCH_ARGS[@]}" fetch "$remote" main 2>/dev/null; then
-            git reset --hard FETCH_HEAD 2>/dev/null || true
-            break
-        fi
-    done
+    # Fetch directly from official GitHub repository
+    if timeout 15 git "${FETCH_ARGS[@]}" fetch origin main 2>/dev/null || git "${FETCH_ARGS[@]}" fetch origin main 2>/dev/null; then
+        git reset --hard FETCH_HEAD 2>/dev/null || true
+    fi
     NEW_HEAD=$(git rev-parse HEAD 2>/dev/null || true)
     if [ -n "$OLD_HEAD" ] && [ -n "$NEW_HEAD" ] && [ "$OLD_HEAD" != "$NEW_HEAD" ]; then
         echo -e "\033[0;32m[✓]\033[0m Скрипт обновления обновлен из Git (${OLD_HEAD:0:7} -> ${NEW_HEAD:0:7})."
