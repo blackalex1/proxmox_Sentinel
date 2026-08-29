@@ -37,6 +37,7 @@ class NetworkManager:
         self.no_proxy: bool = no_proxy
         self.auto_mode: bool = auto_mode
         self.use_rotator: bool = True if not (no_proxy or proxy_arg) else False
+        self.use_env_proxy: bool = False
         self.rotator_proc: Optional[subprocess.Popen] = None
         self.active_proxy_url: Optional[str] = None
 
@@ -61,8 +62,10 @@ class NetworkManager:
                                     vpn_prefixes = ("ss://", "vless://", "trojan://", "hysteria2://", "hy2://", "vmess://", "tuic://", "wireguard://", "wg://")
                                     if any(val.lower().startswith(pref) for pref in vpn_prefixes):
                                         self.configured_vpn_node = val
+                                        self.use_env_proxy = True
                                     elif re.match(r"^(http|https|socks4|socks5|socks5h)://", val, re.IGNORECASE):
                                         self.configured_proxy = val
+                                        self.use_env_proxy = True
                                     break
                 except Exception:
                     pass
@@ -70,63 +73,113 @@ class NetworkManager:
                 break
 
         # In non-interactive or auto mode, fallback to configured proxy if custom_proxy wasn't passed via CLI
-        if (not sys.stdin.isatty() or self.auto_mode) and not self.custom_proxy and not self.no_proxy and self.configured_proxy:
-            self.custom_proxy = self.configured_proxy
+        if (not sys.stdin.isatty() or self.auto_mode) and not self.custom_proxy and not self.no_proxy:
+            if self.configured_proxy:
+                self.custom_proxy = self.configured_proxy
+            elif self.configured_vpn_node:
+                self.use_rotator = True
 
     def show_menu(self) -> None:
         """Displays interactive network selection menu if interactive TTY."""
-        if not sys.stdin.isatty() or self.auto_mode or self.no_proxy or (self.custom_proxy and not self.configured_proxy):
+        if not sys.stdin.isatty() or self.auto_mode or self.no_proxy or (self.custom_proxy and not self.use_env_proxy):
             return
+
+        has_env = bool(self.configured_vpn_node or self.configured_proxy)
 
         log_banner("🌐 НАСТРОЙКА СЕТИ И ПРОКСИ ДЛЯ ОБНОВЛЕНИЯ КОНТРОЛЛЕРА")
         print("Выберите режим подключения к GitHub для загрузки релизов:")
-        if self.configured_vpn_node:
-            node_name = self.configured_vpn_node.split("#")[-1] if "#" in self.configured_vpn_node else self.configured_vpn_node[:30]
-            print(f"  1) {GREEN}🟢 Использовать настроенную VPN-ноду ({node_name}) с авто-ротацией{RESET} [Рекомендуется / По умолчанию]")
+
+        if has_env:
+            if self.configured_vpn_node:
+                node_name = self.configured_vpn_node.split("#")[-1] if "#" in self.configured_vpn_node else self.configured_vpn_node[:28]
+                proto = self.configured_vpn_node.split("://")[0]
+                print(f"  1) {GREEN}🟢 Прокси из .env: {BOLD}{node_name}{RESET} ({proto}){RESET} [Рекомендуется / По умолчанию]")
+            else:
+                print(f"  1) {GREEN}🟢 Прокси из .env: {BOLD}{self.configured_proxy}{RESET} [Рекомендуется / По умолчанию]")
+
+            print(f"  2) 🔄 Автоматический поиск рабочего VPN / Прокси (ротатор)")
+            print(f"  3) 🌐 Прямое соединение к GitHub (с авто-фолбэком на CDN-зеркала)")
+            print(f"  4) 🔌 Ввести другой адрес прокси вручную\n")
+
+            while True:
+                try:
+                    raw_choice = input("Выберите вариант [1-4] (по умолчанию 1): ")
+                except (EOFError, KeyboardInterrupt):
+                    print("")
+                    raw_choice = "1"
+
+                choice = re.sub(r"[^1-4]", "", raw_choice.strip()) or "1" if raw_choice.strip() == "" else re.sub(r"[^1-4]", "", raw_choice.strip())
+
+                if choice == "1":
+                    if self.configured_vpn_node:
+                        self.use_rotator = True
+                        self.no_proxy = False
+                    else:
+                        self.custom_proxy = self.configured_proxy
+                        self.use_rotator = False
+                        self.no_proxy = False
+                    break
+                elif choice == "2":
+                    self.configured_vpn_node = None
+                    self.use_rotator = True
+                    self.no_proxy = False
+                    break
+                elif choice == "3":
+                    self.use_rotator = False
+                    self.no_proxy = True
+                    break
+                elif choice == "4":
+                    self.use_rotator = False
+                    self.no_proxy = False
+                    while True:
+                        try:
+                            p_input = input("Введите адрес прокси (например socks5://127.0.0.1:10808): ").strip()
+                        except (EOFError, KeyboardInterrupt):
+                            print("")
+                            p_input = ""
+
+                        if re.match(r"^(http|https|socks4|socks5|socks5h)://", p_input, re.IGNORECASE):
+                            self.custom_proxy = p_input
+                            break
+                        print(f"{RED}Неверный формат URL прокси. Повторите ввод.{RESET}")
+                    break
         else:
             print(f"  1) {GREEN}🟢 Автоматический VPN / Прокси ротатор{RESET} [Рекомендуется / По умолчанию]")
-        print(f"  2) 🌐 Прямое соединение к GitHub (с авто-фолбэком на CDN-зеркала при блокировке)")
-        if self.configured_proxy:
-            print(f"  3) 🔌 Использовать прокси из .env ({self.configured_proxy}) [или ввести другой]\n")
-        else:
-            print(f"  3) 🔌 Использовать существующий HTTP / SOCKS5 прокси\n")
+            print(f"  2) 🌐 Прямое соединение к GitHub (с авто-фолбэком на CDN-зеркала)")
+            print(f"  3) 🔌 Ввести адрес HTTP / SOCKS5 прокси вручную\n")
 
-        while True:
-            try:
-                raw_choice = input(f"Выберите вариант [1-3] (по умолчанию 1): ")
-            except (EOFError, KeyboardInterrupt):
-                print("")
-                raw_choice = "1"
+            while True:
+                try:
+                    raw_choice = input("Выберите вариант [1-3] (по умолчанию 1): ")
+                except (EOFError, KeyboardInterrupt):
+                    print("")
+                    raw_choice = "1"
 
-            choice = re.sub(r"[^1-3]", "", raw_choice.strip()) or "1" if raw_choice.strip() == "" else re.sub(r"[^1-3]", "", raw_choice.strip())
+                choice = re.sub(r"[^1-3]", "", raw_choice.strip()) or "1" if raw_choice.strip() == "" else re.sub(r"[^1-3]", "", raw_choice.strip())
 
-            if choice == "1":
-                self.use_rotator = True
-                self.no_proxy = False
-                break
-            elif choice == "2":
-                self.use_rotator = False
-                self.no_proxy = True
-                break
-            elif choice == "3":
-                self.use_rotator = False
-                self.no_proxy = False
-                prompt_msg = f"Введите адрес прокси (по умолчанию {self.configured_proxy}): " if self.configured_proxy else "Введите адрес прокси (например socks5://127.0.0.1:10808): "
-                while True:
-                    try:
-                        p_input = input(prompt_msg).strip()
-                    except (EOFError, KeyboardInterrupt):
-                        print("")
-                        p_input = ""
+                if choice == "1":
+                    self.use_rotator = True
+                    self.no_proxy = False
+                    break
+                elif choice == "2":
+                    self.use_rotator = False
+                    self.no_proxy = True
+                    break
+                elif choice == "3":
+                    self.use_rotator = False
+                    self.no_proxy = False
+                    while True:
+                        try:
+                            p_input = input("Введите адрес прокси (например socks5://127.0.0.1:10808): ").strip()
+                        except (EOFError, KeyboardInterrupt):
+                            print("")
+                            p_input = ""
 
-                    if not p_input and self.configured_proxy:
-                        self.custom_proxy = self.configured_proxy
-                        break
-                    elif re.match(r"^(http|https|socks4|socks5|socks5h)://", p_input, re.IGNORECASE):
-                        self.custom_proxy = p_input
-                        break
-                    print(f"{RED}Неверный формат URL прокси. Повторите ввод.{RESET}")
-                break
+                        if re.match(r"^(http|https|socks4|socks5|socks5h)://", p_input, re.IGNORECASE):
+                            self.custom_proxy = p_input
+                            break
+                        print(f"{RED}Неверный формат URL прокси. Повторите ввод.{RESET}")
+                    break
 
     def setup_network(self) -> Optional[str]:
         """Activates chosen proxy mode or starts automated failover rotator."""
@@ -142,8 +195,13 @@ class NetworkManager:
         if not self.use_rotator:
             return None
 
-        # Start automated VPN Rotator
-        log_info("Запуск Sentinel Proxy Rotator для поиска рабочего VPN...")
+        # Start automated VPN Rotator / Node tunnel
+        if self.configured_vpn_node:
+            node_label = self.configured_vpn_node.split("#")[-1] if "#" in self.configured_vpn_node else self.configured_vpn_node[:30]
+            log_info(f"Запуск локального Sing-box туннеля для ноды {BOLD}{node_label}{RESET}...")
+        else:
+            log_info("Запуск Sentinel Proxy Rotator для поиска рабочего VPN...")
+
         self.cleanup()
 
         # Find python executable inside bot venv or host
@@ -194,7 +252,7 @@ class NetworkManager:
                     self.active_proxy_url = line_str.split("PROXY_READY:", 1)[1].strip()
                     log_success(f"VPN-туннель успешно поднят на {self.active_proxy_url}!")
                     return self.active_proxy_url
-                elif any(k in line_str for k in ("[INFO]", "[Failover]", "[singbox]", "Tier", "nodes alive", "Best:", "singbox")):
+                elif any(k in line_str for k in ("[INFO]", "[Failover]", "[singbox]", "[Rotator]", "[Tunnel]", "Tier", "nodes alive", "Best:", "singbox")):
                     print(f"    {line_str}", flush=True)
 
             time.sleep(0.05)
