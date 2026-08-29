@@ -28,3 +28,31 @@ active_proxy_checks = defaultdict(int)
 # Временный набор IP-адресов, на которых сейчас активно выполняется ansible-playbook
 active_ansible_targets = set()
 
+# Флаг и таймстемп активного окна подбора/тестирования прокси ботом
+is_proxy_selection_active = False
+proxy_selection_active_until = 0.0
+
+def is_proxy_selection_in_progress() -> bool:
+    """Возвращает True, если бот прямо сейчас выполняет процедуру подбора/проверки прокси."""
+    import time
+    return is_proxy_selection_active or time.time() < proxy_selection_active_until
+
+from contextlib import asynccontextmanager
+
+@asynccontextmanager
+async def proxy_selection_scope(duration: float = 60.0):
+    """
+    Асинхронный контекстный менеджер для установки временного окна игнорирования
+    сетевых проверок на время активного подбора прокси ботом.
+    """
+    global is_proxy_selection_active, proxy_selection_active_until
+    import time
+    is_proxy_selection_active = True
+    proxy_selection_active_until = time.time() + duration
+    try:
+        yield
+    finally:
+        is_proxy_selection_active = False
+        proxy_selection_active_until = 0.0
+
+

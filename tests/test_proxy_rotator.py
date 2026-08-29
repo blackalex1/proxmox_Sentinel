@@ -117,3 +117,38 @@ async def test_3tier_cascade_tier3_lazy_socks_fallback():
         assert proxy == "socks5://198.51.100.1:1080"
         assert mock_vpn.call_count == 2
         mock_socks.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_passive_refresh_disk_cache():
+    """
+    Проверяет, что refresh_disk_cache пассивно сохраняет списки с Git на диск
+    без вызова активного пакетного сканирования портов.
+    """
+    rotator = SocksProxyRotator()
+    sample_nodes = ["vless://uuid@host:443#sample1", "ss://YWVzLTEyOC1nY206cGFzcw@1.2.3.4:8388#sample2"]
+
+    with patch.object(rotator, '_fetch_single_source', AsyncMock(return_value=sample_nodes)), \
+         patch.object(rotator, '_save_working_nodes_to_disk') as mock_save:
+        count = await rotator.refresh_disk_cache()
+        assert count == 2
+        mock_save.assert_called_once_with(sample_nodes)
+
+
+@pytest.mark.asyncio
+async def test_proxy_selection_scope_and_router_bypass():
+    """
+    Проверяет, что proxy_selection_scope активирует временное окно игнорирования,
+    и check_is_bot_or_admin распознает трафик хоста как легитимный во время подбора.
+    """
+    from modules.proxmox.monitor.state import proxy_selection_scope, is_proxy_selection_in_progress
+    from modules.router.monitor.helpers import check_is_bot_or_admin
+
+    # До входа в scope
+    assert is_proxy_selection_in_progress() is False
+
+    async with proxy_selection_scope(duration=10.0):
+        assert is_proxy_selection_in_progress() is True
+        # Локальный хост во время подбора прокси признается легитимным
+        is_trusted = await check_is_bot_or_admin("127.0.0.1", 54321, "8.8.8.8", 443)
+        assert is_trusted is True

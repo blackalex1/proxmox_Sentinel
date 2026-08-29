@@ -77,8 +77,8 @@ async def handle_traffic_log_line(line):
             else:
                 # Проверяем, является ли это активной проверкой прокси ботом
                 try:
-                    from modules.proxmox.monitor.state import active_proxy_checks
-                    if active_proxy_checks.get((dst, dpt), 0) > 0:
+                    from modules.proxmox.monitor.state import active_proxy_checks, is_proxy_selection_in_progress
+                    if active_proxy_checks.get((dst, dpt), 0) > 0 or is_proxy_selection_in_progress():
                         is_bot = True
                         logging.debug("traffic_monitor_match_found_in_active_proxy_checks_for", dst, dpt)
                 except Exception as e:
@@ -110,9 +110,10 @@ async def handle_traffic_log_line(line):
 
         if is_bot:
             logging.debug("traffic_monitor_sobytie_opredeleno_kak_bot_recent_bot_ports", spt, list(recent_bot_ports))
-            risk_level, label, desc = ('INFO', '🟢 Служебный SSH Хоста (Бот)', 'Легитимный служебный трафик бота (ре сверка/conntrack/SSH)')
+            risk_level, label, desc = ('INFO', '🟢 Служебный трафик бота', 'Легитимный служебный трафик бота (подбор прокси/сверка/conntrack/SSH)')
         else:
             risk_level, label, desc = classify_connection(event)
+
             
         logging.debug("traffic_monitor_event_classified_risk_level_is_bot_label", spt, risk_level, is_bot, label)
         risk_emoji = "🟢" if risk_level == 'INFO' else "⚠️" if risk_level == 'WARNING' else "🚨"
