@@ -382,11 +382,11 @@ class CoreManager:
     def _download_with_fallback(self, base_url: str, dest_path: str, filename: str) -> bool:
         """Downloads a file with automatic failover to CDN proxy mirrors."""
         mirror_prefixes = [
+            "",  # Direct GitHub
             "https://ghfast.top/",
             "https://gh-proxy.com/",
             "https://gh.ddlc.top/",
             "https://ghproxy.net/",
-            "",  # Direct GitHub
         ]
 
         for prefix in mirror_prefixes:
