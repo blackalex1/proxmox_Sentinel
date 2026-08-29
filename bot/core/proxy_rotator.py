@@ -444,10 +444,23 @@ class SocksProxyRotator:
                     port_bytes = (target_port).to_bytes(2, byteorder="big")
                     req = b"\x05\x01\x00\x03" + bytes([len(host_bytes)]) + host_bytes + port_bytes
                     s.sendall(req)
-                    connect_resp = s.recv(10)
-                    if len(connect_resp) < 2 or connect_resp[1] != 0:
+
+                    # Read exactly 4 bytes of SOCKS5 reply header
+                    rep_hdr = s.recv(4)
+                    if len(rep_hdr) < 4 or rep_hdr[1] != 0:
                         s.close()
                         return False, 999999.0
+
+                    # Discard bound address and port according to address type (RFC 1928)
+                    atyp = rep_hdr[3]
+                    if atyp == 1:  # IPv4: 4 bytes IP + 2 bytes Port
+                        _ = s.recv(4 + 2)
+                    elif atyp == 3:  # FQDN: 1 byte len + N bytes + 2 bytes Port
+                        l_byte = s.recv(1)
+                        if l_byte:
+                            _ = s.recv(l_byte[0] + 2)
+                    elif atyp == 4:  # IPv6: 16 bytes IP + 2 bytes Port
+                        _ = s.recv(16 + 2)
 
                     # 3. Full TLS Handshake & HTTP probe to guarantee GitHub / Target domain connectivity
                     ctx = ssl.create_default_context()
@@ -486,7 +499,8 @@ class SocksProxyRotator:
                             return True, lat
                     s.close()
                     return False, 999999.0
-            except Exception:
+            except Exception as e:
+                logger.debug("test_proxy_alive error for %s (%s): %s", proxy_url, target_host, e)
                 return False, 999999.0
 
         return await loop.run_in_executor(None, _socket_probe)
