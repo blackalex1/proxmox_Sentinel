@@ -346,6 +346,44 @@ class CoreManager:
                 h.update(chunk)
         return h.hexdigest()
 
+    def _fetch_release_digests(self, tag: str) -> Dict[str, str]:
+        """Fetches native asset SHA-256 digests from GitHub release metadata."""
+        api_urls = [
+            f"https://api.github.com/repos/{self.REPO}/releases/tags/{tag}",
+            f"https://gh-proxy.com/https://api.github.com/repos/{self.REPO}/releases/tags/{tag}",
+            f"https://ghfast.top/https://api.github.com/repos/{self.REPO}/releases/tags/{tag}",
+            f"https://gh.ddlc.top/https://api.github.com/repos/{self.REPO}/releases/tags/{tag}",
+        ]
+        if tag == "latest":
+            api_urls = [f"https://api.github.com/repos/{self.REPO}/releases/latest"] + [f"{m}https://api.github.com/repos/{self.REPO}/releases/latest" for m in ["https://gh-proxy.com/", "https://ghfast.top/", "https://gh.ddlc.top/"]]
+
+        for url in api_urls:
+            try:
+                req = urllib.request.Request(
+                    url,
+                    headers={
+                        "User-Agent": "Sentinel-Controller-Updater/1.0",
+                        "Accept": "application/vnd.github.v3+json",
+                    },
+                )
+                opener = self._build_opener()
+                with opener.open(req, timeout=5.0) as resp:
+                    if resp.status == 200:
+                        data = json.loads(resp.read().decode("utf-8"))
+                        checksum_map: Dict[str, str] = {}
+                        for a in data.get("assets", []):
+                            name = a.get("name")
+                            digest = a.get("digest", "")
+                            if name and digest:
+                                if ":" in digest:
+                                    digest = digest.split(":", 1)[1]
+                                checksum_map[name] = digest
+                        if checksum_map:
+                            return checksum_map
+            except Exception:
+                continue
+        return {}
+
     def download_core(self, tag: str) -> bool:
         """Downloads sentinel-core binary, shared library, and C-header."""
         log_info(f"Загрузка компонентов Sentinel-Core версии {BOLD}{tag}{RESET}...")
@@ -353,21 +391,8 @@ class CoreManager:
         os_name, arch, lib_ext = self._get_platform_info()
         base_release_url = f"https://github.com/{self.REPO}/releases/download/{tag}"
 
-        # 1. Download checksums.txt
-        checksums_path = os.path.join(self.bin_dir, "checksums.txt")
-        checksums_url = f"{base_release_url}/checksums.txt"
-        has_checksums = self._download_with_fallback(checksums_url, checksums_path, "checksums.txt")
-
-        checksum_map: Dict[str, str] = {}
-        if has_checksums and os.path.isfile(checksums_path):
-            try:
-                with open(checksums_path, "r", encoding="utf-8") as f:
-                    for line in f:
-                        parts = line.strip().split()
-                        if len(parts) >= 2:
-                            checksum_map[os.path.basename(parts[1].lstrip("*"))] = parts[0]
-            except Exception:
-                pass
+        # Fetch native SHA-256 digests directly from GitHub Release metadata
+        checksum_map = self._fetch_release_digests(tag)
 
         exe_suffix = ".exe" if os_name == "windows" else ""
         bin_asset = f"sentinel-core-{os_name}-{arch}{exe_suffix}"
