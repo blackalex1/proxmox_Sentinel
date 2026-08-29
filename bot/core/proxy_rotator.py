@@ -186,11 +186,28 @@ class SocksProxyRotator:
         os.makedirs(os.path.dirname(cfg_path), exist_ok=True)
 
         try:
+            # Auto-adapt DNS server format for Sing-box engine compatibility
+            final_cfg = config_json
+            if engine_type == "singbox":
+                try:
+                    c_dict = json.loads(config_json)
+                    if "dns" in c_dict and "servers" in c_dict["dns"]:
+                        for s in c_dict["dns"]["servers"]:
+                            if isinstance(s, dict):
+                                # If server key exists without type, change to address for universal sing-box support
+                                if "server" in s and "address" not in s and "type" not in s:
+                                    s["address"] = s.pop("server")
+                    final_cfg = json.dumps(c_dict, indent=2, ensure_ascii=False)
+                except Exception:
+                    pass
+
             with open(cfg_path, "w", encoding="utf-8") as f:
-                f.write(config_json)
+                f.write(final_cfg)
 
             env = os.environ.copy()
             env["ENABLE_DEPRECATED_LEGACY_DNS_SERVERS"] = "true"
+            env["ENABLE_DEPRECATED_MISSING_DOMAIN_RESOLVER"] = "true"
+            env["ENABLE_DEPRECATED_SPECIAL_OUTBOUNDS"] = "true"
 
             extra_kwargs = {}
             if sys.platform != "win32":
