@@ -9,6 +9,7 @@ import platform
 import shutil
 import ssl
 import subprocess
+import sys
 import urllib.request
 from typing import Any, Dict, Optional
 
