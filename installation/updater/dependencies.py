@@ -77,8 +77,17 @@ class DependencyManager:
         if uv_bin:
             try:
                 log_info(f"Использование uv для быстрой установки зависимостей ({uv_bin})...")
+                # Avoid unnecessary --upgrade queries on direct connection to prevent PyPI timeouts
+                uv_cmd = [
+                    uv_bin, "pip", "install",
+                    "--python", self.venv_dir,
+                    "-r", self.requirements_path
+                ]
+                if not self.proxy_url:
+                    uv_cmd.extend(["--extra-index-url", "https://mirror.yandex.ru/pypi/simple"])
+
                 res = run_command(
-                    [uv_bin, "pip", "install", "--upgrade", "--python", self.venv_dir, "-r", self.requirements_path],
+                    uv_cmd,
                     cwd=self.project_dir,
                     env=env_dict,
                     check=False,
@@ -97,8 +106,11 @@ class DependencyManager:
         pip_cmd = [pip_bin] if os.path.isfile(pip_bin) else [py_bin, "-m", "pip"]
 
         try:
-            run_command(pip_cmd + ["install", "--upgrade", "pip"], cwd=self.project_dir, env=env_dict, check=False)
-            res = run_command(pip_cmd + ["install", "--upgrade", "-r", self.requirements_path], cwd=self.project_dir, env=env_dict, check=False)
+            pip_args = pip_cmd + ["install", "--default-timeout=15", "-r", self.requirements_path]
+            if not self.proxy_url:
+                pip_args.extend(["--extra-index-url", "https://mirror.yandex.ru/pypi/simple"])
+
+            res = run_command(pip_args, cwd=self.project_dir, env=env_dict, check=False)
             if res.returncode == 0:
                 log_success("Зависимости Python успешно обновлены через pip!")
                 return True
