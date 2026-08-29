@@ -634,7 +634,7 @@ def build_failover_client_config(
     profiles: List[Dict[str, Any]],
     socks_port: int = 10808,
     http_port: int = 10809,
-    health_url: str = "https://api.telegram.org"
+    health_url: str = "https://www.gstatic.com/generate_204"
 ) -> Optional[str]:
     """Generates complete Sing-box client JSON config with SOCKS5/HTTP inbound and multi-node failover."""
     if not profiles:

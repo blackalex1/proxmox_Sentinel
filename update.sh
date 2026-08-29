@@ -1,438 +1,77 @@
 #!/usr/bin/env bash
+# ==============================================================================
+# Sentinel Controller - Update Launcher
+# Delegates execution to modular Python updater (installation/updater/main.py)
+# ==============================================================================
 
-# Ensure script is run as root
-if [ "$EUID" -ne 0 ]; then
-  echo "[!] Please run as root (use sudo)"
-  exit 1
-fi
+set -e
 
-# Navigate to project root directory
+# Change to project root directory
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
-PROXY_URL=""
-NO_PROXY=0
-AUTO_MODE=0
-USE_AUTO_VPN=0
-TUNNEL_PID=""
+# Ensure script is run with root privileges
+if [ "$EUID" -ne 0 ]; then
+    echo -e "\033[0;31m[✗]\033[0m Для обновления контроллера требуются права root (sudo)."
+    echo -e "\033[1;33mПожалуйста, запустите:\033[0m sudo ./update.sh"
+    exit 1
+fi
 
-cleanup_tunnel() {
-    if [ -n "$TUNNEL_PID" ]; then
-        kill "$TUNNEL_PID" 2>/dev/null || true
-        wait "$TUNNEL_PID" 2>/dev/null || true
-    fi
-}
-trap cleanup_tunnel EXIT INT TERM
-
-# Ensure standard unencrypted DNS resolution (UDP 53) without DoH blocking
-ensure_unencrypted_dns() {
-    local RESOLVE_OK=0
-
-    # 1. Quick check if github.com resolves via system
-    if command -v getent &>/dev/null && getent hosts github.com &>/dev/null; then
-        RESOLVE_OK=1
-    elif command -v nslookup &>/dev/null && nslookup github.com &>/dev/null; then
-        RESOLVE_OK=1
-    elif command -v python3 &>/dev/null && python3 -c "import socket; socket.gethostbyname('github.com')" &>/dev/null; then
-        RESOLVE_OK=1
-    elif command -v curl &>/dev/null && curl -s --connect-timeout 2 -I https://github.com &>/dev/null; then
-        RESOLVE_OK=1
-    fi
-
-    if [ "$RESOLVE_OK" -eq 1 ]; then
-        return 0
-    fi
-
-    echo "[!] Стандартный системный DNS не смог отрезолвить github.com (возможно активен заблокированный DoH/DoT)."
-    echo "[+] Переключение на стандартный нешифрованный DNS (8.8.8.8, 1.1.1.1, 8.8.4.4, UDP:53)..."
-
-    if [ "$EUID" -eq 0 ] && [ -w "/etc/resolv.conf" ]; then
-        [ ! -f "/etc/resolv.conf.sentinel.bak" ] && cp -L /etc/resolv.conf /etc/resolv.conf.sentinel.bak 2>/dev/null || true
-
-        if command -v resolvectl &>/dev/null; then
-            resolvectl dnsovertls no 2>/dev/null || true
-            resolvectl dns 8.8.8.8 1.1.1.1 8.8.4.4 2>/dev/null || true
-        fi
-
-        cat << 'EOF' > /tmp/resolv.conf.sentinel
-nameserver 8.8.8.8
-nameserver 1.1.1.1
-nameserver 8.8.4.4
-options timeout:2 attempts:2
-EOF
-        if [ -f "/etc/resolv.conf" ]; then
-            grep -E '^(search|domain)' /etc/resolv.conf >> /tmp/resolv.conf.sentinel 2>/dev/null || true
-            cp -f /tmp/resolv.conf.sentinel /etc/resolv.conf 2>/dev/null || true
-            rm -f /tmp/resolv.conf.sentinel
-        fi
-
-        if command -v python3 &>/dev/null && python3 -c "import socket; socket.gethostbyname('github.com')" &>/dev/null; then
-            echo "[+] DNS успешно переведен на стандартный нешифрованный режим (UDP:53). github.com доступен!"
-            return 0
-        fi
-    fi
-
-    # Fallback: direct unencrypted DNS socket query via python
-    if command -v python3 &>/dev/null; then
-        local GH_IP
-        GH_IP=$(python3 -c "
-import socket
-def query_dns(domain, dns_server='8.8.8.8'):
-    packet = b'\xaa\xbb\x01\x00\x00\x01\x00\x00\x00\x00\x00\x00'
-    for part in domain.split('.'):
-        packet += bytes([len(part)]) + part.encode('ascii')
-    packet += b'\x00\x00\x01\x00\x01'
-    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    sock.settimeout(2.5)
-    sock.sendto(packet, (dns_server, 53))
-    data, _ = sock.recvfrom(1024)
-    sock.close()
-    if len(data) > 12:
-        for i in range(len(data) - 4):
-            if data[i:i+2] == b'\x00\x01' and data[i+2:i+4] == b'\x00\x01':
-                ip = socket.inet_ntoa(data[-4:])
-                return ip
-    return ''
-
-for s in ['8.8.8.8', '1.1.1.1', '8.8.4.4', '9.9.9.9']:
-    try:
-        ip = query_dns('github.com', s)
-        if ip and not ip.startswith('127.'):
-            print(ip)
+# 1. Fast bootstrap: auto-update git repository before launching updater
+if [ -z "${BOOTSTRAPPED:-}" ] && [ -d .git ] && command -v git &>/dev/null; then
+    OLD_HEAD=$(git rev-parse HEAD 2>/dev/null || true)
+    for remote in origin "https://github.com/blackalex1/proxmox_Sentinel.git" "https://gh-proxy.com/https://github.com/blackalex1/proxmox_Sentinel.git" "https://ghfast.top/https://github.com/blackalex1/proxmox_Sentinel.git"; do
+        if git fetch "$remote" main 2>/dev/null; then
+            git reset --hard FETCH_HEAD 2>/dev/null || true
             break
-    except Exception:
-        continue
-" 2>/dev/null || true)
-        if [ -n "$GH_IP" ] && [ "$EUID" -eq 0 ] && [ -w "/etc/hosts" ]; then
-            echo "[+] Разрешен IP github.com через прямой UDP DNS ($GH_IP). Запись в /etc/hosts..."
-            sed -i '/github.com/d' /etc/hosts 2>/dev/null || true
-            echo "$GH_IP github.com api.github.com raw.githubusercontent.com" >> /etc/hosts
-        fi
-    fi
-}
-
-# Parse arguments
-while [[ $# -gt 0 ]]; do
-    case "$1" in
-        --proxy|-p)
-            PROXY_URL="$2"
-            shift 2
-            ;;
-        --vpn|--auto-vpn)
-            USE_AUTO_VPN=1
-            shift
-            ;;
-        --no-proxy)
-            NO_PROXY=1
-            shift
-            ;;
-        --auto|-y)
-            AUTO_MODE=1
-            shift
-            ;;
-        --help|-h)
-            echo "Использование: sudo ./update.sh [опции]"
-            echo "Опции:"
-            echo "  --proxy <URL>     Использовать HTTP/HTTPS/SOCKS5 прокси или ссылку на VPN-ноду (ss://, vless://, trojan://)"
-            echo "  --vpn, --auto-vpn Автоматически найти рабочую VPN-ноду через Sentinel-Core и поднять локальный Sing-box туннель"
-            echo "  --no-proxy        Игнорировать прокси из .env и окружения"
-            echo "  --auto, -y        Автоматический режим обновления без интерактива"
-            exit 0
-            ;;
-        *)
-            shift
-            ;;
-    esac
-done
-
-# Check PROXY_URL from .env if not specified via CLI
-if [ -z "$PROXY_URL" ] && [ "$NO_PROXY" -eq 0 ]; then
-    for env_file in "bot/config/.env" ".env"; do
-        if [ -f "$env_file" ]; then
-            ENV_P=$(grep -E '^[[:space:]]*PROXY_URL=' "$env_file" 2>/dev/null | cut -d'=' -f2- | tr -d '"'\'' ')
-            if [ -n "$ENV_P" ]; then
-                PROXY_URL="$ENV_P"
-                break
-            fi
         fi
     done
-    if [ -z "$PROXY_URL" ]; then
-        PROXY_URL="${HTTPS_PROXY:-${HTTP_PROXY:-${ALL_PROXY:-${https_proxy:-${http_proxy:-${all_proxy:-}}}}}}"
+    NEW_HEAD=$(git rev-parse HEAD 2>/dev/null || true)
+    if [ -n "$OLD_HEAD" ] && [ -n "$NEW_HEAD" ] && [ "$OLD_HEAD" != "$NEW_HEAD" ]; then
+        echo -e "\033[0;32m[✓]\033[0m Скрипт обновления обновлен из Git (${OLD_HEAD:0:7} -> ${NEW_HEAD:0:7})."
+        echo -e "\n\033[1;36m============================================================\033[0m"
+        echo -e "\033[1;36m📝 СПИСОК ИЗМЕНЕНИЙ (CHANGELOG: ${OLD_HEAD:0:7}..${NEW_HEAD:0:7}):\033[0m"
+        echo -e "\033[1;36m============================================================\033[0m"
+        git log --color=always --pretty=format:"  %C(yellow)•%C(reset) %C(bold yellow)%h%C(reset) %C(bold white)%s%C(reset) %C(cyan)(%cr)%C(reset)" "${OLD_HEAD}..${NEW_HEAD}" 2>/dev/null || true
+        echo -e "\n\033[1;36m------------------------------------------------------------\033[0m"
+        echo -e "\033[1;33m📊 ИЗМЕНЕННЫЕ ФАЙЛЫ:\033[0m"
+        echo -e "\033[1;36m------------------------------------------------------------\033[0m"
+        git diff --stat --color=always "${OLD_HEAD}..${NEW_HEAD}" 2>/dev/null || true
+        echo -e "\033[1;36m============================================================\033[0m\n"
+        export BOOTSTRAPPED=1
+        exec bash "$0" "$@"
     fi
 fi
 
-# Function to check and launch VPN tunnel (specific node or auto-rotator)
-try_start_vpn_tunnel() {
-    local TARGET_NODE="$1"
-    local PY_EXEC="python3"
-    [ -x "bot/venv/bin/python3" ] && PY_EXEC="bot/venv/bin/python3"
-    [ -x "bot/venv/bin/python" ] && PY_EXEC="bot/venv/bin/python"
-
-    if ! command -v "$PY_EXEC" >/dev/null 2>&1; then
-        return 1
-    fi
-
-    # Check for sentinel-core binary or library
-    local CORE_FOUND=0
-    if [ -x "bot/bin/sentinel-core" ] || [ -f "bot/bin/libsentinel-core.so" ] || command -v sentinel-core >/dev/null 2>&1; then
-        CORE_FOUND=1
-    fi
-
-    # Check for proxy engine (Sing-box or Xray)
-    local ENGINE_FOUND=0
-    if [ -x "bot/bin/sing-box" ] || [ -x "bot/bin/xray" ] || command -v sing-box >/dev/null 2>&1 || command -v xray >/dev/null 2>&1; then
-        ENGINE_FOUND=1
-    fi
-
-    if [ "$CORE_FOUND" -eq 1 ] && [ "$ENGINE_FOUND" -eq 1 ]; then
-        fuser -k -9 10818/tcp 10819/tcp 2>/dev/null || true
-        local LOG_FILE="/tmp/proxy_rotator_update.$$"
-        if [ -n "$TARGET_NODE" ]; then
-            echo "[+] Запуск локального Sing-box туннеля для ноды ${TARGET_NODE%%:*}..."
-            PYTHONPATH="${SCRIPT_DIR}/bot" "$PY_EXEC" -m core.proxy_rotator --node "$TARGET_NODE" --port 10818 > "$LOG_FILE" 2>&1 &
-            TUNNEL_PID=$!
-        else
-            echo "[+] Обнаружены Sentinel-Core и Sing-box/Xray. Поиск рабочего VPN-соединения..."
-            PYTHONPATH="${SCRIPT_DIR}/bot" "$PY_EXEC" -m core.proxy_rotator --find-and-start --port 10818 > "$LOG_FILE" 2>&1 &
-            TUNNEL_PID=$!
-        fi
-        
-        # Wait up to 15 seconds for tunnel to become ready
-        local READY=0
-        for i in {1..30}; do
-            if grep -q "PROXY_READY" "$LOG_FILE" 2>/dev/null; then
-                READY=1
-                break
-            fi
-            if ! kill -0 "$TUNNEL_PID" 2>/dev/null; then
-                break
-            fi
-            sleep 0.5
-        done
-
-        if [ "$READY" -eq 1 ]; then
-            VALID_PROXY="socks5://127.0.0.1:10818"
-            export http_proxy="$VALID_PROXY"
-            export https_proxy="$VALID_PROXY"
-            export all_proxy="$VALID_PROXY"
-            export HTTP_PROXY="$VALID_PROXY"
-            export HTTPS_PROXY="$VALID_PROXY"
-            export ALL_PROXY="$VALID_PROXY"
-            GIT_PROXY_OPTS=("-c" "http.proxy=$VALID_PROXY" "-c" "https.proxy=$VALID_PROXY")
-            CORE_PROXY_ARG=("--proxy" "$VALID_PROXY")
-            echo "[+] VPN-туннель успешно поднят на $VALID_PROXY!"
-            rm -f "$LOG_FILE"
-            return 0
-        else
-            echo "[-] Не удалось запустить VPN-туннель."
-            if [ -s "$LOG_FILE" ]; then
-                echo "    Лог ротатора:"
-                sed 's/^/    /' "$LOG_FILE" | tail -n 10
-            fi
-            cleanup_tunnel
-            rm -f "$LOG_FILE"
-            return 1
-        fi
-    fi
-    return 1
-}
-
-VALID_PROXY=""
-GIT_PROXY_OPTS=()
-CORE_PROXY_ARG=()
-
-# 0. Ensure standard unencrypted DNS resolution
-ensure_unencrypted_dns
-
-# 1. Start VPN connection immediately if configured
-if [ -n "$PROXY_URL" ] && [ "$NO_PROXY" -eq 0 ]; then
-    if [[ "$PROXY_URL" =~ ^(http|https|socks4|socks5|socks5h):// ]]; then
-        VALID_PROXY="$PROXY_URL"
-        echo "[+] Настроено прямое подключение через HTTP/SOCKS прокси: $VALID_PROXY"
-        export http_proxy="$VALID_PROXY"
-        export https_proxy="$VALID_PROXY"
-        export all_proxy="$VALID_PROXY"
-        export HTTP_PROXY="$VALID_PROXY"
-        export HTTPS_PROXY="$VALID_PROXY"
-        export ALL_PROXY="$VALID_PROXY"
-        GIT_PROXY_OPTS=("-c" "http.proxy=$VALID_PROXY" "-c" "https.proxy=$VALID_PROXY")
-        CORE_PROXY_ARG=("--proxy" "$VALID_PROXY")
-    elif [[ "$PROXY_URL" =~ ^(ss|vless|vmess|trojan|hy2|hysteria2|tuic|wireguard|wg):// ]]; then
-        NODE_TAG="${PROXY_URL#*#}"
-        [ "$NODE_TAG" = "$PROXY_URL" ] && NODE_TAG="${PROXY_URL%%:*}"
-        echo "[+] В конфигурации задана VPN-нода: $NODE_TAG (${PROXY_URL%%:*}). Подключение..."
-        if ! try_start_vpn_tunnel "$PROXY_URL"; then
-            echo "[!] Прямое подключение к ноде $NODE_TAG не удалось. Поиск резервной рабочей ноды через ротатор..."
-            try_start_vpn_tunnel "" || true
-        fi
-    fi
-elif [ "$USE_AUTO_VPN" -eq 1 ]; then
-    try_start_vpn_tunnel "" || true
-fi
-
-echo "===================================================="
-echo "🔄 UPDATING PROXMOX LXC MONITOR BOT (CONTROLLER)"
-echo "===================================================="
-
-# 0. Stop running bot service so it doesn't intercept network/proxy tests during update
-if systemctl is-active --quiet proxmox-lxc-bot 2>/dev/null; then
-    echo "[+] Приостановка службы proxmox-lxc-bot на время обновления..."
-    systemctl stop proxmox-lxc-bot 2>/dev/null || true
-fi
-
-# 1. Pull latest updates from Git
-echo "[+] Pulling latest updates from Git..."
-OLD_HEAD=$(git rev-parse HEAD 2>/dev/null)
-
-pull_git() {
-    if [ -n "$VALID_PROXY" ]; then
-        git -c "http.proxy=$VALID_PROXY" -c "https.proxy=$VALID_PROXY" fetch origin main && git reset --hard origin/main
-    else
-        git fetch origin main && git reset --hard origin/main
-    fi
-}
-
-PULL_SUCCESS=0
-if pull_git; then
-    PULL_SUCCESS=1
+# 2. Detect Python 3 interpreter
+PYTHON_BIN=""
+if [ -f "bot/venv/bin/python" ]; then
+    PYTHON_BIN="bot/venv/bin/python"
 else
-    echo "[!] Прямое подключение к GitHub для git fetch не удалось. Пробуем через зеркало GitHub..."
-    if git fetch "https://ghproxy.net/https://github.com/blackalex1/proxmox_Sentinel.git" main 2>/dev/null && git reset --hard FETCH_HEAD; then
-        echo "[+] Git успешно обновлен через быстрое зеркало!"
-        PULL_SUCCESS=1
-    elif git fetch "https://gh-proxy.com/https://github.com/blackalex1/proxmox_Sentinel.git" main 2>/dev/null && git reset --hard FETCH_HEAD; then
-        echo "[+] Git успешно обновлен через зеркало gh-proxy.com!"
-        PULL_SUCCESS=1
-    fi
-fi
-
-# If Git pull still failed, try starting Auto VPN
-if [ "$PULL_SUCCESS" -eq 0 ] && [ -z "$TUNNEL_PID" ]; then
-    if try_start_vpn_tunnel ""; then
-        echo "[+] Повторная попытка git fetch через автоматический VPN-туннель..."
-        pull_git && PULL_SUCCESS=1
-    fi
-fi
-
-if [ "$PULL_SUCCESS" -eq 0 ] && [ -t 0 ] && [ "$AUTO_MODE" -eq 0 ]; then
-    echo ""
-    echo "===================================================="
-    echo "🌐 НАСТРОЙКА ПОДКЛЮЧЕНИЯ К GITHUB (PROXY / VPN)"
-    echo "===================================================="
-    echo "GitHub недоступен напрямую. Укажите локальный HTTP или SOCKS5 прокси."
-    read -p "Введите адрес прокси (например, http://127.0.0.1:7890 или socks5://127.0.0.1:1080) [Enter для пропуска]: " USER_PROXY
-    if [ -n "$USER_PROXY" ]; then
-        VALID_PROXY="$USER_PROXY"
-        export http_proxy="$VALID_PROXY"
-        export https_proxy="$VALID_PROXY"
-        export all_proxy="$VALID_PROXY"
-        export HTTP_PROXY="$VALID_PROXY"
-        export HTTPS_PROXY="$VALID_PROXY"
-        export ALL_PROXY="$VALID_PROXY"
-        CORE_PROXY_ARG=("--proxy" "$VALID_PROXY")
-        echo "[+] Повторная попытка git fetch через $VALID_PROXY..."
-        pull_git && PULL_SUCCESS=1
-    fi
-fi
-
-NEW_HEAD=$(git rev-parse HEAD 2>/dev/null)
-if [ "$OLD_HEAD" != "$NEW_HEAD" ] && [ -n "$OLD_HEAD" ]; then
-    echo "[+] Changes pulled:"
-    git diff --stat "$OLD_HEAD" "$NEW_HEAD"
-else
-    echo "[+] Already up to date."
-fi
-echo "[+] Git update step completed."
-
-# 2. Update Python virtual environment dependencies
-echo "[+] Updating Python dependencies..."
-if [ -f "bot/requirements.txt" ] && [ -d "bot/venv" ]; then
-    # Find uv binary
-    UV_BIN="uv"
-    if [ -f "${HOME}/.local/bin/uv" ]; then
-        UV_BIN="${HOME}/.local/bin/uv"
-    elif [ -f "/root/.local/bin/uv" ]; then
-        UV_BIN="/root/.local/bin/uv"
-    fi
-
-    if command -v "$UV_BIN" >/dev/null 2>&1; then
-        echo "[+] Found uv, updating dependencies using uv..."
-        if "$UV_BIN" pip install --upgrade --python bot/venv -r bot/requirements.txt; then
-            echo "[+] Python dependencies updated successfully using uv."
-        else
-            echo "[!] Failed to update Python dependencies with uv."
+    for candidate in python3 python /usr/bin/python3 /usr/local/bin/python3; do
+        if command -v "$candidate" &>/dev/null && "$candidate" -c "import sys; sys.exit(0 if sys.version_info >= (3, 8) else 1)" 2>/dev/null; then
+            PYTHON_BIN="$candidate"
+            break
         fi
-    else
-        echo "[+] uv not found, checking for pip in virtual environment..."
-        if [ -f "bot/venv/bin/pip" ]; then
-            if bot/venv/bin/pip install --upgrade pip && bot/venv/bin/pip install --upgrade -r bot/requirements.txt; then
-                echo "[+] Python dependencies updated successfully."
-            else
-                echo "[!] Failed to update Python dependencies."
-            fi
-        else
-            echo "[+] pip not found in venv/bin. Trying python3 -m pip..."
-            if bot/venv/bin/python3 -m pip install --upgrade pip 2>/dev/null || bot/venv/bin/python -m pip install --upgrade pip 2>/dev/null; then
-                if bot/venv/bin/python3 -m pip install --upgrade -r bot/requirements.txt || bot/venv/bin/python -m pip install --upgrade -r bot/requirements.txt; then
-                    echo "[+] Python dependencies updated successfully."
-                else
-                    echo "[!] Failed to update Python dependencies."
-                fi
-            else
-                echo "[!] Neither uv nor pip was found. Trying to bootstrap pip..."
-                if bot/venv/bin/python3 -m ensurepip 2>/dev/null || bot/venv/bin/python -m ensurepip 2>/dev/null; then
-                    if bot/venv/bin/pip install --upgrade pip && bot/venv/bin/pip install -r bot/requirements.txt; then
-                        echo "[+] Python dependencies updated successfully."
-                    else
-                        echo "[!] Failed to update Python dependencies."
-                    fi
-                else
-                    echo "[!] Failed to update Python dependencies. Please install uv or pip."
-                fi
-            fi
-        fi
-    fi
-else
-    echo "[!] Virtual environment or requirements.txt not found. Skipping pip install."
+    done
 fi
 
-# 3. Update sentinel-core security engine
-echo "[+] Checking and updating sentinel-core engine..."
-if [ -f "bot/fetch_core.sh" ]; then
-    chmod +x "bot/fetch_core.sh"
-    FETCH_ARGS=("${CORE_PROXY_ARG[@]}")
-    [ "$AUTO_MODE" -eq 1 ] && FETCH_ARGS+=("--auto")
-    bash "bot/fetch_core.sh" "${FETCH_ARGS[@]}"
-else
-    echo "[!] bot/fetch_core.sh not found. Skipping core update."
+if [ -z "$PYTHON_BIN" ]; then
+    echo -e "\033[0;31m[✗]\033[0m Python 3.8+ не найден на системе."
+    echo -e "Пожалуйста, установите Python 3: apt-get update && apt-get install -y python3 python3-venv python3-pip"
+    exit 1
 fi
 
-# 3.5 Update proxy engines (Sing-box / Xray-core)
-echo "[+] Checking and updating proxy engines (Sing-box / Xray-core)..."
-if [ -f "bot/fetch_proxy_core.sh" ]; then
-    chmod +x "bot/fetch_proxy_core.sh"
-    FETCH_PROXY_ARGS=("${CORE_PROXY_ARG[@]}")
-    [ "$AUTO_MODE" -eq 1 ] && FETCH_PROXY_ARGS+=("--auto")
-    bash "bot/fetch_proxy_core.sh" "${FETCH_PROXY_ARGS[@]}"
+# 3. Ensure installation/updater package is available
+if [ ! -f "installation/updater/main.py" ]; then
+    echo -e "\033[0;31m[✗]\033[0m Модуль installation/updater/main.py не найден."
+    exit 1
 fi
 
-# 4. Restart proxmox-lxc-bot service
-echo "[+] Restarting proxmox-lxc-bot system service..."
-if systemctl is-active --quiet proxmox-lxc-bot; then
-    systemctl restart proxmox-lxc-bot
-    echo "[+] proxmox-lxc-bot service restarted successfully!"
-else
-    if [ -f "/etc/systemd/system/proxmox-lxc-bot.service" ]; then
-        systemctl daemon-reload
-        systemctl enable proxmox-lxc-bot
-        systemctl start proxmox-lxc-bot
-        echo "[+] proxmox-lxc-bot service enabled and started!"
-    else
-        echo "[!] proxmox-lxc-bot service is not installed on this host."
-    fi
+# 4. Launch modern modular updater
+BOOTSTRAP_FLAG=""
+if [ -n "${BOOTSTRAPPED:-}" ]; then
+    BOOTSTRAP_FLAG="--bootstrapped"
 fi
 
-echo "===================================================="
-echo "[+] Update process complete! Showing logs for proxmox-lxc-bot (Ctrl+C to exit)..."
-echo "===================================================="
-journalctl -u proxmox-lxc-bot -f -n 20
+exec "$PYTHON_BIN" -m installation.updater.main $BOOTSTRAP_FLAG "$@"

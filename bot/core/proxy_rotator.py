@@ -176,6 +176,13 @@ class SocksProxyRotator:
                     pass
             self._singbox_proc = None
 
+        try:
+            if sys.platform != "win32":
+                subprocess.run(["pkill", "-9", "-f", "singbox_failover.json"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                subprocess.run(["pkill", "-9", "-f", "xray_failover.json"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except Exception:
+            pass
+
         _free_port(10818)
         _free_port(10819)
 
@@ -205,22 +212,48 @@ class SocksProxyRotator:
             if sys.platform != "win32":
                 extra_kwargs["preexec_fn"] = os.setsid
 
+            log_path = os.path.join(_bot_root, "bin", f"{engine_type}_rotator.log")
+            os.makedirs(os.path.dirname(log_path), exist_ok=True)
+            log_file = open(log_path, "w", encoding="utf-8", errors="ignore")
+
             self._singbox_proc = subprocess.Popen(
                 [engine_bin, "run", "-c", cfg_path],
                 stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
                 text=True,
                 encoding="utf-8",
+                errors="ignore",
+                bufsize=1,
                 env=env,
                 **extra_kwargs
             )
             self._current_engine = engine_type
 
-            for _ in range(12):
-                await asyncio.sleep(0.5)
+            # Background thread to stream and log Sing-box engine lines live in real time
+            import threading
+            def _stream_logs():
+                try:
+                    for line in iter(self._singbox_proc.stdout.readline, ''):
+                        clean_line = line.strip()
+                        if clean_line:
+                            log_file.write(clean_line + "\n")
+                            log_file.flush()
+                            logger.info("    [%s] %s", engine_type, clean_line)
+                except Exception:
+                    pass
+                finally:
+                    try:
+                        log_file.close()
+                    except Exception:
+                        pass
+
+            log_thread = threading.Thread(target=_stream_logs, daemon=True)
+            log_thread.start()
+
+            for _ in range(16):
+                await asyncio.sleep(0.6)
                 if self._singbox_proc.poll() is not None:
-                    _, stderr = self._singbox_proc.communicate()
-                    logger.warning("%s process terminated unexpectedly on startup: %s", engine_type, stderr)
+                    logger.warning("%s process terminated with exit code %d (see %s)", engine_type, self._singbox_proc.returncode, log_path)
                     self._singbox_proc = None
                     return False
 
