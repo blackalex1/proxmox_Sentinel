@@ -77,16 +77,13 @@ class CoreManager:
 
         if os.path.isfile(so_path):
             try:
-                import ctypes
-                lib = ctypes.CDLL(so_path)
-                if hasattr(lib, "SentinelGetEngineVersion"):
-                    lib.SentinelGetEngineVersion.restype = ctypes.c_char_p
-                    ver_raw = lib.SentinelGetEngineVersion()
-                    if ver_raw:
-                        v_str = ver_raw.decode("utf-8").strip()
-                        if not v_str.startswith("v") and re.match(r"^\d+\.\d+", v_str):
-                            v_str = "v" + v_str
-                        return True, v_str
+                ffi_cmd = [
+                    sys.executable, "-c",
+                    f'import ctypes, re; lib = ctypes.CDLL("{so_path}"); lib.SentinelGetEngineVersion.restype = ctypes.c_char_p; v = lib.SentinelGetEngineVersion().decode("utf-8").strip(); print("v" + v if re.match(r"^\\d+\\.\\d+", v) else v)'
+                ]
+                v_out = subprocess.check_output(ffi_cmd, stderr=subprocess.DEVNULL, timeout=2).decode().strip()
+                if v_out:
+                    return True, v_out
             except Exception:
                 pass
             return True, "Установлена (.so найдена)"
@@ -286,7 +283,8 @@ class CoreManager:
         return os_name, arch, ext
 
     def _download_file(self, url: str, dest: str) -> bool:
-        """Downloads a single file from URL to destination path."""
+        """Downloads a single file from URL to destination path using atomic temp replacement."""
+        tmp_dest = f"{dest}.tmp.{os.getpid()}"
         try:
             req = urllib.request.Request(
                 url,
@@ -295,11 +293,21 @@ class CoreManager:
             opener = self._build_opener()
             with opener.open(req, timeout=30.0) as resp:
                 if resp.status == 200:
-                    with open(dest, "wb") as f:
+                    with open(tmp_dest, "wb") as f:
                         shutil.copyfileobj(resp, f)
-                    return True
+                    if os.path.isfile(tmp_dest) and os.path.getsize(tmp_dest) > 0:
+                        if os.name != "nt":
+                            os.chmod(tmp_dest, 0o755)
+                        os.replace(tmp_dest, dest)
+                        return True
         except Exception:
             return False
+        finally:
+            if os.path.isfile(tmp_dest):
+                try:
+                    os.remove(tmp_dest)
+                except Exception:
+                    pass
         return False
 
     def _download_with_fallback(self, base_url: str, dest_path: str, filename: str) -> bool:
