@@ -45,7 +45,15 @@ class Translator:
         return val
 
 # Instantiate global translator based on settings
-translator = Translator(settings.bot_language)
+translator = Translator(getattr(settings, "bot_language", "ru"))
+
+def set_current_locale(lang: str):
+    global translator
+    translator = Translator(lang)
+
+def get_current_locale() -> str:
+    return translator.lang
 
 def _(namespace: str, key: str, default: str = None, **kwargs) -> str:
     return translator.get(namespace, key, default, **kwargs)
+

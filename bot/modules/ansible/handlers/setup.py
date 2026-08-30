@@ -75,24 +75,27 @@ async def check_host_ansible_status(pub_key_content: str) -> bool:
         logging.error(f"Error checking ansible status on Proxmox Host: {e}")
         return False
 
-@router.callback_query(F.data == "ansible_setup_env")
-async def process_ansible_setup_env(callback: CallbackQuery):
-    # 1. Отвечаем на callback и показываем индикатор загрузки
+from core.messages import get_ansible_setup_loading_text, get_ansible_setup_menu_text
+
+@router.callback_query(F.data == "ansible_setup_menu")
+async def process_ansible_setup_menu(callback: CallbackQuery):
+    """
+    Shows Ansible setup menu and scans PVE host, LXC, and VPS.
+    """
     await callback.answer("Проверяю статус хостов...")
     
     status_msg = callback.message
+    loading_text = get_ansible_setup_loading_text()
     try:
         await callback.message.edit_text(
-            "🔍 <b>Настройка окружения Ansible</b>\n\n"
-            "⌛ <i>Опрашиваю состояние LXC контейнеров и удаленных серверов, пожалуйста, подождите...</i>",
+            loading_text,
             parse_mode="HTML"
         )
     except TelegramBadRequest as e:
         if "there is no text in the message to edit" in str(e):
             await callback.message.delete()
             status_msg = await callback.message.answer(
-                "🔍 <b>Настройка окружения Ansible</b>\n\n"
-                "⌛ <i>Опрашиваю состояние LXC контейнеров и удаленных серверов, пожалуйста, подождите...</i>",
+                loading_text,
                 parse_mode="HTML"
             )
         else:
@@ -189,18 +192,10 @@ async def process_ansible_setup_env(callback: CallbackQuery):
     else:
         status_text += "<b>Удаленные VPS серверы:</b>\n<i>Нет настроенных VPS серверов</i>\n\n"
         
+    menu_text = get_ansible_setup_menu_text(status_text)
     await status_msg.edit_text(
-        f"🔑 <b>Настройка окружения Ansible</b>\n\n"
-        f"Я могу автоматически создать пользователя <code>ansible</code> с беспарольным доступом <code>sudo</code> "
-        f"и установить сгенерированный публичный SSH-ключ:\n"
-        f"• На самом <b>Хосте Proxmox VE</b>.\n"
-        f"• Во все <b>активные LXC контейнеры</b> на хосте Proxmox.\n"
-        f"• На все <b>удаленные VPS сервера</b>, добавленные в конфигурацию.\n\n"
-        f"📋 <b>Текущий статус готовности хостов:</b>\n"
-        f"{status_text}"
-        f"<i>🟢 — настроен для работы с Ansible\n"
-        f"🔴 — не настроен (или недоступен)</i>\n\n"
-        f"Выберите область настройки:",
+        menu_text,
         parse_mode="HTML",
         reply_markup=get_ansible_setup_keyboard()
     )
+

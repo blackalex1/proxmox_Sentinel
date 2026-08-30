@@ -59,23 +59,28 @@ async def setup_ansible_user_in_lxc(vmid: int, pub_key_content: str) -> bool:
         logging.error("error_configuring_user_ansible_in_lxc", vmid, e)
         return False
 
+from core.messages import (
+    get_ansible_setup_lxc_start_text,
+    get_ansible_setup_success_text,
+    get_ansible_setup_failed_text,
+)
+
 @router.callback_query(F.data == "ansible_setup_lxc")
 async def process_ansible_setup_lxc_handler(callback: CallbackQuery):
-    await callback.message.edit_text("⏳ Начинаю настройку во всех активных LXC контейнерах. Это может занять несколько секунд...")
+    await callback.message.edit_text(get_ansible_setup_lxc_start_text(), parse_mode="HTML")
     
     pub_key_path = os.path.join(ANSIBLE_PLAYBOOKS_DIR, 'id_ed25519_ansible.pub')
     if not os.path.exists(pub_key_path):
-        await callback.message.edit_text(
-            "❌ Ошибка: Публичный ключ не найден. Пожалуйста, перезапустите бота, чтобы он сгенерировал ключи.",
-            reply_markup=get_ansible_main_keyboard()
-        )
+        err_msg = get_ansible_setup_failed_text("LXC", "Public key not found")
+        await callback.message.edit_text(err_msg, parse_mode="HTML", reply_markup=get_ansible_main_keyboard())
         return
         
     try:
         with open(pub_key_path, 'r', encoding='utf-8') as f:
             pub_key_content = f.read().strip()
     except Exception as e:
-        await callback.message.edit_text(f"❌ Ошибка чтения публичного ключа: {e}", reply_markup=get_ansible_main_keyboard())
+        err_msg = get_ansible_setup_failed_text("LXC", str(e))
+        await callback.message.edit_text(err_msg, parse_mode="HTML", reply_markup=get_ansible_main_keyboard())
         return
 
     from modules.proxmox.api import proxmox
@@ -83,7 +88,8 @@ async def process_ansible_setup_lxc_handler(callback: CallbackQuery):
     failed_ids = []
     
     if not proxmox.proxmox:
-        await callback.message.edit_text("❌ Ошибка: Подключение к Proxmox VE не настроено.", reply_markup=get_ansible_main_keyboard())
+        err_msg = get_ansible_setup_failed_text("LXC", "Proxmox connection not configured")
+        await callback.message.edit_text(err_msg, parse_mode="HTML", reply_markup=get_ansible_main_keyboard())
         return
 
     try:
@@ -93,7 +99,6 @@ async def process_ansible_setup_lxc_handler(callback: CallbackQuery):
         async def run_setup_for_lxc(res):
             if res.get('type') == 'lxc' and res.get('status') == 'running':
                 vmid = res.get('vmid')
-                # Вызываем наш хелпер настройки
                 ok = await setup_ansible_user_in_lxc(vmid, pub_key_content)
                 if ok:
                     success_ids.append(vmid)
@@ -107,17 +112,15 @@ async def process_ansible_setup_lxc_handler(callback: CallbackQuery):
         if tasks:
             await asyncio.gather(*tasks)
             
-        success_str = ", ".join(map(str, sorted(success_ids))) if success_ids else "нет"
-        failed_str = ", ".join(map(str, sorted(failed_ids))) if failed_ids else "нет"
-        
+        success_str = ", ".join(map(str, sorted(success_ids))) if success_ids else "none"
+        succ_msg = get_ansible_setup_success_text(f"LXC ({success_str})")
         await callback.message.edit_text(
-            f"✅ <b>Настройка LXC завершена!</b>\n\n"
-            f"🟢 <b>Успешно настроены:</b> <code>{success_str}</code>\n"
-            f"🔴 <b>Ошибки настройки:</b> <code>{failed_str}</code>\n\n"
-            f"<i>Пользователь ansible получил беспарольный доступ sudo и публичный SSH-ключ.</i>",
+            succ_msg,
             parse_mode="HTML",
             reply_markup=get_ansible_main_keyboard()
         )
     except Exception as e:
         logging.error(f"Ansible LXC setup error: {e}")
-        await callback.message.edit_text(f"❌ Системная ошибка при настройке LXC: {e}", reply_markup=get_ansible_main_keyboard())
+        err_msg = get_ansible_setup_failed_text("LXC", str(e))
+        await callback.message.edit_text(err_msg, parse_mode="HTML", reply_markup=get_ansible_main_keyboard())
+

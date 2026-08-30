@@ -18,28 +18,28 @@ def get_node_online_alert(node_name):
 
 def get_system_status_table(pve_nodes=None, pve_error=None, pve_configured=True, services=None):
     rows = []
-    rows.append('<table border="1" style="border-collapse: collapse; width: 100%;">')
-    rows.append('  <tr style="background-color: #1e1e2e; color: #ffffff;">')
-    rows.append(f'    <th colspan="2" style="padding: 8px; text-align: center;"><b>{_("nodes", "status_audit_title")}</b></th>')
+    rows.append('<table bordered striped compact>')
+    rows.append('  <tr>')
+    rows.append(f'    <th colspan="2" align="center"><b>{_("nodes", "status_audit_title")}</b></th>')
     rows.append('  </tr>')
     
     # 1. Hypervisor section
-    rows.append('  <tr style="background-color: #2b2b36; color: #ffffff;">')
-    rows.append(f'    <td colspan="2" style="padding: 6px;"><b>{_("nodes", "hypervisor_header")}</b></td>')
+    rows.append('  <tr>')
+    rows.append(f'    <th colspan="2" align="left"><b>{_("nodes", "hypervisor_header")}</b></th>')
     rows.append('  </tr>')
     
     if not pve_configured:
         rows.append('  <tr>')
-        rows.append(f'    <td colspan="2" style="padding: 8px;">{_("nodes", "pve_not_configured")}</td>')
+        rows.append(f'    <td colspan="2" align="left">{_("nodes", "pve_not_configured")}</td>')
         rows.append('  </tr>')
     elif pve_error:
         escaped_err = html.escape(str(pve_error))
         rows.append('  <tr>')
-        rows.append(f'    <td colspan="2" style="padding: 8px; color: #f38ba8;">{_("nodes", "pve_error", error=escaped_err)}</td>')
+        rows.append(f'    <td colspan="2" align="left">{_("nodes", "pve_error", error=escaped_err)}</td>')
         rows.append('  </tr>')
     elif not pve_nodes:
         rows.append('  <tr>')
-        rows.append(f'    <td colspan="2" style="padding: 8px; color: #f38ba8;">{_("nodes", "pve_nodes_not_found")}</td>')
+        rows.append(f'    <td colspan="2" align="left">{_("nodes", "pve_nodes_not_found")}</td>')
         rows.append('  </tr>')
     else:
         for node in pve_nodes:
@@ -53,13 +53,13 @@ def get_system_status_table(pve_nodes=None, pve_error=None, pve_configured=True,
             else:
                 detail = _("nodes", "pve_offline_detail")
             rows.append('  <tr>')
-            rows.append(f'    <td style="padding: 8px; width: 35%;"><code>{html.escape(name)}</code></td>')
-            rows.append(f'    <td style="padding: 8px;">{detail}</td>')
+            rows.append(f'    <td align="left"><code>{html.escape(name)}</code></td>')
+            rows.append(f'    <td align="left">{detail}</td>')
             rows.append('  </tr>')
             
     # 2. Security Services section
-    rows.append('  <tr style="background-color: #2b2b36; color: #ffffff;">')
-    rows.append(f'    <td colspan="2" style="padding: 6px;"><b>{_("nodes", "security_services_header")}</b></td>')
+    rows.append('  <tr>')
+    rows.append(f'    <th colspan="2" align="left"><b>{_("nodes", "security_services_header")}</b></th>')
     rows.append('  </tr>')
     
     if not services:
@@ -69,24 +69,24 @@ def get_system_status_table(pve_nodes=None, pve_error=None, pve_configured=True,
     resource_running = services.get("resource_monitor")
     resource_status = _("nodes", "service_active") if resource_running else _("nodes", "service_stopped")
     rows.append('  <tr>')
-    rows.append('    <td style="padding: 8px; width: 35%;"><b>LXC Resource Monitor</b></td>')
-    rows.append(f'    <td style="padding: 8px;">{resource_status}</td>')
+    rows.append('    <td align="left"><b>LXC Resource Monitor</b></td>')
+    rows.append(f'    <td align="left">{resource_status}</td>')
     rows.append('  </tr>')
     
     # LXC Auth Watcher
     auth_running = services.get("auth_watcher")
     auth_status = _("nodes", "service_active") if auth_running else _("nodes", "service_stopped")
     rows.append('  <tr>')
-    rows.append('    <td style="padding: 8px;"><b>LXC Auth Watcher</b></td>')
-    rows.append(f'    <td style="padding: 8px;">{auth_status} (auth.log)</td>')
+    rows.append('    <td align="left"><b>LXC Auth Watcher</b></td>')
+    rows.append(f'    <td align="left">{auth_status} (auth.log)</td>')
     rows.append('  </tr>')
     
     # Active IPS Engine
     ips_running = services.get("ips_engine")
     ips_status = _("nodes", "ips_enabled") if ips_running else _("nodes", "ips_disabled")
     rows.append('  <tr>')
-    rows.append('    <td style="padding: 8px;"><b>Active IPS Engine</b></td>')
-    rows.append(f'    <td style="padding: 8px;">{ips_status} (iptables)</td>')
+    rows.append('    <td align="left"><b>Active IPS Engine</b></td>')
+    rows.append(f'    <td align="left">{ips_status} (iptables)</td>')
     rows.append('  </tr>')
     
     # Remote VPS Monitor
@@ -96,9 +96,10 @@ def get_system_status_table(pve_nodes=None, pve_error=None, pve_configured=True,
     else:
         remote_status = _("nodes", "service_active") if remote_val else _("nodes", "service_stopped")
     rows.append('  <tr>')
-    rows.append('    <td style="padding: 8px;"><b>Remote VPS Monitor</b></td>')
-    rows.append(f'    <td style="padding: 8px;">{remote_status}</td>')
+    rows.append('    <td align="left"><b>Remote VPS Monitor</b></td>')
+    rows.append(f'    <td align="left">{remote_status}</td>')
     rows.append('  </tr>')
     
     rows.append('</table>')
     return "\n".join(rows)
+

@@ -51,40 +51,45 @@ async def setup_ansible_user_on_host(pub_key_content: str) -> bool:
         logging.error("error_configuring_user_ansible_on_proxmox_host", e)
         return False
 
+from core.messages import (
+    get_ansible_setup_host_start_text,
+    get_ansible_setup_success_text,
+    get_ansible_setup_failed_text,
+)
+
 @router.callback_query(F.data == "ansible_setup_host")
 async def process_ansible_setup_host_handler(callback: CallbackQuery):
-    await callback.message.edit_text("⏳ Начинаю настройку на хосте Proxmox VE. Это может занять несколько секунд...")
+    await callback.message.edit_text(get_ansible_setup_host_start_text(), parse_mode="HTML")
     
     pub_key_path = os.path.join(ANSIBLE_PLAYBOOKS_DIR, 'id_ed25519_ansible.pub')
     if not os.path.exists(pub_key_path):
-        await callback.message.edit_text(
-            "❌ Ошибка: Публичный ключ не найден. Пожалуйста, перезапустите бота, чтобы он сгенерировал ключи.",
-            reply_markup=get_ansible_main_keyboard()
-        )
+        err_msg = get_ansible_setup_failed_text("Proxmox VE Host", "Public key not found")
+        await callback.message.edit_text(err_msg, parse_mode="HTML", reply_markup=get_ansible_main_keyboard())
         return
         
     try:
         with open(pub_key_path, 'r', encoding='utf-8') as f:
             pub_key_content = f.read().strip()
     except Exception as e:
-        await callback.message.edit_text(f"❌ Ошибка чтения публичного ключа: {e}", reply_markup=get_ansible_main_keyboard())
+        err_msg = get_ansible_setup_failed_text("Proxmox VE Host", str(e))
+        await callback.message.edit_text(err_msg, parse_mode="HTML", reply_markup=get_ansible_main_keyboard())
         return
 
     # Запускаем локальную настройку
     ok = await setup_ansible_user_on_host(pub_key_content)
     
     if ok:
+        succ_msg = get_ansible_setup_success_text("Proxmox VE Host")
         await callback.message.edit_text(
-            "✅ <b>Настройка Хоста Proxmox завершена!</b>\n\n"
-            "🟢 Пользователь <code>ansible</code> успешно настроен непосредственно на гипервизоре.\n"
-            "Ему предоставлен беспарольный доступ <code>sudo</code> и прописан публичный SSH-ключ бота.",
+            succ_msg,
             parse_mode="HTML",
             reply_markup=get_ansible_main_keyboard()
         )
     else:
+        err_msg = get_ansible_setup_failed_text("Proxmox VE Host", "Check bot logs")
         await callback.message.edit_text(
-            "❌ <b>Ошибка при настройке Хоста Proxmox</b>\n\n"
-            "Не удалось настроить пользователя <code>ansible</code> локально на хосте. Проверьте логи бота.",
+            err_msg,
             parse_mode="HTML",
             reply_markup=get_ansible_main_keyboard()
         )
+

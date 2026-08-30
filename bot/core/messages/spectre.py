@@ -52,18 +52,26 @@ def get_new_ip_alert(protocol, panel_name, username, client_ip, timestamp_str, h
 
 def get_session_activity_card(protocol, panel_name, username, download_bytes, upload_bytes, timeline_lines):
     def format_bytes(b):
-        if b < 1024:
-            return f"{b} B"
-        elif b < 1024 * 1024:
-            return f"{b / 1024:.2f} KB"
-        elif b < 1024 * 1024 * 1024:
-            return f"{b / (1024 * 1024):.2f} MB"
+        if isinstance(b, str):
+            return b
+        try:
+            b_val = float(b)
+        except (ValueError, TypeError):
+            return str(b)
+        if b_val < 1024:
+            return f"{int(b_val)} B"
+        elif b_val < 1024 * 1024:
+            return f"{b_val / 1024:.2f} KB"
+        elif b_val < 1024 * 1024 * 1024:
+            return f"{b_val / (1024 * 1024):.2f} MB"
         else:
-            return f"{b / (1024 * 1024 * 1024):.2f} GB"
+            return f"{b_val / (1024 * 1024 * 1024):.2f} GB"
 
     download = format_bytes(download_bytes)
     upload = format_bytes(upload_bytes)
     
+    if isinstance(timeline_lines, str):
+        timeline_lines = [timeline_lines]
     displayed_lines = timeline_lines[-15:]
     timeline = "\n".join(displayed_lines)
     if len(timeline_lines) > 15:
@@ -74,6 +82,7 @@ def get_session_activity_card(protocol, panel_name, username, download_bytes, up
         protocol=protocol, panel_name=panel_name, username=username,
         download=download, upload=upload, timeline=timeline.strip()
     )
+
 
 def get_client_disconnected_alert(protocol, panel_name, username, client_ip, timestamp_str, geoip_info=None):
     geo_row = _build_geo_rows(geoip_info)
@@ -139,9 +148,9 @@ def get_top_traffic_table(results, period):
     period_label = _("spectre", "top_traffic_today") if period == "today" else _("spectre", "top_traffic_month")
     
     rows = []
-    rows.append('<table border="1" style="border-collapse: collapse; width: 100%;">')
-    rows.append('  <tr style="background-color: #1e1e2e; color: #ffffff;">')
-    rows.append(f'    <th colspan="3" style="padding: 8px; text-align: center;"><b>{_("spectre", "top_traffic_title", period_label=period_label)}</b></th>')
+    rows.append('<table bordered striped compact>')
+    rows.append('  <tr>')
+    rows.append(f'    <th colspan="3" align="center"><b>{_("spectre", "top_traffic_title", period_label=period_label)}</b></th>')
     rows.append('  </tr>')
     
     has_any_data = False
@@ -153,41 +162,42 @@ def get_top_traffic_table(results, period):
         panel, success, res = r
         if not success or not res.get("success"):
             error_info = res.get("msg") or res.get("error") or "Unknown error"
-            rows.append('  <tr style="background-color: #2b2b36; color: #ffffff;">')
-            rows.append(f'    <td colspan="3" style="padding: 6px; color: #f38ba8;"><b>{_("spectre", "top_traffic_error", panel_name=html.escape(panel.name), error_info=html.escape(str(error_info)))}</b></td>')
+            rows.append('  <tr>')
+            rows.append(f'    <td colspan="3" align="left"><b>{_("spectre", "top_traffic_error", panel_name=html.escape(panel.name), error_info=html.escape(str(error_info)))}</b></td>')
             rows.append('  </tr>')
             continue
             
         users = res.get("users", [])
-        rows.append('  <tr style="background-color: #2b2b36; color: #ffffff;">')
-        rows.append(f'    <td colspan="3" style="padding: 6px;"><b>{_("spectre", "top_traffic_panel_header", panel_name=html.escape(panel.name))}</b></td>')
+        rows.append('  <tr>')
+        rows.append(f'    <th colspan="3" align="left"><b>{_("spectre", "top_traffic_panel_header", panel_name=html.escape(panel.name))}</b></th>')
         rows.append('  </tr>')
         
         if users:
             has_any_data = True
-            rows.append('  <tr style="background-color: #3b3b4f; color: #ffffff;">')
-            rows.append(f'    <td style="padding: 6px; width: 15%; text-align: center;"><b>{_("spectre", "top_traffic_rank")}</b></td>')
-            rows.append(f'    <td style="padding: 6px; width: 55%;"><b>{_("spectre", "top_traffic_user")}</b></td>')
-            rows.append(f'    <td style="padding: 6px; width: 30%;"><b>{_("spectre", "top_traffic_traffic")}</b></td>')
+            rows.append('  <tr>')
+            rows.append(f'    <th align="center"><b>{_("spectre", "top_traffic_rank")}</b></th>')
+            rows.append(f'    <th align="left"><b>{_("spectre", "top_traffic_user")}</b></th>')
+            rows.append(f'    <th align="center"><b>{_("spectre", "top_traffic_traffic")}</b></th>')
             rows.append('  </tr>')
             
             for idx, user in enumerate(users[:10], 1):
                 gb = user["total"] / (1024**3)
                 rows.append('  <tr>')
-                rows.append(f'    <td style="padding: 8px; text-align: center;">{idx}</td>')
-                rows.append(f'    <td style="padding: 8px;"><code>{html.escape(user["email"])}</code></td>')
-                rows.append(f'    <td style="padding: 8px;"><b>{gb:.3f} GB</b></td>')
+                rows.append(f'    <td align="center">{idx}</td>')
+                rows.append(f'    <td align="left"><code>{html.escape(user["email"])}</code></td>')
+                rows.append(f'    <td align="center"><b>{gb:.3f} GB</b></td>')
                 rows.append('  </tr>')
         else:
             rows.append('  <tr>')
-            rows.append(f'    <td colspan="3" style="padding: 8px; color: #a6adc8; text-align: center;"><i>{_("spectre", "top_traffic_no_activity")}</i></td>')
+            rows.append(f'    <td colspan="3" align="center"><i>{_("spectre", "top_traffic_no_activity")}</i></td>')
             rows.append('  </tr>')
             
     if not has_any_data:
         rows.append('  <tr>')
-        rows.append(f'    <td colspan="3" style="padding: 8px; color: #a6adc8; text-align: center;"><i>{_("spectre", "top_traffic_no_data")}</i></td>')
+        rows.append(f'    <td colspan="3" align="center"><i>{_("spectre", "top_traffic_no_data")}</i></td>')
         rows.append('  </tr>')
         
     rows.append('</table>')
     rows.append(_("spectre", "top_traffic_footer"))
     return "\n".join(rows)
+

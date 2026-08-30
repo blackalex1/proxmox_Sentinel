@@ -22,15 +22,29 @@ translation = {
     "audit_cat_settings": "⚙️ Настройки системы",
     "btn_back_to_categories": "🔙 К категориям",
     "session_activity_card": (
-        "📊 <b>Session Activity</b>\n"
-        "━━━━━━━━━━━━━━━━━━━━\n"
-        "📊 <b>[{protocol}] Активность сессии на {panel_name}</b>\n\n"
-        "👤 <b>Пользователь:</b> <code>{username}</code>\n"
-        "📥 <b>Скачано:</b> <code>{download}</code>\n"
-        "📤 <b>Загружено:</b> <code>{upload}</code>\n\n"
-        "📋 <b>Хронология событий:</b>\n"
-        "<pre><code>{timeline}</code></pre>"
+        '<table bordered striped compact>\n'
+        '  <tr>\n'
+        '    <th colspan="2" align="center"><b>📊 [{protocol}] {panel_name}</b></th>\n'
+        '  </tr>\n'
+        '  <tr>\n'
+        '    <td align="left"><b>👤 Пользователь</b></td>\n'
+        '    <td align="left"><code>{username}</code></td>\n'
+        '  </tr>\n'
+        '  <tr>\n'
+        '    <td align="left"><b>📥 Скачано</b></td>\n'
+        '    <td align="left"><b>{download}</b></td>\n'
+        '  </tr>\n'
+        '  <tr>\n'
+        '    <td align="left"><b>📤 Загружено</b></td>\n'
+        '    <td align="left"><b>{upload}</b></td>\n'
+        '  </tr>\n'
+        '</table>\n\n'
+        '<details>\n'
+        '  <summary>📋 <b>Хронология событий</b></summary>\n'
+        '  <pre><code>{timeline}</code></pre>\n'
+        '</details>'
     ),
+
     "client_disconnected_alert": (
         "🔴 <b>Client Disconnected</b>\n"
         "━━━━━━━━━━━━━━━━━━━━\n"
@@ -318,9 +332,10 @@ translation = {
     "tg_2fa_block_cancelled_alert": "Блокировка IP отменена",
 
     # Timeline and Duration strings
-    "timeline_connect": "🟢 <code>[{timestamp}]</code> Подключение с <code>{ip}</code>",
-    "timeline_disconnect": "🔴 <code>[{timestamp}]</code> Отключение <code>{ip}</code> — {duration}",
+    "timeline_connect": "🟢 [{timestamp}] Подключение с {ip}",
+    "timeline_disconnect": "🔴 [{timestamp}] Отключение {ip} — {duration}",
     "duration_sec": "{val} сек",
     "duration_min_sec": "{min} мин {sec} сек",
     "duration_hour_min": "{hour} ч {min} мин"
 }
+

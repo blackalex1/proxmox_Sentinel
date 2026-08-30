@@ -52,28 +52,34 @@ async def setup_ansible_user_on_remote_vps(server: dict, pub_key_content: str) -
         logging.error("error_configuring_user_ansible_on_vps", server['ip'], e)
         return False
 
+from core.messages import (
+    get_ansible_setup_vps_start_text,
+    get_ansible_setup_success_text,
+    get_ansible_setup_failed_text,
+)
+
 @router.callback_query(F.data == "ansible_setup_vps")
 async def process_ansible_setup_vps_handler(callback: CallbackQuery):
-    await callback.message.edit_text("⏳ Начинаю настройку на всех удаленных VPS серверах. Пожалуйста, подождите...")
+    await callback.message.edit_text(get_ansible_setup_vps_start_text(), parse_mode="HTML")
     
     pub_key_path = os.path.join(ANSIBLE_PLAYBOOKS_DIR, 'id_ed25519_ansible.pub')
     if not os.path.exists(pub_key_path):
-        await callback.message.edit_text(
-            "❌ Ошибка: Публичный ключ не найден. Пожалуйста, перезапустите бота, чтобы он сгенерировал ключи.",
-            reply_markup=get_ansible_main_keyboard()
-        )
+        err_msg = get_ansible_setup_failed_text("VPS", "Public key not found")
+        await callback.message.edit_text(err_msg, parse_mode="HTML", reply_markup=get_ansible_main_keyboard())
         return
         
     try:
         with open(pub_key_path, 'r', encoding='utf-8') as f:
             pub_key_content = f.read().strip()
     except Exception as e:
-        await callback.message.edit_text(f"❌ Ошибка чтения публичного ключа: {e}", reply_markup=get_ansible_main_keyboard())
+        err_msg = get_ansible_setup_failed_text("VPS", str(e))
+        await callback.message.edit_text(err_msg, parse_mode="HTML", reply_markup=get_ansible_main_keyboard())
         return
 
     from core.config import settings
     if not settings.remote_servers:
-        await callback.message.edit_text("❌ Ошибка: В файле .env не настроены удаленные сервера VPS.", reply_markup=get_ansible_main_keyboard())
+        err_msg = get_ansible_setup_failed_text("VPS", "No remote VPS configured in .env")
+        await callback.message.edit_text(err_msg, parse_mode="HTML", reply_markup=get_ansible_main_keyboard())
         return
 
     success_ips = []
@@ -93,14 +99,11 @@ async def process_ansible_setup_vps_handler(callback: CallbackQuery):
     if tasks:
         await asyncio.gather(*tasks)
         
-    success_str = ", ".join(success_ips) if success_ips else "нет"
-    failed_str = ", ".join(failed_ips) if failed_ips else "нет"
-    
+    success_str = ", ".join(success_ips) if success_ips else "none"
+    succ_msg = get_ansible_setup_success_text(f"VPS ({success_str})")
     await callback.message.edit_text(
-        f"✅ <b>Настройка VPS завершена!</b>\n\n"
-        f"🟢 <b>Успешно настроены:</b> <code>{success_str}</code>\n"
-        f"🔴 <b>Ошибки настройки:</b> <code>{failed_str}</code>\n\n"
-        f"<i>Пользователь ansible получил беспарольный доступ sudo и авторизован по SSH-ключу.</i>",
+        succ_msg,
         parse_mode="HTML",
         reply_markup=get_ansible_main_keyboard()
     )
+
