@@ -37,7 +37,7 @@ translation = {
     ),
     
     # HTML status table fields
-    "status_audit_title": "📊 Аудит статуса систем PVE Aegis",
+    "status_audit_title": "📊 Аудит статуса систем Proxmox Sentinel",
     "hypervisor_header": "🖥 Hypervisor (Proxmox VE)",
     "pve_not_configured": "⚪ <b>Proxmox VE:</b> Не настроен",
     "pve_error": "🔴 <b>Proxmox VE:</b> Ошибка: <code>{error}</code>",
@@ -49,5 +49,13 @@ translation = {
     "service_stopped": "🔴 Остановлен",
     "ips_enabled": "🟢 Защита включена",
     "ips_disabled": "🔴 Защита выключена",
-    "remote_vps_disabled_env": "⚪ Выключен в .env"
+    "remote_vps_disabled_env": "⚪ Выключен в .env",
+    
+    # Sentinel Panels
+    "panels_header": "🛡️ Панели Sentinel Panel",
+    "panels_not_found": "⚪ <i>Подключенные панели не найдены</i>",
+    "panel_online_detail": "🟢 online (Клиенты: {online}/{total} | CPU: {cpu:.1f}%)",
+    "panel_online_simple": "🟢 online",
+    "panel_offline_detail": "🔴 offline ({error})"
 }
+

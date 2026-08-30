@@ -17,7 +17,7 @@ translation = {
         "  <summary>📋 <b>Показать детали разблокировки туннеля Hysteria</b></summary>\n"
         "  <pre><code>{unblock_details_str}</code></pre>\n"
         "</details>\n\n"
-        "*Aegis Security Guard • Время: {timestamp}*"
+        "*Sentinel Security Guard • Время: {timestamp}*"
     ),
     "ips_investigation_failed_alert": (
         "# ⚠️ IPS Investigation Failed\n"
@@ -31,7 +31,7 @@ translation = {
         "  <summary>🔍 <b>Показать собранные фрагменты логов</b></summary>\n"
         "  <pre><code>{logs_text}</code></pre>\n"
         "</details>\n\n"
-        "*Aegis Security Guard • Время: {timestamp}*"
+        "*Sentinel Security Guard • Время: {timestamp}*"
     ),
     "ips_sensitive_access_alert": (
         "# 🚨 Traffic Security Alert\n"
@@ -43,7 +43,7 @@ translation = {
         "| **🔌 Протокол** | `{proto}` |\n"
         "| **👤 Источник** | `{src}:{spt}` |\n"
         "| **🎯 Назначение** | `{dst}:{dpt}` |\n\n"
-        "*Aegis Security Guard • Время: {timestamp}*"
+        "*Sentinel Security Guard • Время: {timestamp}*"
     ),
     "ips_hysteria_attack_alert": (
         "# 🚨 Traffic Attack Detected\n"
@@ -60,7 +60,7 @@ translation = {
         "  <summary>📋 <b>Показать статус блокировки туннеля</b></summary>\n"
         "  <pre><code>{block_details_str}</code></pre>\n"
         "</details>\n\n"
-        "*Aegis Security Guard • Время: {timestamp}*"
+        "*Sentinel Security Guard • Время: {timestamp}*"
     ),
     "ips_xray_attack_alert": (
         "# 🚨 Traffic Attack Blocked\n"
@@ -77,7 +77,7 @@ translation = {
         "  <summary>🚨 <b>Показать статус авто-блокировки аккаунта нарушителя</b></summary>\n"
         "  <pre><code>{block_details_str}</code></pre>\n"
         "</details>\n\n"
-        "*Aegis Security Guard • Время: {timestamp}*"
+        "*Sentinel Security Guard • Время: {timestamp}*"
     ),
     "ips_whitelisted_alert": (
         "# ℹ️ Connection Allowed\n"
@@ -90,7 +90,7 @@ translation = {
         "| **🔌 Протокол** | `{proto}` |\n"
         "| **👤 Источник** | `{src}:{spt}` |\n"
         "| **🎯 Назначение** | `{dst}:{dpt}` |\n\n"
-        "*Aegis Security Guard • Время: {timestamp}*"
+        "*Sentinel Security Guard • Время: {timestamp}*"
     ),
     "ips_process_killed_alert": (
         "# 🚨 Traffic Attack Blocked\n"
@@ -104,7 +104,7 @@ translation = {
         "| **🔌 Протокол** | `{proto}` |\n"
         "| **👤 Источник** | `{src}:{spt}` |\n"
         "| **🎯 Назначение** | `{dst}:{dpt}` |\n\n"
-        "*Aegis Security Guard • Время: {timestamp}*"
+        "*Sentinel Security Guard • Время: {timestamp}*"
     ),
     "ips_process_warning_alert": (
         "# ⚠️ Traffic Sensitive Alert\n"
@@ -116,7 +116,7 @@ translation = {
         "| **🔌 Протокол** | `{proto}` |\n"
         "| **👤 Источник** | `{src}:{spt}`{proc_info} |\n"
         "| **🎯 Назначение** | `{dst}:{dpt}` |\n\n"
-        "*Aegis Security Guard • Время: {timestamp}*"
+        "*Sentinel Security Guard • Время: {timestamp}*"
     ),
     "local_traffic_alert": (
         "# {clean_h1}\n"
@@ -134,7 +134,7 @@ translation = {
         "{vpn_client_row}"
         "{vpn_inbound_row}\n\n"
         "{block_details_block}\n\n"
-        "*Aegis Security Guard • Время: {timestamp}*"
+        "*Sentinel Security Guard • Время: {timestamp}*"
     ),
     
     # helper elements

@@ -6,7 +6,7 @@ translation = {
     "whitelist_rule_ip_port": "🌐 IP / Port",
     "whitelist_rule_process": "⚙️ Process",
     
-    "whitelist_view_all_title": "📋 All Aegis IPS Whitelist Rules",
+    "whitelist_view_all_title": "📋 All Sentinel IPS Whitelist Rules",
     "whitelist_view_all_empty": "<tr><td colspan=\"2\" style=\"padding: 8px; color: #bf616a; text-align: center;\">❌ No rules configured for any node.</td></tr>",
 
     # Whitelist nodes labels
@@ -30,7 +30,8 @@ translation = {
     "btn_back_to_view": "🔙 Back to View",
 
     # Messages / Inputs
-    "manage_title": "⚙️ <b>Aegis IPS Whitelists Management</b>\n\nSelect a node to view and configure security rules:",
+    "manage_title": "⚙️ <b>Sentinel IPS Whitelists Management</b>\n\nSelect a node to view and configure security rules:",
+
     "add_ip_port_title": "➕ <b>Add IP/Port to Whitelist</b>\nNode: {node_label}\n\nSend a message containing the IP address or IP:Port combination (for example: <code>1.2.3.4</code>, <code>1.2.3.4:22</code>, or <code>1.2.3.4:*</code> for any port):",
     "invalid_input": "Invalid input. Please try again or press Cancel.",
     "invalid_ip_port_format": "❌ Invalid IP/Port format. Examples: <code>192.168.1.100</code>, <code>192.168.1.100:22</code>, or <code>192.168.1.100:*</code>.",

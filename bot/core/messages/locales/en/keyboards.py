@@ -5,7 +5,7 @@ translation = {
     "btn_ansible": "🛠️ Ansible Playbooks",
     "btn_vpn_history": "📋 VPN Connection History",
     "btn_ban_center": "🛑 Ban Center",
-    "btn_whitelist": "⚙️ Aegis IPS Whitelists",
+    "btn_whitelist": "⚙️ Sentinel IPS Whitelists",
     "btn_router_clients": "🖥️ Router Clients",
     "btn_status": "📊 System Status",
     "btn_help": "ℹ️ Help",
@@ -20,30 +20,94 @@ translation = {
     
     # Menu and help texts
     "main_menu_text": (
-        "🛡️ <b>PVE Aegis IPS • Control Panel</b>\n"
-        "━━━━━━━━━━━━━━━━━━━━━━━━\n"
-        "⚡ <b>Protection System:</b> <code>🟢 ACTIVE</code>\n"
-        "🖥️ <b>Proxmox Host:</b> <code>{pve_ip}</code>\n"
-        "🌐 <b>Remote VPS:</b> <code>{vps_ip}</code>\n"
-        "━━━━━━━━━━━━━━━━━━━━━━━━\n"
-        "Select a section for monitoring and administration:"
+        '<table bordered striped compact>\n'
+        '  <tr>\n'
+        '    <th colspan="2" align="center"><b>🛡️ Proxmox Sentinel • Control Panel</b></th>\n'
+        '  </tr>\n'
+        '  <tr>\n'
+        '    <td align="left"><b>⚡ Security System</b></td>\n'
+        '    <td align="left"><code>🟢 ACTIVE</code></td>\n'
+        '  </tr>\n'
+        '  <tr>\n'
+        '    <td align="left"><b>🖥️ Proxmox Host</b></td>\n'
+        '    <td align="left"><code>{pve_ip}</code></td>\n'
+        '  </tr>\n'
+        '  <tr>\n'
+        '    <td align="left"><b>🌐 Remote VPS</b></td>\n'
+        '    <td align="left"><code>{vps_ip}</code></td>\n'
+        '  </tr>\n'
+        '</table>\n\n'
+        '<i>Select a section for monitoring and administration:</i>'
     ),
     "help_text": (
-        "ℹ️ <b>PVE Aegis Commands Help:</b>\n\n"
-        "• /start — Show interactive control panel (Main Menu)\n"
-        "• /status — Fast audit and status of all systems (Proxmox, background services)\n"
-        "• /bans — Control center for active temporary IP blocks\n"
-        "• /whitelist — Manage Aegis IPS whitelists (IP, ports, processes)\n"
-        "• /whitelist_add &lt;IP or IP:Port&gt; [node] — Quickly add IP to whitelist\n"
-        "• /whitelist_process &lt;process&gt; [node] — Quickly add process to whitelist\n"
-        "• /help — Show this help message\n"
-        "• /id — Show your Telegram ID / Chat ID\n\n"
-        "🛡️ <i>The bot automatically monitors authorization attempts (SSH Auth Monitor) and unauthorized network activity (Active IPS Engine) in real-time. All alerts are sent directly to this chat.</i>"
+        '<table bordered striped compact>\n'
+        '  <tr>\n'
+        '    <th colspan="2" align="center"><b>ℹ️ Proxmox Sentinel • Commands Help</b></th>\n'
+        '  </tr>\n'
+        '  <tr>\n'
+        '    <th colspan="2" align="left"><b>🎛️ Core Controls</b></th>\n'
+        '  </tr>\n'
+        '  <tr>\n'
+        '    <td align="left"><code>/start</code></td>\n'
+        '    <td align="left">Interactive Control Panel</td>\n'
+        '  </tr>\n'
+        '  <tr>\n'
+        '    <td align="left"><code>/status</code></td>\n'
+        '    <td align="left">Audit & status of all hypervisor systems</td>\n'
+        '  </tr>\n'
+        '  <tr>\n'
+        '    <td align="left"><code>/id</code></td>\n'
+        '    <td align="left">Your Telegram ID and Chat ID</td>\n'
+        '  </tr>\n'
+        '  <tr>\n'
+        '    <th colspan="2" align="left"><b>🛡️ Security & Sentinel IPS</b></th>\n'
+        '  </tr>\n'
+        '  <tr>\n'
+        '    <td align="left"><code>/threats</code></td>\n'
+        '    <td align="left">Security incident log and attacks</td>\n'
+        '  </tr>\n'
+        '  <tr>\n'
+        '    <td align="left"><code>/bans</code></td>\n'
+        '    <td align="left">Active temporary IP bans management</td>\n'
+        '  </tr>\n'
+        '  <tr>\n'
+        '    <td align="left"><code>/whitelist</code></td>\n'
+        '    <td align="left">Manage whitelists (IP, ports, processes)</td>\n'
+        '  </tr>\n'
+        '  <tr>\n'
+        '    <th colspan="2" align="left"><b>🌐 Network & Monitoring</b></th>\n'
+        '  </tr>\n'
+        '  <tr>\n'
+        '    <td align="left"><code>/router</code></td>\n'
+        '    <td align="left">Connected router clients & activity</td>\n'
+        '  </tr>\n'
+        '  <tr>\n'
+        '    <td align="left"><code>/panel</code></td>\n'
+        '    <td align="left">Manage Sentinel Panel nodes</td>\n'
+        '  </tr>\n'
+        '  <tr>\n'
+        '    <td align="left"><code>/top</code></td>\n'
+        '    <td align="left">Active VPN sessions & traffic stats</td>\n'
+        '  </tr>\n'
+        '  <tr>\n'
+        '    <td align="left"><code>/backup</code></td>\n'
+        '    <td align="left">Create SQLite database backup</td>\n'
+        '  </tr>\n'
+        '</table>\n\n'
+        '<details>\n'
+        '  <summary>⚡ <b>Quick Actions & Direct Syntax</b></summary>\n'
+        '  • <code>/whitelist_add &lt;IP[:Port]&gt; [node]</code> — quickly whitelist IP address<br/>\n'
+        '  • <code>/whitelist_process &lt;process&gt; [node]</code> — quickly whitelist process<br/>\n'
+        '  • <code>/unban_login_ip &lt;IP&gt;</code> — unban login IP address<br/>\n'
+        '  • <code>/audit</code> or <code>/logs</code> — system security audit logs\n'
+        '</details>\n\n'
+        '<blockquote>🛡️ <b>Autonomous Protection:</b> The bot monitors SSH authentications (SSH Auth Monitor) and network anomalies (Active IPS Engine) in real-time. Security alerts are dispatched directly to this chat.</blockquote>'
     ),
+
     
     # Base command responses
     "welcome_message": (
-        "👋 <b>Welcome to the PVE Aegis monitoring system!</b>\n"
+        "👋 <b>Welcome to the Proxmox Sentinel monitoring system!</b>\n"
         "<i>A persistent quick access panel for main commands is activated below.</i>"
     ),
     "id_message": (
@@ -51,3 +115,4 @@ translation = {
         "💬 <b>This Chat ID:</b> <code>{chat_id}</code>"
     )
 }
+

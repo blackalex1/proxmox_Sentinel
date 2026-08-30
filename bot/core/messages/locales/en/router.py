@@ -30,7 +30,7 @@ translation = {
         "| **🎯 Reason** | Violation limit reached ({threshold}+ attempts in 10 min) |\n"
         "| **👤 Blocked IP** | `{src_ip}` |\n"
         "| **🧭 Last Target** | `{dst_host}:{dst_port}` (`{proto}`) |\n\n"
-        "*Aegis Security Guard • Time: {timestamp}*"
+        "*Sentinel Security Guard • Time: {timestamp}*"
     ),
     "router_port_alert": (
         "# 🚨 Router {type_str} Alert\n"
@@ -41,7 +41,7 @@ translation = {
         "| **🔌 Protocol** | `{proto}` |\n"
         "| **👤 Source** | `{src_ip}:{src_port}` |\n"
         "| **🎯 Target** | `{dst_host}:{dst_port}` |\n\n"
-        "*Aegis Security Guard • Time: {timestamp}*"
+        "*Sentinel Security Guard • Time: {timestamp}*"
     ),
     "btn_unblock_ip_router": "🟢 Unblock IP on router",
     "btn_block_ip_router": "🛑 Block IP on router",

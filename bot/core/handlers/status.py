@@ -6,6 +6,7 @@ from aiogram.filters.command import Command
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 from core.config import settings
 from core.messages.i18n import _
+from core.sender import send_rich_message, edit_rich_message
 
 router = Router(name="core_status_router")
 
@@ -41,42 +42,87 @@ async def get_system_status_text() -> str:
         "remote_monitor": is_task_running("monitor_remote_server") if settings.remote_monitor_enable else None
     }
     
+    panels_status = None
+    try:
+        from core.spectre_client import spectre_manager
+        if spectre_manager.panels:
+            panels_status = []
+            
+            async def _check_panel(p):
+                try:
+                    success, res = await asyncio.wait_for(p.request("GET", "/api/security/system-status"), timeout=2.5)
+                    if success and isinstance(res, dict) and res.get("success"):
+                        stats = res.get("stats", {})
+                        counts = res.get("counts", {})
+                        return {
+                            "name": p.name,
+                            "status": "online",
+                            "cpu": stats.get("cpu", 0),
+                            "online": counts.get("online_clients", 0),
+                            "total": counts.get("total_clients", 0),
+                            "url": p.url
+                        }
+                    elif success and isinstance(res, dict):
+                        return {
+                            "name": p.name,
+                            "status": "online",
+                            "url": p.url
+                        }
+                    else:
+                        err = res.get("error", "offline") if isinstance(res, dict) else "offline"
+                        return {
+                            "name": p.name,
+                            "status": "offline",
+                            "error": err
+                        }
+                except Exception as e:
+                    return {
+                        "name": p.name,
+                        "status": "offline",
+                        "error": str(e)
+                    }
+
+            tasks = [_check_panel(p) for p in spectre_manager.panels.values()]
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            for res in results:
+                if isinstance(res, dict):
+                    panels_status.append(res)
+    except Exception as e:
+        logging.debug("failed_gathering_panels_for_status", e)
+    
     return get_system_status_table(
         pve_nodes=pve_nodes,
         pve_error=pve_error,
         pve_configured=pve_configured,
-        services=services
+        services=services,
+        panels=panels_status
     )
 
 @router.message(Command("status"))
 async def cmd_status(message: types.Message):
-    from modules.proxmox.monitor.utils import edit_rich_message
-    
-    status_msg = await message.answer(_("keyboards", "status_loading"), parse_mode="HTML")
+    status_msg = await send_rich_message(message.chat.id, _("keyboards", "status_loading"))
     response_text = await get_system_status_text()
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text=_("keyboards", "btn_refresh_status"), callback_data="status_check")],
         [InlineKeyboardButton(text=_("keyboards", "btn_back_to_menu"), callback_data="main_menu")]
     ])
+    msg_id = status_msg.message_id if status_msg else message.message_id
     await edit_rich_message(
         chat_id=message.chat.id,
-        message_id=status_msg.message_id,
+        message_id=msg_id,
         text=response_text,
-        parse_mode="HTML",
         reply_markup=kb
     )
 
 @router.callback_query(F.data == "status_check")
 async def callback_status_check(callback: CallbackQuery):
-    from modules.proxmox.monitor.utils import edit_rich_message
-    
     try:
-        await edit_rich_message(
-            chat_id=callback.message.chat.id,
-            message_id=callback.message.message_id,
-            text=_("keyboards", "status_loading"),
-            parse_mode="HTML"
-        )
+        if callback.message:
+            await edit_rich_message(
+                chat_id=callback.message.chat.id,
+                message_id=callback.message.message_id,
+                text=_("keyboards", "status_loading")
+            )
     except Exception:
         pass
         
@@ -88,13 +134,13 @@ async def callback_status_check(callback: CallbackQuery):
     ])
     
     try:
-        await edit_rich_message(
-            chat_id=callback.message.chat.id,
-            message_id=callback.message.message_id,
-            text=response_text,
-            parse_mode="HTML",
-            reply_markup=kb
-        )
+        if callback.message:
+            await edit_rich_message(
+                chat_id=callback.message.chat.id,
+                message_id=callback.message.message_id,
+                text=response_text,
+                reply_markup=kb
+            )
     except Exception as e:
         if "message is not modified" in str(e).lower():
             pass
@@ -105,3 +151,4 @@ async def callback_status_check(callback: CallbackQuery):
             await callback.answer()
         except Exception:
             pass
+

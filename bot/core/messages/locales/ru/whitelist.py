@@ -6,7 +6,7 @@ translation = {
     "whitelist_rule_ip_port": "🌐 IP / Порт",
     "whitelist_rule_process": "⚙️ Процесс",
     
-    "whitelist_view_all_title": "📋 Все правила белых списков Aegis IPS",
+    "whitelist_view_all_title": "📋 Все правила белых списков Sentinel IPS",
     "whitelist_view_all_empty": "<tr><td colspan=\"2\" style=\"padding: 8px; color: #bf616a; text-align: center;\">❌ Нет настроенных правил ни для одного узла.</td></tr>",
 
     # Whitelist nodes labels
@@ -30,7 +30,8 @@ translation = {
     "btn_back_to_view": "🔙 Назад к просмотру",
 
     # Messages / Inputs
-    "manage_title": "⚙️ <b>Управление белыми списками Aegis IPS</b>\n\nВыберите узел (ноду) для просмотра и настройки правил безопасности:",
+    "manage_title": "⚙️ <b>Управление белыми списками Sentinel IPS</b>\n\nВыберите узел (ноду) для просмотра и настройки правил безопасности:",
+
     "add_ip_port_title": "➕ <b>Добавление IP/Порта в белый список</b>\nУзел: {node_label}\n\nОтправьте сообщением IP-адрес или связку IP:Порт (например: <code>1.2.3.4</code> или <code>1.2.3.4:22</code>, или <code>1.2.3.4:*</code> для любого порта):",
     "invalid_input": "Неверный ввод. Попробуйте еще раз или нажмите Отмена.",
     "invalid_ip_port_format": "❌ Неверный формат IP/Порта. Примеры: <code>192.168.1.100</code> или <code>192.168.1.100:22</code> или <code>192.168.1.100:*</code>.",
