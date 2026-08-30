@@ -144,15 +144,27 @@ async def monitor_panel_audit_logs():
         try:
             for p_key, panel in list(spectre_manager.panels.items()):
                 
-                # При первом запуске инициализируем ID последнего лога, чтобы не слать старые алерты
+                # При первом запуске инициализируем ID последнего лога, не пропуская свежие (за последние 120с)
                 if p_key not in last_log_ids:
-                    success, res = await panel.get_audit_logs(limit=1)
+                    success, res = await panel.get_audit_logs(limit=100)
                     if success and res.get("success") and res.get("logs"):
-                        last_log_ids[p_key] = res["logs"][0]["id"]
+                        init_logs = res["logs"]
+                        init_logs.sort(key=lambda x: x["id"])
+                        import time
+                        now_ts = int(time.time())
+                        first_fresh_id = None
+                        for l in init_logs:
+                            if l.get("timestamp", 0) >= now_ts - 120:
+                                first_fresh_id = l["id"]
+                                break
+                        if first_fresh_id is not None:
+                            last_log_ids[p_key] = max(0, first_fresh_id - 1)
+                        else:
+                            last_log_ids[p_key] = init_logs[-1]["id"]
                     else:
                         last_log_ids[p_key] = 0
                     await set_state("audit_log_last_ids", last_log_ids)
-                    continue
+
                     
                 # Запрашиваем новые логи
                 try:
