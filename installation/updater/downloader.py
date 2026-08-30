@@ -41,163 +41,225 @@ class Downloader:
 
         return urllib.request.build_opener(*handlers)
 
-    def download_file(self, url: str, dest: str, timeout: float = 180.0) -> bool:
-        """Downloads a file directly from GitHub to destination path using atomic temp replacement."""
+    def _download_single_url(self, url: str, dest: str, use_proxy: bool = True, timeout: float = 120.0) -> bool:
+        """Downloads from a single URL to destination with validation."""
         os.makedirs(os.path.dirname(os.path.abspath(dest)), exist_ok=True)
         tmp_dest = f"{dest}.tmp.{os.getpid()}"
 
-        # 1. Try curl (fast, reliable TLS, redirect follow and proxy support)
-        if shutil.which("curl"):
-            proxy_candidates = []
-            if self.proxy_url:
-                p = self.proxy_url
-                if p.startswith("socks5://"):
-                    p = "socks5h://" + p[len("socks5://"):]
-                proxy_candidates.append(p)
-                # Also try HTTP inbound port if socks5 on 10818
-                if "10818" in p:
-                    proxy_candidates.append(p.replace("10818", "10819").replace("socks5h://", "http://").replace("socks5://", "http://"))
-            else:
-                proxy_candidates.append(None)
-
-            for p_opt in proxy_candidates:
-                try:
-                    is_interactive = sys.stdout.isatty()
-                    progress_flag = "-#" if is_interactive else "-s"
-                    curl_cmd = [
-                        "curl", progress_flag, "-L", "-k",
-                        "--connect-timeout", "10",
-                        "--max-time", str(int(timeout)),
-                        "--speed-time", "20",
-                        "--speed-limit", "500",
-                        "--retry", "2",
-                        "--retry-delay", "1",
-                        "-H", f"User-Agent: {USER_AGENT}",
-                        "-o", tmp_dest,
-                    ]
-                    if p_opt:
-                        curl_cmd.extend(["-x", p_opt])
-                    else:
-                        curl_cmd.extend(["--noproxy", "*"])
-
-                    curl_cmd.append(url)
-                    
-                    if is_interactive:
-                        # Allow curl progress bar to render live to terminal stderr
-                        res = subprocess.run(curl_cmd, timeout=timeout + 10.0)
-                    else:
-                        res = subprocess.run(curl_cmd, capture_output=True, text=True, timeout=timeout + 10.0)
-
-                    if res.returncode == 0 and os.path.isfile(tmp_dest) and os.path.getsize(tmp_dest) > 0:
-                        size_mb = os.path.getsize(tmp_dest) / (1024 * 1024)
-                        if platform.system() != "Windows":
-                            try:
-                                os.chmod(tmp_dest, 0o755)
-                            except Exception:
-                                pass
-                        os.replace(tmp_dest, dest)
-                        log_info(f"  [✓] Загружено: {size_mb:.1f} MB")
-                        return True
-                    elif hasattr(res, 'stderr') and res.stderr:
-                        log_warn(f"  [curl] {res.stderr.strip()}")
-                except Exception as e:
-                    log_warn(f"  [curl exception] {e}")
-
-        # 2. Fallback to urllib.request
-        try:
-            req = urllib.request.Request(
-                url,
-                headers={"User-Agent": USER_AGENT},
-            )
-            opener = self._build_opener()
-            with opener.open(req, timeout=timeout) as resp:
-                if resp.status == 200:
-                    with open(tmp_dest, "wb") as f:
-                        shutil.copyfileobj(resp, f)
-                    if os.path.isfile(tmp_dest) and os.path.getsize(tmp_dest) > 0:
-                        if platform.system() != "Windows":
-                            try:
-                                os.chmod(tmp_dest, 0o755)
-                            except Exception:
-                                pass
-                        os.replace(tmp_dest, dest)
-                        return True
-        except Exception:
-            return False
-        finally:
+        def _clean():
             if os.path.isfile(tmp_dest):
                 try:
                     os.remove(tmp_dest)
                 except Exception:
                     pass
 
-        return False
+        _clean()
 
-    def download_bytes(self, url: str, timeout: float = 180.0) -> Optional[bytes]:
-        """Downloads data from GitHub URL into memory."""
-        # 1. Try curl
+        # 1. Try curl with speed guard
         if shutil.which("curl"):
-            proxy_candidates = []
-            if self.proxy_url:
-                p = self.proxy_url
-                if p.startswith("socks5://"):
-                    p = "socks5h://" + p[len("socks5://"):]
-                proxy_candidates.append(p)
-                if "10818" in p:
-                    proxy_candidates.append(p.replace("10818", "10819").replace("socks5h://", "http://").replace("socks5://", "http://"))
-            else:
-                proxy_candidates.append(None)
+            try:
+                is_interactive = sys.stdout.isatty()
+                progress_flag = "-#" if is_interactive else "-s"
+                curl_cmd = [
+                    "curl", progress_flag, "-L", "-k",
+                    "--connect-timeout", "6",
+                    "--max-time", str(int(timeout)),
+                    "--speed-time", "8",
+                    "--speed-limit", "153600",  # 150 KB/s threshold
+                    "--retry", "1",
+                    "-H", f"User-Agent: {USER_AGENT}",
+                    "-o", tmp_dest,
+                ]
 
-            for p_opt in proxy_candidates:
-                try:
-                    curl_cmd = [
-                        "curl", "-sSL", "-k",
-                        "--connect-timeout", "10",
-                        "--max-time", str(int(timeout)),
-                        "--speed-time", "20",
-                        "--speed-limit", "500",
-                        "--retry", "2",
-                        "--retry-delay", "1",
-                        "-H", f"User-Agent: {USER_AGENT}",
-                    ]
-                    if p_opt:
-                        curl_cmd.extend(["-x", p_opt])
-                    else:
-                        curl_cmd.extend(["--noproxy", "*"])
+                if use_proxy and self.proxy_url:
+                    p = self.proxy_url
+                    if p.startswith("socks5://"):
+                        p = "socks5h://" + p[len("socks5://"):]
+                    curl_cmd.extend(["-x", p])
+                else:
+                    curl_cmd.extend(["--noproxy", "*"])
 
-                    curl_cmd.append(url)
-                    res = subprocess.run(curl_cmd, capture_output=True, timeout=timeout + 10.0)
-                    if res.returncode == 0 and res.stdout and len(res.stdout) > 1024:
-                        return res.stdout
-                except Exception:
-                    pass
+                curl_cmd.append(url)
 
-        # 2. Fallback to urllib.request
+                if is_interactive:
+                    res = subprocess.run(curl_cmd, timeout=timeout + 5.0)
+                else:
+                    res = subprocess.run(curl_cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=timeout + 5.0)
+
+                if res.returncode == 0 and os.path.isfile(tmp_dest):
+                    file_size = os.path.getsize(tmp_dest)
+                    min_size = 3 * 1024 * 1024 if (dest.endswith(".so") or dest.endswith("sentinel-core")) else 1000
+                    if file_size >= min_size:
+                        with open(tmp_dest, "rb") as f_chk:
+                            head = f_chk.read(256)
+                            if not (b"<!DOCTYPE" in head or b"<html" in head or b"404: Not Found" in head):
+                                if platform.system() != "Windows" and not dest.endswith(".h"):
+                                    try:
+                                        os.chmod(tmp_dest, 0o755)
+                                    except Exception:
+                                        pass
+                                os.replace(tmp_dest, dest)
+                                size_mb = file_size / (1024 * 1024)
+                                log_info(f"  [✓] Загружено: {size_mb:.1f} MB")
+                                return True
+            except Exception:
+                pass
+            finally:
+                _clean()
+
+        # 2. Try urllib fallback
         try:
             req = urllib.request.Request(
                 url,
                 headers={"User-Agent": USER_AGENT},
             )
-            opener = self._build_opener()
+            ctx = ssl.create_default_context()
+            ctx.check_hostname = False
+            ctx.verify_mode = ssl.CERT_NONE
+            handlers = [urllib.request.HTTPSHandler(context=ctx)]
+            if use_proxy and self.proxy_url and not self.proxy_url.startswith("socks"):
+                handlers.append(urllib.request.ProxyHandler({"http": self.proxy_url, "https": self.proxy_url}))
+            opener = urllib.request.build_opener(*handlers)
+
+            start_time = time.time()
+            with opener.open(req, timeout=timeout) as resp, open(tmp_dest, "wb") as f_out:
+                if resp.status == 200:
+                    total_len = int(resp.headers.get("Content-Length", 0))
+                    downloaded = 0
+                    while True:
+                        chunk = resp.read(65536)
+                        if not chunk:
+                            break
+                        f_out.write(chunk)
+                        downloaded += len(chunk)
+
+                        elapsed = max(time.time() - start_time, 0.001)
+                        speed_kb = (downloaded / 1024) / elapsed
+                        pct = min(100.0, (downloaded / total_len) * 100) if total_len > 0 else 50.0
+                        bar_len = int(pct // 5)
+                        bar = "█" * bar_len + "░" * (20 - bar_len)
+                        sys.stdout.write(f"\r   [{bar}] {pct:.1f}% ({downloaded / (1024*1024):.2f}/{total_len / (1024*1024):.2f} MB) {speed_kb:.1f} KB/s")
+                        sys.stdout.flush()
+                    print("")
+
+            if os.path.isfile(tmp_dest):
+                file_size = os.path.getsize(tmp_dest)
+                min_size = 3 * 1024 * 1024 if (dest.endswith(".so") or dest.endswith("sentinel-core")) else 1000
+                if file_size >= min_size:
+                    with open(tmp_dest, "rb") as f_chk:
+                        head = f_chk.read(256)
+                        if not (b"<!DOCTYPE" in head or b"<html" in head or b"404: Not Found" in head):
+                            if platform.system() != "Windows" and not dest.endswith(".h"):
+                                try:
+                                    os.chmod(tmp_dest, 0o755)
+                                except Exception:
+                                    pass
+                            os.replace(tmp_dest, dest)
+                            size_mb = file_size / (1024 * 1024)
+                            log_info(f"  [✓] Загружено: {size_mb:.1f} MB")
+                            return True
+        except Exception:
+            pass
+        finally:
+            _clean()
+
+        return False
+
+    def _download_bytes_single_url(self, url: str, use_proxy: bool = True, timeout: float = 120.0) -> Optional[bytes]:
+        """Downloads bytes from a single URL into memory."""
+        # 1. Try curl
+        if shutil.which("curl"):
+            try:
+                curl_cmd = [
+                    "curl", "-sSL", "-k",
+                    "--connect-timeout", "6",
+                    "--max-time", str(int(timeout)),
+                    "--speed-time", "8",
+                    "--speed-limit", "153600",
+                    "--retry", "1",
+                    "-H", f"User-Agent: {USER_AGENT}",
+                ]
+                if use_proxy and self.proxy_url:
+                    p = self.proxy_url
+                    if p.startswith("socks5://"):
+                        p = "socks5h://" + p[len("socks5://"):]
+                    curl_cmd.extend(["-x", p])
+                else:
+                    curl_cmd.extend(["--noproxy", "*"])
+
+                curl_cmd.append(url)
+                res = subprocess.run(curl_cmd, capture_output=True, timeout=timeout + 5.0)
+                if res.returncode == 0 and res.stdout and len(res.stdout) > 1024:
+                    if not (b"<!DOCTYPE" in res.stdout[:256] or b"<html" in res.stdout[:256] or b"404: Not Found" in res.stdout[:256]):
+                        return res.stdout
+            except Exception:
+                pass
+
+        # 2. Try urllib
+        try:
+            req = urllib.request.Request(
+                url,
+                headers={"User-Agent": USER_AGENT},
+            )
+            ctx = ssl.create_default_context()
+            ctx.check_hostname = False
+            ctx.verify_mode = ssl.CERT_NONE
+            handlers = [urllib.request.HTTPSHandler(context=ctx)]
+            if use_proxy and self.proxy_url and not self.proxy_url.startswith("socks"):
+                handlers.append(urllib.request.ProxyHandler({"http": self.proxy_url, "https": self.proxy_url}))
+            opener = urllib.request.build_opener(*handlers)
             with opener.open(req, timeout=timeout) as resp:
                 if resp.status == 200:
-                    return resp.read()
+                    data = resp.read()
+                    if data and len(data) > 1024 and not (b"<!DOCTYPE" in data[:256] or b"<html" in data[:256]):
+                        return data
         except Exception:
-            return None
+            pass
 
         return None
 
     def download_file_with_mirrors(self, direct_url: str, dest_path: str, filename_for_log: str = "") -> bool:
-        """Downloads a file directly from GitHub releases."""
+        """Downloads a file with automated failover through direct connection and high-speed CDN mirrors."""
         log_name = filename_for_log or os.path.basename(dest_path)
-        log_info(f"  ➜ Загрузка {log_name} с GitHub...")
-        return self.download_file(direct_url, dest_path, timeout=180.0)
+        log_info(f"  ➜ Загрузка {log_name}...")
+
+        candidate_urls = [
+            (direct_url, True),
+            (direct_url, False),
+            (f"https://gh-proxy.com/{direct_url}", False),
+            (f"https://ghfast.top/{direct_url}", False),
+            (f"https://mirror.ghproxy.com/{direct_url}", False),
+            (f"https://hub.gitmirror.com/{direct_url}", False),
+        ]
+
+        for url, use_proxy in candidate_urls:
+            ok = self._download_single_url(url, dest_path, use_proxy=use_proxy)
+            if ok:
+                return True
+
+        log_error(f"Не удалось загрузить {log_name} ни с одного источника.")
+        return False
 
     def download_bytes_with_mirrors(self, direct_url: str, label_for_log: str = "") -> Optional[bytes]:
-        """Downloads bytes directly from GitHub releases."""
+        """Downloads bytes with automated failover through direct connection and high-speed CDN mirrors."""
         if label_for_log:
-            log_info(f"  ➜ Загрузка {label_for_log} с GitHub...")
-        return self.download_bytes(direct_url, timeout=180.0)
+            log_info(f"  ➜ Загрузка {label_for_log}...")
+
+        candidate_urls = [
+            (direct_url, True),
+            (direct_url, False),
+            (f"https://gh-proxy.com/{direct_url}", False),
+            (f"https://ghfast.top/{direct_url}", False),
+            (f"https://mirror.ghproxy.com/{direct_url}", False),
+            (f"https://hub.gitmirror.com/{direct_url}", False),
+        ]
+
+        for url, use_proxy in candidate_urls:
+            data = self._download_bytes_single_url(url, use_proxy=use_proxy)
+            if data:
+                return data
+
+        return None
 
     def fetch_github_api(self, endpoint_url: str, timeout: float = 8.0) -> Optional[Any]:
         """Queries GitHub REST API directly."""

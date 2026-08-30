@@ -299,10 +299,11 @@ class SocksProxyRotator:
         if not uris:
             return None
 
+        supported_prefixes = ("vless://", "ss://", "shadowsocks://", "trojan://", "hy2://", "hysteria2://")
         valid_uris = []
         for u in uris:
             u_clean = u.strip()
-            if u_clean and "://" in u_clean and u_clean not in valid_uris:
+            if u_clean and u_clean.startswith(supported_prefixes) and u_clean not in valid_uris:
                 valid_uris.append(u_clean)
             if len(valid_uris) >= 60:
                 break
@@ -310,13 +311,13 @@ class SocksProxyRotator:
         if not valid_uris:
             return None
 
-        logger.info("[%s] Checking %d nodes via sentinel-core...", tier_name, len(valid_uris))
+        logger.info("[%s] Checking %d nodes via sentinel-core (target: %s)...", tier_name, len(valid_uris), target_host)
 
-        # Проверяем живые ноды параллельно через сокетный пинг ядра (передаем список URI)
+        # Проверяем живые ноды параллельно через сокетный пинг ядра с валидацией целевого хоста
         loop = asyncio.get_running_loop()
         results = await loop.run_in_executor(
             None,
-            lambda: sentinel_core_bridge.check_proxies(valid_uris, timeout_ms=3000, concurrency=32)
+            lambda: sentinel_core_bridge.check_proxies(valid_uris, target_host=target_host, timeout_ms=3000, concurrency=32)
         )
 
         working = [r for r in results if r.get("success") or r.get("isAlive")]
@@ -393,7 +394,7 @@ class SocksProxyRotator:
             pass
         return []
 
-    async def _check_vpn_sources(self, sources: List[str], tier_name: str = "Tier") -> Optional[str]:
+    async def _check_vpn_sources(self, sources: List[str], tier_name: str = "Tier", target_host: str = "objects.githubusercontent.com") -> Optional[str]:
         """Параллельно скачивает подписки и активирует лучший Sing-box туннель."""
         tasks = [self._fetch_single_source(url) for url in sources]
         results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -402,7 +403,7 @@ class SocksProxyRotator:
             if isinstance(r, list):
                 uris.extend(r)
 
-        return await self._test_and_activate_nodes(uris, tier_name=tier_name)
+        return await self._test_and_activate_nodes(uris, tier_name=tier_name, target_host=target_host)
 
     async def start_tunnel_for_node(self, node_uri: str, port: int = 10818, target_host: str = "objects.githubusercontent.com") -> bool:
         """Запускает туннель для конкретной VPN ссылки через ядро sentinel-core."""
@@ -543,9 +544,9 @@ class SocksProxyRotator:
 
         return await loop.run_in_executor(None, _probe)
 
-    async def _check_socks5_sources(self, sources: List[str]) -> Optional[str]:
+    async def _check_socks5_sources(self, sources: List[str], target_host: str = "objects.githubusercontent.com") -> Optional[str]:
         """Парсит и тестирует открытые SOCKS5 источники (Tier 3)."""
-        return await self._check_vpn_sources(sources, tier_name="Tier 3")
+        return await self._check_vpn_sources(sources, tier_name="Tier 3", target_host=target_host)
 
     async def refresh_disk_cache(self) -> int:
         """Пассивно скачивает свежие конфигурации и обновляет дисковый кэш."""
@@ -568,7 +569,7 @@ class SocksProxyRotator:
         # ТИР 0: Дисковый кэш
         cached = self._load_cached_nodes_from_disk(exclude_env=True)
         if cached:
-            logger.info("[Failover] Checking %d local cached VPN nodes...", len(cached))
+            logger.info("[Failover] Checking %d local cached VPN nodes (target: %s)...", len(cached), target_host)
             cached_res = await self._test_and_activate_nodes(cached, tier_name="Disk Cache", target_host=target_host)
             if cached_res:
                 logger.info("[Failover] Successfully activated cached VPN node: %s", cached_res)
@@ -576,19 +577,19 @@ class SocksProxyRotator:
 
         # ТИР 1: Черные списки
         logger.info("[Failover] Checking Tier 1: Black lists (Hysteria 2 / Trojan / VLESS Reality)...")
-        t1_proxy = await self._check_vpn_sources(BLACK_LIST_SOURCES, tier_name="Tier 1")
+        t1_proxy = await self._check_vpn_sources(BLACK_LIST_SOURCES, tier_name="Tier 1", target_host=target_host)
         if t1_proxy:
             return t1_proxy
 
         # ТИР 2: Белые списки
         logger.info("[Failover] Checking Tier 2: White lists (VLESS Reality)...")
-        t2_proxy = await self._check_vpn_sources(WHITE_LIST_SOURCES, tier_name="Tier 2")
+        t2_proxy = await self._check_vpn_sources(WHITE_LIST_SOURCES, tier_name="Tier 2", target_host=target_host)
         if t2_proxy:
             return t2_proxy
 
         # ТИР 3: Открытые SOCKS5 прокси
         logger.info("[Failover] Checking Tier 3: SOCKS5 Fallback proxies...")
-        t3_proxy = await self._check_socks5_sources(SOCKS5_FALLBACK_SOURCES)
+        t3_proxy = await self._check_socks5_sources(SOCKS5_FALLBACK_SOURCES, target_host=target_host)
         if t3_proxy:
             return t3_proxy
 
