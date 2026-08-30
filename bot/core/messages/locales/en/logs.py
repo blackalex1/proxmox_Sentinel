@@ -201,6 +201,8 @@ translation = {
     "outbox_network_failure_editing_message_redirecting": "[Outbox] Network failure editing message for %s (Message ID: %s) (%s). Redirecting to outbox queue...",
     "polling_network_error_reconnecting": "[Polling Loop] Network error during Telegram polling (%s). Retrying in 5 seconds...",
     "polling_unexpected_error_reconnecting": "[Polling Loop] Unexpected error during Telegram polling (%s). Retrying in 5 seconds...",
+    "bot_polling_started_and_ready": "[Polling Loop] Bot successfully started and listening for updates (polling active)...",
+    "critical_bot_startup_error": "[Fatal Error] Critical error during bot startup/execution: %s",
     "port_traffic_monitoring_is_only_available_on": "Port traffic: Monitoring is only available on Linux.",
     "private_key_successfully_copied_from_to": "Private key successfully copied from %s to %s",
     "checking_proxy_batch_items": "Checking proxy batch #%s (%s items)...",
