@@ -55,17 +55,17 @@ class Downloader:
 
         _clean()
 
-        # 1. Try curl with strict speed guard (300 KB/s threshold, 4s drop)
+        # 1. Try curl with resilient speed guard
         if shutil.which("curl"):
             try:
                 is_interactive = sys.stdout.isatty()
                 progress_flag = "-#" if is_interactive else "-s"
                 curl_cmd = [
                     "curl", progress_flag, "-L", "-k",
-                    "--connect-timeout", "4",
+                    "--connect-timeout", "6",
                     "--max-time", str(int(timeout)),
-                    "--speed-time", "4",
-                    "--speed-limit", "307200",
+                    "--speed-time", "12",
+                    "--speed-limit", "30720",  # 30 KB/s threshold (only drop dead/stalled connections)
                     "-H", f"User-Agent: {USER_AGENT}",
                     "-o", tmp_dest,
                 ]
@@ -81,9 +81,9 @@ class Downloader:
                 curl_cmd.append(url)
 
                 if is_interactive:
-                    res = subprocess.run(curl_cmd, timeout=timeout + 3.0)
+                    res = subprocess.run(curl_cmd, timeout=timeout + 5.0)
                 else:
-                    res = subprocess.run(curl_cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=timeout + 3.0)
+                    res = subprocess.run(curl_cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=timeout + 5.0)
 
                 if res.returncode == 0 and os.path.isfile(tmp_dest):
                     file_size = os.path.getsize(tmp_dest)
@@ -171,10 +171,10 @@ class Downloader:
             try:
                 curl_cmd = [
                     "curl", "-sSL", "-k",
-                    "--connect-timeout", "4",
+                    "--connect-timeout", "6",
                     "--max-time", str(int(timeout)),
-                    "--speed-time", "4",
-                    "--speed-limit", "307200",
+                    "--speed-time", "12",
+                    "--speed-limit", "30720",
                     "-H", f"User-Agent: {USER_AGENT}",
                 ]
                 if use_proxy and self.proxy_url:
@@ -186,7 +186,7 @@ class Downloader:
                     curl_cmd.extend(["--noproxy", "*"])
 
                 curl_cmd.append(url)
-                res = subprocess.run(curl_cmd, capture_output=True, timeout=timeout + 3.0)
+                res = subprocess.run(curl_cmd, capture_output=True, timeout=timeout + 5.0)
                 if res.returncode == 0 and res.stdout and len(res.stdout) > 1024:
                     if not (b"<!DOCTYPE" in res.stdout[:256] or b"<html" in res.stdout[:256] or b"404: Not Found" in res.stdout[:256]):
                         return res.stdout
@@ -221,14 +221,15 @@ class Downloader:
         log_name = filename_for_log or os.path.basename(dest_path)
         log_info(f"  ➜ Загрузка {log_name}...")
 
-        # Fast CDN mirrors first (100+ MB/s, unblocked in RU), followed by VPN proxy & direct GitHub
+        # Fast CDN mirrors first, followed by VPN proxy & direct GitHub
         candidate_urls = [
+            (f"https://ghproxy.net/{direct_url}", False),
             (f"https://gh-proxy.com/{direct_url}", False),
             (f"https://ghfast.top/{direct_url}", False),
-            (f"https://mirror.ghproxy.com/{direct_url}", False),
+            (f"https://gh.ddlc.top/{direct_url}", False),
+            (f"https://gh.con.sh/{direct_url}", False),
             (direct_url, True),
             (direct_url, False),
-            (f"https://hub.gitmirror.com/{direct_url}", False),
         ]
 
         for url, use_proxy in candidate_urls:
@@ -245,12 +246,13 @@ class Downloader:
             log_info(f"  ➜ Загрузка {label_for_log}...")
 
         candidate_urls = [
+            (f"https://ghproxy.net/{direct_url}", False),
             (f"https://gh-proxy.com/{direct_url}", False),
             (f"https://ghfast.top/{direct_url}", False),
-            (f"https://mirror.ghproxy.com/{direct_url}", False),
+            (f"https://gh.ddlc.top/{direct_url}", False),
+            (f"https://gh.con.sh/{direct_url}", False),
             (direct_url, True),
             (direct_url, False),
-            (f"https://hub.gitmirror.com/{direct_url}", False),
         ]
 
         for url, use_proxy in candidate_urls:
