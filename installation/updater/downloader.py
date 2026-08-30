@@ -55,18 +55,17 @@ class Downloader:
 
         _clean()
 
-        # 1. Try curl with speed guard
+        # 1. Try curl with strict speed guard (300 KB/s threshold, 4s drop)
         if shutil.which("curl"):
             try:
                 is_interactive = sys.stdout.isatty()
                 progress_flag = "-#" if is_interactive else "-s"
                 curl_cmd = [
                     "curl", progress_flag, "-L", "-k",
-                    "--connect-timeout", "6",
+                    "--connect-timeout", "4",
                     "--max-time", str(int(timeout)),
-                    "--speed-time", "8",
-                    "--speed-limit", "153600",  # 150 KB/s threshold
-                    "--retry", "1",
+                    "--speed-time", "4",
+                    "--speed-limit", "307200",
                     "-H", f"User-Agent: {USER_AGENT}",
                     "-o", tmp_dest,
                 ]
@@ -82,9 +81,9 @@ class Downloader:
                 curl_cmd.append(url)
 
                 if is_interactive:
-                    res = subprocess.run(curl_cmd, timeout=timeout + 5.0)
+                    res = subprocess.run(curl_cmd, timeout=timeout + 3.0)
                 else:
-                    res = subprocess.run(curl_cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=timeout + 5.0)
+                    res = subprocess.run(curl_cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=timeout + 3.0)
 
                 if res.returncode == 0 and os.path.isfile(tmp_dest):
                     file_size = os.path.getsize(tmp_dest)
@@ -172,11 +171,10 @@ class Downloader:
             try:
                 curl_cmd = [
                     "curl", "-sSL", "-k",
-                    "--connect-timeout", "6",
+                    "--connect-timeout", "4",
                     "--max-time", str(int(timeout)),
-                    "--speed-time", "8",
-                    "--speed-limit", "153600",
-                    "--retry", "1",
+                    "--speed-time", "4",
+                    "--speed-limit", "307200",
                     "-H", f"User-Agent: {USER_AGENT}",
                 ]
                 if use_proxy and self.proxy_url:
@@ -188,7 +186,7 @@ class Downloader:
                     curl_cmd.extend(["--noproxy", "*"])
 
                 curl_cmd.append(url)
-                res = subprocess.run(curl_cmd, capture_output=True, timeout=timeout + 5.0)
+                res = subprocess.run(curl_cmd, capture_output=True, timeout=timeout + 3.0)
                 if res.returncode == 0 and res.stdout and len(res.stdout) > 1024:
                     if not (b"<!DOCTYPE" in res.stdout[:256] or b"<html" in res.stdout[:256] or b"404: Not Found" in res.stdout[:256]):
                         return res.stdout
@@ -219,16 +217,17 @@ class Downloader:
         return None
 
     def download_file_with_mirrors(self, direct_url: str, dest_path: str, filename_for_log: str = "") -> bool:
-        """Downloads a file with automated failover through direct connection and high-speed CDN mirrors."""
+        """Downloads a file with automated failover through high-speed CDN mirrors and VPN proxy."""
         log_name = filename_for_log or os.path.basename(dest_path)
         log_info(f"  ➜ Загрузка {log_name}...")
 
+        # Fast CDN mirrors first (100+ MB/s, unblocked in RU), followed by VPN proxy & direct GitHub
         candidate_urls = [
-            (direct_url, True),
-            (direct_url, False),
             (f"https://gh-proxy.com/{direct_url}", False),
             (f"https://ghfast.top/{direct_url}", False),
             (f"https://mirror.ghproxy.com/{direct_url}", False),
+            (direct_url, True),
+            (direct_url, False),
             (f"https://hub.gitmirror.com/{direct_url}", False),
         ]
 
@@ -241,16 +240,16 @@ class Downloader:
         return False
 
     def download_bytes_with_mirrors(self, direct_url: str, label_for_log: str = "") -> Optional[bytes]:
-        """Downloads bytes with automated failover through direct connection and high-speed CDN mirrors."""
+        """Downloads bytes with automated failover through high-speed CDN mirrors and VPN proxy."""
         if label_for_log:
             log_info(f"  ➜ Загрузка {label_for_log}...")
 
         candidate_urls = [
-            (direct_url, True),
-            (direct_url, False),
             (f"https://gh-proxy.com/{direct_url}", False),
             (f"https://ghfast.top/{direct_url}", False),
             (f"https://mirror.ghproxy.com/{direct_url}", False),
+            (direct_url, True),
+            (direct_url, False),
             (f"https://hub.gitmirror.com/{direct_url}", False),
         ]
 
@@ -262,47 +261,61 @@ class Downloader:
         return None
 
     def fetch_github_api(self, endpoint_url: str, timeout: float = 8.0) -> Optional[Any]:
-        """Queries GitHub REST API directly."""
-        # 1. Try curl
-        if shutil.which("curl"):
-            try:
-                curl_cmd = [
-                    "curl", "-fsSL", "-k",
-                    "--connect-timeout", "4",
-                    "--max-time", str(int(timeout)),
-                    "-H", f"User-Agent: {USER_AGENT}",
-                    "-H", "Accept: application/vnd.github.v3+json",
-                ]
-                if self.proxy_url:
-                    p = self.proxy_url
-                    if p.startswith("socks5://"):
-                        p = "socks5h://" + p[len("socks5://"):]
-                    curl_cmd.extend(["-x", p])
-                else:
-                    curl_cmd.extend(["--noproxy", "*"])
+        """Queries GitHub REST API with mirror fallback."""
+        api_candidates = [
+            (endpoint_url, True),
+            (f"https://gh-proxy.com/{endpoint_url}", False),
+            (f"https://ghfast.top/{endpoint_url}", False),
+            (endpoint_url, False),
+        ]
 
-                curl_cmd.append(endpoint_url)
-                res = subprocess.run(curl_cmd, capture_output=True, text=True, timeout=timeout + 2.0)
-                if res.returncode == 0 and res.stdout.strip():
-                    return json.loads(res.stdout)
+        for api_url, use_proxy in api_candidates:
+            # 1. Try curl
+            if shutil.which("curl"):
+                try:
+                    curl_cmd = [
+                        "curl", "-fsSL", "-k",
+                        "--connect-timeout", "4",
+                        "--max-time", str(int(timeout)),
+                        "-H", f"User-Agent: {USER_AGENT}",
+                        "-H", "Accept: application/vnd.github.v3+json",
+                    ]
+                    if use_proxy and self.proxy_url:
+                        p = self.proxy_url
+                        if p.startswith("socks5://"):
+                            p = "socks5h://" + p[len("socks5://"):]
+                        curl_cmd.extend(["-x", p])
+                    else:
+                        curl_cmd.extend(["--noproxy", "*"])
+
+                    curl_cmd.append(api_url)
+                    res = subprocess.run(curl_cmd, capture_output=True, text=True, timeout=timeout + 2.0)
+                    if res.returncode == 0 and res.stdout.strip():
+                        return json.loads(res.stdout)
+                except Exception:
+                    pass
+
+            # 2. Try urllib fallback
+            try:
+                req = urllib.request.Request(
+                    api_url,
+                    headers={
+                        "User-Agent": USER_AGENT,
+                        "Accept": "application/vnd.github.v3+json",
+                    },
+                )
+                ctx = ssl.create_default_context()
+                ctx.check_hostname = False
+                ctx.verify_mode = ssl.CERT_NONE
+                handlers = [urllib.request.HTTPSHandler(context=ctx)]
+                if use_proxy and self.proxy_url and not self.proxy_url.startswith("socks"):
+                    handlers.append(urllib.request.ProxyHandler({"http": self.proxy_url, "https": self.proxy_url}))
+                opener = urllib.request.build_opener(*handlers)
+                with opener.open(req, timeout=timeout) as resp:
+                    if resp.status == 200:
+                        return json.loads(resp.read().decode("utf-8"))
             except Exception:
                 pass
-
-        # 2. Try urllib fallback
-        try:
-            req = urllib.request.Request(
-                endpoint_url,
-                headers={
-                    "User-Agent": USER_AGENT,
-                    "Accept": "application/vnd.github.v3+json",
-                },
-            )
-            opener = self._build_opener()
-            with opener.open(req, timeout=timeout) as resp:
-                if resp.status == 200:
-                    return json.loads(resp.read().decode("utf-8"))
-        except Exception:
-            return None
 
         return None
 
