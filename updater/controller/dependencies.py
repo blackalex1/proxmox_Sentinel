@@ -8,7 +8,7 @@ import subprocess
 import sys
 from typing import Dict, Optional
 
-from .common import (
+from ..core.common import (
     BOLD,
     GREEN,
     RED,
@@ -38,7 +38,7 @@ class DependencyManager:
             py_bin = os.path.join(self.venv_dir, "Scripts", "python.exe")
 
         if not os.path.isfile(py_bin):
-            log_info(f"Создание виртуального окружения Python: {self.venv_dir}...")
+            log_info(f"Создание виртуального окружения Python: {BOLD}{self.venv_dir}{RESET}...")
             os.makedirs(os.path.dirname(self.venv_dir), exist_ok=True)
             run_command([sys.executable, "-m", "venv", self.venv_dir], cwd=self.project_dir, check=True, timeout=60.0)
 
@@ -92,35 +92,24 @@ class DependencyManager:
 
         if uv_bin:
             try:
-                log_info(f"Использование uv для быстрой установки зависимостей ({uv_bin})...")
+                log_info(f"Использование uv для ускоренной установки ({uv_bin})...")
                 uv_cmd = [
                     uv_bin, "pip", "install",
                     "--python", self.venv_dir,
                     "-r", self.requirements_path,
                 ]
                 if not self.proxy_url:
-                    # Prioritize fast mirror directly to avoid PyPI connection hangs
                     uv_cmd.extend([
                         "--index-url", "https://mirror.yandex.ru/pypi/simple",
                         "--extra-index-url", "https://pypi.org/simple",
                     ])
 
-                res = run_command(
-                    uv_cmd,
-                    cwd=self.project_dir,
-                    env=env_dict,
-                    check=False,
-                    timeout=90.0,
-                )
+                res = run_command(uv_cmd, cwd=self.project_dir, env=env_dict, check=False, timeout=90.0)
                 if res.returncode == 0:
                     log_success("Зависимости Python успешно обновлены через uv!")
                     return True
-                else:
-                    log_warn("uv завершился с кодом ошибки. Переключение на стандартный pip...")
-            except subprocess.TimeoutExpired:
-                log_warn("Превышено время ожидания ответа сети в uv (таймаут 90с). Переключение на pip...")
-            except Exception as e:
-                log_warn(f"Сбой установки через uv: {e}. Переключение на стандартный pip...")
+            except Exception:
+                log_warn("Переключение на стандартный pip...")
 
         # Fallback to pip
         pip_bin = os.path.join(self.venv_dir, "bin", "pip")
@@ -141,18 +130,12 @@ class DependencyManager:
             if res.returncode == 0:
                 log_success("Зависимости Python успешно обновлены через pip!")
                 return True
-            else:
-                log_warn("Ошибка при обновлении зависимостей через pip.")
-        except subprocess.TimeoutExpired:
-            log_warn("Превышено время ожидания ответа сети в pip (таймаут 120с).")
         except Exception as e:
-            log_warn(f"Не удалось обновить зависимости Python через pip: {e}")
+            log_warn(f"Ошибка при установке через pip: {e}")
 
-        # Check if existing venv packages are already functional
         if self._verify_installed_packages(py_bin):
-            log_warn("Сетевое обновление пакетов не удалось, но существующие библиотеки в venv работоспособны.")
-            log_success("Используются текущие установленные зависимости.")
+            log_success("Используются текущие установленные зависимости (проверка импортов пройдена).")
             return True
 
-        log_error("Критическая ошибка: необходимые Python-пакеты не установлены и сеть недоступна.")
+        log_error("Необходимые Python-пакеты не установлены и сеть недоступна.")
         return False

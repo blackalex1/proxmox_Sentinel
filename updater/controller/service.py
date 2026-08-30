@@ -8,7 +8,7 @@ import subprocess
 import sys
 import time
 
-from .common import (
+from ..core.common import (
     BOLD,
     CYAN,
     GREEN,
@@ -24,7 +24,7 @@ from .common import (
 
 
 class ServiceManager:
-    """Manages systemd unit registration, restarting, and live log tailing."""
+    """Manages systemd unit registration, restarting, and live log streaming for controller."""
 
     SERVICE_NAME = "proxmox-lxc-bot"
 
@@ -39,19 +39,16 @@ class ServiceManager:
             log_warn("systemd не обнаружен на данной платформе. Пропуск управления службой.")
             return True
 
-        log_info(f"Обновление службы systemd ({self.SERVICE_NAME}.service)...")
+        log_info(f"Обновление службы systemd ({BOLD}{self.SERVICE_NAME}.service{RESET})...")
 
-        # Copy service unit if source exists
         if os.path.isfile(self.service_src):
             try:
-                # Read template and ensure working directory matches current install location
                 with open(self.service_src, "r", encoding="utf-8") as f:
                     content = f.read()
 
                 bot_dir = os.path.join(self.project_dir, "bot")
                 venv_py = os.path.join(bot_dir, "venv", "bin", "python")
 
-                # If paths were pointing to hardcoded /opt/proxmox-lxc-bot, adapt them dynamically
                 if "/opt/proxmox-lxc-bot" in content and self.project_dir != "/opt/proxmox-lxc-bot":
                     content = content.replace("/opt/proxmox-lxc-bot/bot/venv/bin/python", venv_py)
                     content = content.replace("/opt/proxmox-lxc-bot/bot", bot_dir)
@@ -68,7 +65,7 @@ class ServiceManager:
             run_command(["systemctl", "enable", self.SERVICE_NAME], check=False, timeout=10.0)
             res = run_command(["systemctl", "restart", self.SERVICE_NAME], check=False, timeout=25.0)
             if res.returncode == 0:
-                log_success(f"Служба {self.SERVICE_NAME}.service успешно перезапущена!")
+                log_success(f"Служба {BOLD}{self.SERVICE_NAME}.service{RESET} успешно перезапущена!")
                 return True
             else:
                 log_error(f"Не удалось перезапустить службу {self.SERVICE_NAME}.service")
@@ -78,7 +75,7 @@ class ServiceManager:
             return False
 
     def stream_live_logs(self) -> None:
-        """Attaches to live journalctl log stream (-f) until interrupted by user (Ctrl+C)."""
+        """Attaches to live journalctl log stream until interrupted by user (Ctrl+C)."""
         if sys.platform == "win32" or not shutil.which("journalctl"):
             return
 
