@@ -114,6 +114,8 @@ def _init_sentinel_lib(lib: Any) -> Any:
         ("SentinelParseRouterConntrackLine", [ctypes.c_char_p]),
         ("SentinelParseRouterIptablesLine", [ctypes.c_char_p]),
         ("SentinelPing", [ctypes.c_char_p, ctypes.c_int, ctypes.c_int]),
+        ("SentinelParseURI", [ctypes.c_char_p]),
+        ("SentinelGenerateURI", [ctypes.c_char_p]),
         ("SentinelGetSecuritySchema", [ctypes.c_char_p]),
         ("SentinelParseSubscription", [ctypes.c_char_p]),
         ("SentinelBatchCheckProxies", [ctypes.c_char_p, ctypes.c_char_p, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int]),
@@ -510,6 +512,18 @@ def ping_host(host: str, port: int = 443, timeout_ms: int = 3000) -> Dict[str, A
     return {"success": False, "error": "failed to ping"}
 
 
+def parse_proxy_uri(raw_uri: str) -> Dict[str, Any]:
+    """Parses any proxy URI (vless, hy2, trojan, ss, etc.) via sentinel-core."""
+    try:
+        res = _ffi_call_json("SentinelParseURI", raw_uri)
+        if isinstance(res, dict) and ("protocol" in res or "error" in res):
+            return res
+    except Exception as e:
+        logger.debug("FFI parse_proxy_uri error: %s", e)
+
+    return run_core_command(["parse", "--uri", raw_uri])
+
+
 def parse_subscription(content: str) -> List[Dict[str, Any]]:
     """Parses multi-line or base64 subscription into a list of normalized ServerProfiles."""
     if not content or not content.strip():
@@ -517,7 +531,7 @@ def parse_subscription(content: str) -> List[Dict[str, Any]]:
 
     try:
         res = _ffi_call_json("SentinelParseSubscription", content)
-        if isinstance(res, list):
+        if isinstance(res, list) and len(res) > 0:
             return res
     except Exception as e:
         logger.debug("FFI SentinelParseSubscription error: %s", e)
@@ -529,14 +543,28 @@ def parse_subscription(content: str) -> List[Dict[str, Any]]:
 
     try:
         res = run_core_command(["parse-subscription", "--file", tmp_name])
-        if isinstance(res, list):
+        if isinstance(res, list) and len(res) > 0:
             return res
+        if isinstance(res, dict) and "profiles" in res:
+            return res["profiles"]
+    except Exception:
+        pass
     finally:
         try:
             os.remove(tmp_name)
         except Exception:
             pass
-    return []
+
+    # Line-by-line fallback via parse_proxy_uri
+    profiles = []
+    for line in content.splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or line.startswith("//"):
+            continue
+        p = parse_proxy_uri(line)
+        if isinstance(p, dict) and "protocol" in p:
+            profiles.append(p)
+    return profiles
 
 
 def check_proxies(

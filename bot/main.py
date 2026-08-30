@@ -109,36 +109,38 @@ async def main():
                     host_port = settings.proxy_url.split('@')[1]
                     safe_url = f"{proto}://***:***@{host_port}"
                     
-                if settings.proxy_url.startswith('ss://'):
-                    import pproxy
-                    import urllib.parse
+                vpn_prefixes = ("vless://", "vmess://", "hy2://", "hysteria2://", "trojan://", "tuic://", "ss://", "shadowsocks://")
+                if any(settings.proxy_url.lower().startswith(pref) for pref in vpn_prefixes):
+                    from core.proxy_rotator import proxy_rotator
                     local_socks_url = "socks5://127.0.0.1:10808"
-                    
-                    # Очищаем URL от лишних параметров для pproxy и исправляем padding base64
-                    parsed = urllib.parse.urlparse(settings.proxy_url)
-                    netloc = parsed.netloc or parsed.path
-                    if '@' in netloc:
-                        creds, host_port = netloc.rsplit('@', 1)
+                    ok = await proxy_rotator.start_tunnel_for_node(settings.proxy_url, port=10808, target_host="api.telegram.org")
+                    if ok:
+                        primary_proxy_endpoint = local_socks_url
+                        session = AiohttpSession(proxy=local_socks_url, **session_kwargs)
+                        logging.info("using_vpn_proxy_for_telegram_via_singbox", safe_url)
+                    elif settings.proxy_url.startswith('ss://'):
+                        import pproxy
+                        import urllib.parse
+                        parsed = urllib.parse.urlparse(settings.proxy_url)
+                        netloc = parsed.netloc or parsed.path
+                        if '@' in netloc:
+                            creds, host_port = netloc.rsplit('@', 1)
+                        else:
+                            creds, host_port = netloc, ''
+                        if creds and ':' not in creds:
+                            creds = creds.strip()
+                            missing_padding = len(creds) % 4
+                            if missing_padding:
+                                creds += '=' * (4 - missing_padding)
+                        cleaned_ss_url = f"ss://{creds}@{host_port}"
+                        server = pproxy.Server('socks5://127.0.0.1:10808')
+                        remote = pproxy.Connection(cleaned_ss_url)
+                        await server.start_server({'rserver': [remote], 'verbose': logging.debug})
+                        primary_proxy_endpoint = local_socks_url
+                        session = AiohttpSession(proxy=local_socks_url, **session_kwargs)
+                        logging.info("using_shadowsocks_proxy_for_telegram_via_built-in", safe_url)
                     else:
-                        creds, host_port = netloc, ''
-                    
-                    if creds and ':' not in creds:
-                        creds = creds.strip()
-                        missing_padding = len(creds) % 4
-                        if missing_padding:
-                            creds += '=' * (4 - missing_padding)
-                    
-                    cleaned_ss_url = f"ss://{creds}@{host_port}"
-                    
-                    # Инициализируем и запускаем pproxy
-                    server = pproxy.Server('socks5://127.0.0.1:10808')
-                    remote = pproxy.Connection(cleaned_ss_url)
-                    await server.start_server({'rserver': [remote], 'verbose': logging.debug})
-                    logging.info("started_builtin_shadowsocks_tunnel_pproxy")
-                    
-                    primary_proxy_endpoint = local_socks_url
-                    session = AiohttpSession(proxy=local_socks_url, **session_kwargs)
-                    logging.info("using_shadowsocks_proxy_for_telegram_via_built-in", safe_url)
+                        logging.warning("failed_to_start_tunnel_for_vpn_node", safe_url)
                 else:
                     primary_proxy_endpoint = settings.proxy_url
                     session = AiohttpSession(proxy=settings.proxy_url, **session_kwargs)
