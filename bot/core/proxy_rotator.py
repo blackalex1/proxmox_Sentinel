@@ -272,18 +272,19 @@ class SocksProxyRotator:
             # Brief settle time for Sing-box engine inbounds to bind
             await asyncio.sleep(1.0)
 
-            for _ in range(12):
+            for attempt in range(1, 6):
                 if self._singbox_proc.poll() is not None:
                     logger.warning("%s process terminated with exit code %d (see %s)", engine_type, self._singbox_proc.returncode, log_path)
                     self._singbox_proc = None
                     return False
 
-                ok, lat = await self.test_proxy_alive(f"socks5://127.0.0.1:{port}", target_host=target_host, timeout=4.0)
+                logger.debug("[Tunnel] Probing %s via local tunnel (attempt %d/5)...", target_host, attempt)
+                ok, lat = await self.test_proxy_alive(f"socks5://127.0.0.1:{port}", target_host=target_host, timeout=2.5)
                 if ok:
                     logger.info("Started local %s failover tunnel on port %d (latency: %.1f ms)", engine_type, port, lat)
                     return True
 
-                await asyncio.sleep(0.8)
+                await asyncio.sleep(0.5)
 
             logger.warning("%s started on port %d but failed health probe to %s.", engine_type, port, target_host)
             self.stop_tunnel()
@@ -595,6 +596,111 @@ class SocksProxyRotator:
 
 
 proxy_rotator = SocksProxyRotator()
+
+
+def safe_swap_bot_session(bot, new_session):
+    """
+    Безопасно заменяет bot.session на новую сессию и асинхронно закрывает старую,
+    предотвращая утечки ресурсов и предупреждения asyncio о незакрытых коннекторах и сессиях.
+    """
+    old_session = bot.session
+    bot.session = new_session
+    if old_session:
+        try:
+            asyncio.create_task(old_session.close())
+        except Exception:
+            pass
+
+
+async def proxy_monitor_loop(bot, primary_proxy, session_kwargs, start_active_proxy=None, start_using_fallback=False):
+    """
+    Фоновый мониторинг прокси.
+    Каждые 10 секунд проверяет текущий активный прокси.
+    Каждые 2 минуты проверяет доступность основного прокси, если сейчас активен бесплатный (fallback).
+    При необходимости производит бесшовное горячее переключение bot.session.
+    """
+    from aiogram.client.session.aiohttp import AiohttpSession
+    import logging
+    
+    # Исходное состояние
+    active_proxy = start_active_proxy if start_active_proxy is not None else primary_proxy
+    using_fallback = start_using_fallback
+    last_primary_check = time.monotonic()
+    
+    # Если на старте основной прокси не проверен, делаем это здесь
+    if start_active_proxy is None and primary_proxy:
+        logging.info("[Proxy Monitor] Проверяем работоспособность основного прокси на старте...")
+        is_alive, _ = await proxy_rotator.test_proxy_alive(primary_proxy, timeout=4.0)
+        if not is_alive:
+            logging.warning("[Proxy Monitor] Потерял соединение с моим прокси и пошел искать доступные бесплатные SOCKS5...")
+            new_proxy = await proxy_rotator.get_working_proxy()
+            if new_proxy:
+                safe_swap_bot_session(bot, AiohttpSession(proxy=new_proxy, **session_kwargs))
+                active_proxy = new_proxy
+                using_fallback = True
+                logging.info(f"[Proxy Monitor] Успешно переключено на бесплатный прокси: {new_proxy}")
+                from modules.proxmox.monitor.utils import send_alert_to_admins
+                asyncio.create_task(send_alert_to_admins(
+                    f"⚠️ <b>[Proxy Monitor]</b> Основной прокси ({primary_proxy}) не отвечает на старте!\n"
+                    f"🔄 Бот автоматически переключился на бесплатный прокси: <code>{new_proxy}</code>"
+                ))
+            else:
+                logging.error("[Proxy Monitor] Не удалось найти живой бесплатный прокси. Остаемся на основном в надежде на чудо...")
+        else:
+            logging.info("[Proxy Monitor] Основной прокси успешно прошел стартовую проверку.")
+            
+    while True:
+        try:
+            await asyncio.sleep(10)
+            
+            # 1. Проверяем работоспособность текущего активного прокси
+            if active_proxy:
+                is_alive, _ = await proxy_rotator.test_proxy_alive(active_proxy, timeout=4.0)
+                if not is_alive:
+                    logging.warning(f"[Proxy Monitor] Текущий активный прокси ({active_proxy}) перестал отвечать!")
+                    
+                    if not using_fallback:
+                        logging.warning("[Proxy Monitor] Потерял соединение с моим прокси и пошел искать доступные бесплатные SOCKS5...")
+                    else:
+                        logging.warning("[Proxy Monitor] Резервный бесплатный прокси отключился, ищу замену...")
+                        
+                    new_proxy = await proxy_rotator.get_working_proxy()
+                    if new_proxy:
+                        safe_swap_bot_session(bot, AiohttpSession(proxy=new_proxy, **session_kwargs))
+                        active_proxy = new_proxy
+                        using_fallback = True
+                        logging.info(f"[Proxy Monitor] Успешно переключено на новый бесплатный прокси: {new_proxy}")
+                        from modules.proxmox.monitor.utils import send_alert_to_admins
+                        await send_alert_to_admins(
+                            f"⚠️ <b>[Proxy Monitor]</b> Основной прокси ({primary_proxy}) перестал отвечать!\n"
+                            f"🔄 Бот автоматически переключился на бесплатный прокси: <code>{new_proxy}</code>"
+                        )
+                    else:
+                        logging.error("[Proxy Monitor] Не удалось найти рабочий бесплатный прокси. Попробуем в следующей итерации.")
+                        
+            # 2. Если мы сейчас на бесплатном прокси, раз в 2 минуты проверяем основной прокси
+            if using_fallback and primary_proxy:
+                now = time.monotonic()
+                if now - last_primary_check >= 120:
+                    last_primary_check = now
+                    logging.info(f"[Proxy Monitor] Проверяем доступность основного прокси ({primary_proxy})...")
+                    primary_alive, _ = await proxy_rotator.test_proxy_alive(primary_proxy, timeout=4.0)
+                    
+                    if primary_alive:
+                        logging.info("[Proxy Monitor] Мой основной прокси снова доступен! Возвращаюсь на него и разрываю соединение с бесплатным.")
+                        safe_swap_bot_session(bot, AiohttpSession(proxy=primary_proxy, **session_kwargs))
+                        active_proxy = primary_proxy
+                        using_fallback = False
+                        logging.info("[Proxy Monitor] Успешно возвращено соединение с основным прокси.")
+                        from modules.proxmox.monitor.utils import send_alert_to_admins
+                        await send_alert_to_admins(
+                            f"✅ <b>[Proxy Monitor]</b> Мой основной прокси снова доступен!\n"
+                            f"🔄 Успешно вернулись на основное подключение: <code>{primary_proxy}</code>"
+                        )
+                    else:
+                        logging.info("[Proxy Monitor] Основной прокси всё еще недоступен. Продолжаем работу на резервном.")
+        except Exception as e:
+            logging.error(f"[Proxy Monitor] Исключение в цикле мониторинга: {e}")
 
 
 if __name__ == "__main__":
