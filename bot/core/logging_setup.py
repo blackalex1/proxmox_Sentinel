@@ -46,7 +46,18 @@ class LocalizedFormatter(logging.Formatter):
         if hasattr(record, "message"):
             delattr(record, "message")
             
-        return super().format(record)
+        try:
+            return super().format(record)
+        except Exception:
+            try:
+                if record.args:
+                    args_str = ", ".join(str(a) for a in (record.args if isinstance(record.args, (tuple, list)) else [record.args]))
+                    record.message = f"{record.msg} ({args_str})"
+                else:
+                    record.message = str(record.msg)
+                return super().format(record)
+            except Exception:
+                return str(record.msg)
 
 
 def setup_logging():

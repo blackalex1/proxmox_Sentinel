@@ -402,4 +402,5 @@ translation = {
     "sentinel_core_traffic_polled": "[Sentinel-Core] Опрошен совокупный трафик: активных пользователей=%s, всего байт=%s",
     "sentinel_core_library_loaded": "[Sentinel-Core] Библиотека sentinel-core успешно загружена из %s",
     "sentinel_core_bridge_call_failed": "[Sentinel-Core] Ошибка вызова функции моста %s: %s",
+    "using_vpn_proxy_for_telegram_via_singbox": "Используется VPN-прокси для Telegram через Sing-box: %s",
 }
