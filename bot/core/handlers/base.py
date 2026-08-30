@@ -12,18 +12,13 @@ router = Router(name="core_base_router")
 @router.message(Command("start"))
 @router.message(F.text.in_({"🛡️ Панель управления", "🛡️ Control Panel"}))
 async def cmd_start(message: types.Message):
-    # При старте или клике отправляем приветствие с персистентной клавиатурой
-    await send_rich_message(
-        message.chat.id,
-        _("keyboards", "welcome_message"),
-        reply_markup=get_persistent_reply_keyboard()
-    )
-    # И сразу отправляем интерактивное меню
+    # Отправляем интерактивную панель управления
     await send_rich_message(
         message.chat.id,
         get_main_menu_text(),
         reply_markup=get_main_menu_keyboard()
     )
+
 
 @router.message(F.text.in_({"📊 Статус систем", "📊 System Status"}))
 async def btn_status(message: types.Message):

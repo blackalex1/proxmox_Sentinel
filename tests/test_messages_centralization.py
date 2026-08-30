@@ -36,9 +36,14 @@ def test_all_templates_russian_locale():
     
     # Spectre
     assert "Пользователь" in msgs.get_session_activity_card("VLESS", "Panel1", "test@user", "10 MB", "2 MB", "🟢 Connect")
+    disc_alert = msgs.get_client_disconnected_alert("Hysteria 2", "VPS 194.87.29.14", "svatik", "188.134.67.205", "22:57", {"country": "Russia", "city": "St Petersburg", "isp": "Interzet"})
+    assert "<table" in disc_alert
+    assert "svatik" in disc_alert
+    assert "Interzet" in disc_alert
 
-    
-    # Ban Center & Whitelist & Threats
+    new_ip = msgs.get_new_ip_alert("Hysteria 2", "VPS 194.87.29.14", "svatik", "188.134.67.205", "22:57", [], {"country": "Russia", "city": "St Petersburg"})
+    assert "<table" in new_ip
+
     table_bans = msgs.get_ban_center_table([], [])
     assert "<table" in table_bans
     

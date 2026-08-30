@@ -22,26 +22,24 @@ async def send_rich_message(
     ephemeral_params: Any = None
 ) -> Optional[Any]:
     """
-    Отправка Rich Message (Bot API 10.1 - 10.3 / sendRichMessage) или стандартного сообщения через aiogram.
+    Отправка Rich Message (Bot API 10.1 - 10.3 / SendRichMessage) или стандартного сообщения через aiogram.
     Возвращает объект Message при успехе, или None при ошибке.
     """
     sent_msg = None
 
-    # 1. Попытка отправить через нативный sendRichMessage (Bot API 10.1-10.3)
-    if hasattr(bot, "send_rich_message") or hasattr(bot, "_original_send_rich_message"):
-        try:
-            rich_message = build_rich_message(text)
-            kwargs = {}
-            if reply_markup is not None:
-                kwargs["reply_markup"] = reply_markup
-            if ephemeral_params:
-                kwargs["ephemeral_message_parameters"] = ephemeral_params
+    # 1. Попытка отправить через нативный SendRichMessage (Bot API 10.1-10.3)
+    try:
+        from aiogram.methods import SendRichMessage
+        rich_message = build_rich_message(text)
+        kwargs = {}
+        if reply_markup is not None:
+            kwargs["reply_markup"] = reply_markup
+        if ephemeral_params:
+            kwargs["ephemeral_message_parameters"] = ephemeral_params
 
-            send_method = getattr(bot, "send_rich_message", None) or getattr(bot, "_original_send_rich_message", None)
-            if send_method:
-                sent_msg = await send_method(chat_id=chat_id, rich_message=rich_message, **kwargs)
-        except Exception as e:
-            logging.debug(f"Native sendRichMessage attempt skipped for chat_id={chat_id}: {e}")
+        sent_msg = await bot(SendRichMessage(chat_id=chat_id, rich_message=rich_message, **kwargs))
+    except Exception as e:
+        logging.debug(f"Native SendRichMessage attempt skipped for chat_id={chat_id}: {e}")
 
     # 2. Стандартная и надежная отправка через aiogram bot.send_message (fallback)
     if not sent_msg:
@@ -63,10 +61,32 @@ async def edit_rich_message(
     reply_markup: Any = None
 ) -> Optional[Any]:
     """
-    Редактирование сообщения через aiogram bot.edit_message_text или нативный edit_rich_message.
-    Возвращает объект Message при успехе, или None при ошибке.
+    Редактирование сообщения через aiogram bot(EditMessageText) с поддержкой rich_message
+    или стандартный fallback.
     """
     edited_msg = None
+
+    # 1. Попытка нативного редактирования с rich_message
+    try:
+        from aiogram.methods import EditMessageText
+        rich_message = build_rich_message(text)
+        kwargs = {}
+        if reply_markup is not None:
+            kwargs["reply_markup"] = reply_markup
+        
+        edited_msg = await bot(EditMessageText(
+            chat_id=chat_id,
+            message_id=message_id,
+            rich_message=rich_message,
+            **kwargs
+        ))
+        return edited_msg
+    except Exception as e:
+        if "message is not modified" in str(e).lower():
+            return None
+        logging.debug(f"Native EditMessageText with rich_message skipped for chat_id={chat_id}: {e}")
+
+    # 2. Fallback через bot.edit_message_text
     try:
         fallback_text = clean_html_for_telegram(text) if isinstance(text, str) else str(text)
         edited_msg = await bot.edit_message_text(

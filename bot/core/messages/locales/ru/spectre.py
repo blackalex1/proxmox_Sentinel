@@ -1,14 +1,27 @@
 translation = {
     "new_ip_alert": (
-        "🚨 <b>New IP Connection</b>\n"
-        "━━━━━━━━━━━━━━━━━━━━\n"
-        "⚠️ <b>[{protocol}] Обнаружено подключение с нового IP!</b>\n\n"
-        "📦 <b>Панель:</b> <code>{panel_name}</code>\n"
-        "👤 <b>Пользователь:</b> <code>{username}</code>\n"
-        "🌐 <b>Новый IP:</b> <code>{client_ip}</code> ⚠️\n"
-        "{geo_row}\n"
-        "📋 <b>Предыдущие подключения:</b>\n"
-        "<pre><code>{history_text}</code></pre>"
+        '<table bordered striped compact>\n'
+        '  <tr>\n'
+        '    <th colspan="2" align="center"><b>🚨 [{protocol}] Обнаружено подключение с нового IP</b></th>\n'
+        '  </tr>\n'
+        '  <tr>\n'
+        '    <td align="left"><b>📦 Панель</b></td>\n'
+        '    <td align="left"><code>{panel_name}</code></td>\n'
+        '  </tr>\n'
+        '  <tr>\n'
+        '    <td align="left"><b>👤 Пользователь</b></td>\n'
+        '    <td align="left"><code>{username}</code></td>\n'
+        '  </tr>\n'
+        '  <tr>\n'
+        '    <td align="left"><b>🌐 Новый IP</b></td>\n'
+        '    <td align="left"><code>{client_ip}</code> ⚠️</td>\n'
+        '  </tr>\n'
+        '{geo_row}'
+        '</table>\n\n'
+        '<details>\n'
+        '  <summary>📋 <b>Предыдущие подключения</b></summary>\n'
+        '  <pre><code>{history_text}</code></pre>\n'
+        '</details>'
     ),
     "btn_approve_ip": "✅ Одобрить IP",
     "ip_approved_success_toast": "✅ IP {ip} успешно одобрен!",
@@ -46,45 +59,114 @@ translation = {
     ),
 
     "client_disconnected_alert": (
-        "🔴 <b>Client Disconnected</b>\n"
-        "━━━━━━━━━━━━━━━━━━━━\n"
-        "🔴 <b>[{protocol}] Клиент отключился:</b> <code>{panel_name}</code>\n\n"
-        "👤 <b>Пользователь:</b> <code>{username}</code>\n"
-        "🌐 <b>IP-адрес:</b> <code>{client_ip}</code>\n"
-        "{geo_row}"
+        '<table bordered striped compact>\n'
+        '  <tr>\n'
+        '    <th colspan="2" align="center"><b>🔴 [{protocol}] Клиент отключился</b></th>\n'
+        '  </tr>\n'
+        '  <tr>\n'
+        '    <td align="left"><b>📦 Панель</b></td>\n'
+        '    <td align="left"><code>{panel_name}</code></td>\n'
+        '  </tr>\n'
+        '  <tr>\n'
+        '    <td align="left"><b>👤 Пользователь</b></td>\n'
+        '    <td align="left"><code>{username}</code></td>\n'
+        '  </tr>\n'
+        '  <tr>\n'
+        '    <td align="left"><b>🌐 IP-адрес</b></td>\n'
+        '    <td align="left"><code>{client_ip}</code></td>\n'
+        '  </tr>\n'
+        '{geo_row}'
+        '</table>'
     ),
     "ips_autoblock_alert_audit": (
-        "🛑 <b>Account Auto-Blocked</b>\n"
-        "━━━━━━━━━━━━━━━━━━━━\n"
-        "🛑 <b>[IPS] Авто-блокировка:</b> <code>{panel_name}</code>\n\n"
-        "👤 <b>Пользователь:</b> <code>{email}</code>\n"
-        "📝 <b>Причина:</b> <b>{details}</b>"
+        '<table bordered striped compact>\n'
+        '  <tr>\n'
+        '    <th colspan="2" align="center"><b>🛑 [IPS] Авто-блокировка аккаунта</b></th>\n'
+        '  </tr>\n'
+        '  <tr>\n'
+        '    <td align="left"><b>📦 Панель</b></td>\n'
+        '    <td align="left"><code>{panel_name}</code></td>\n'
+        '  </tr>\n'
+        '  <tr>\n'
+        '    <td align="left"><b>👤 Пользователь</b></td>\n'
+        '    <td align="left"><code>{email}</code></td>\n'
+        '  </tr>\n'
+        '  <tr>\n'
+        '    <td align="left"><b>📝 Причина</b></td>\n'
+        '    <td align="left"><b>{details}</b></td>\n'
+        '  </tr>\n'
+        '</table>'
     ),
     "login_success_alert": (
-        "🔑 <b>Web GUI Access</b>\n"
-        "━━━━━━━━━━━━━━━━━━━━\n"
-        "🟢 <b>Вход выполнен:</b> <code>{panel_name}</code>\n\n"
-        "👤 <b>Логин:</b> <code>{username}</code>\n"
-        "🌐 <b>IP-адрес:</b> <code>{ip}</code>\n"
-        "{geo_row}"
-        "ℹ️ <b>Детали:</b> <code>{details}</code>"
+        '<table bordered striped compact>\n'
+        '  <tr>\n'
+        '    <th colspan="2" align="center"><b>🔑 Web GUI Access • Вход выполнен</b></th>\n'
+        '  </tr>\n'
+        '  <tr>\n'
+        '    <td align="left"><b>📦 Панель</b></td>\n'
+        '    <td align="left"><code>{panel_name}</code></td>\n'
+        '  </tr>\n'
+        '  <tr>\n'
+        '    <td align="left"><b>👤 Логин</b></td>\n'
+        '    <td align="left"><code>{username}</code></td>\n'
+        '  </tr>\n'
+        '  <tr>\n'
+        '    <td align="left"><b>🌐 IP-адрес</b></td>\n'
+        '    <td align="left"><code>{ip}</code></td>\n'
+        '  </tr>\n'
+        '{geo_row}'
+        '  <tr>\n'
+        '    <td align="left"><b>ℹ️ Детали</b></td>\n'
+        '    <td align="left"><code>{details}</code></td>\n'
+        '  </tr>\n'
+        '</table>'
     ),
     "spectre_2fa_alert": (
-        "🔑 <b>Sentinel 2FA Prompt</b>\n"
-        "━━━━━━━━━━━━━━━━━━━━\n"
-        "🔑 <b>Попытка входа:</b> <code>{panel_name}</code>\n\n"
-        "👤 <b>Пользователь:</b> <code>{username}</code>\n"
-        "🌐 <b>IP-адрес:</b> <code>{client_ip}</code>\n"
-        "{geo_row}"
+        '<table bordered striped compact>\n'
+        '  <tr>\n'
+        '    <th colspan="2" align="center"><b>🔑 Sentinel 2FA Prompt • Попытка входа</b></th>\n'
+        '  </tr>\n'
+        '  <tr>\n'
+        '    <td align="left"><b>📦 Панель</b></td>\n'
+        '    <td align="left"><code>{panel_name}</code></td>\n'
+        '  </tr>\n'
+        '  <tr>\n'
+        '    <td align="left"><b>👤 Пользователь</b></td>\n'
+        '    <td align="left"><code>{username}</code></td>\n'
+        '  </tr>\n'
+        '  <tr>\n'
+        '    <td align="left"><b>🌐 IP-адрес</b></td>\n'
+        '    <td align="left"><code>{client_ip}</code></td>\n'
+        '  </tr>\n'
+        '{geo_row}'
+        '</table>'
     ),
     "panel_status_message": (
-        "📊 <b>Server Status: {panel_name}</b>\n"
-        "━━━━━━━━━━━━━━━━━━━━\n"
-        "🖥️ <b>CPU:</b> <code>[{cpu_bar}] {cpu:.1f}%</code>\n"
-        "💾 <b>RAM:</b> <code>[{mem_bar}] {mem_curr:.2f} / {mem_tot:.2f} GB</code>\n"
-        "⏱️ <b>Uptime:</b> <code>{uptime_str}</code>\n"
-        "🖧 <b>Inbounds:</b> <code>{total_inbounds}</code>\n"
-        "👥 <b>Clients:</b> <code>{total_clients}</code> (🟢 {active_clients} / 🔵 {online_clients} / 🔴 {blocked_clients})\n"
+        '<table bordered striped compact>\n'
+        '  <tr>\n'
+        '    <th colspan="2" align="center"><b>📊 Server Status: {panel_name}</b></th>\n'
+        '  </tr>\n'
+        '  <tr>\n'
+        '    <td align="left"><b>🖥️ CPU</b></td>\n'
+        '    <td align="left"><code>[{cpu_bar}] {cpu:.1f}%</code></td>\n'
+        '  </tr>\n'
+        '  <tr>\n'
+        '    <td align="left"><b>💾 RAM</b></td>\n'
+        '    <td align="left"><code>[{mem_bar}] {mem_curr:.2f} / {mem_tot:.2f} GB</code></td>\n'
+        '  </tr>\n'
+        '  <tr>\n'
+        '    <td align="left"><b>⏱️ Uptime</b></td>\n'
+        '    <td align="left"><code>{uptime_str}</code></td>\n'
+        '  </tr>\n'
+        '  <tr>\n'
+        '    <td align="left"><b>🖧 Inbounds</b></td>\n'
+        '    <td align="left"><code>{total_inbounds}</code></td>\n'
+        '  </tr>\n'
+        '  <tr>\n'
+        '    <td align="left"><b>👥 Clients</b></td>\n'
+        '    <td align="left"><code>{total_clients}</code> (🟢 {active_clients} / 🔵 {online_clients} / 🔴 {blocked_clients})</td>\n'
+        '  </tr>\n'
+        '</table>'
     ),
     
     # Traffic table
