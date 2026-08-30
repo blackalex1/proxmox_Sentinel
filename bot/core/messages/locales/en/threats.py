@@ -1,5 +1,5 @@
 translation = {
-    "title": "⚡ Aegis IPS Security Incident Log",
+    "title": "⚡ Sentinel IPS Security Incident Log",
     "empty": "No security incidents recorded. System running normally.",
     "col_time": "📅 Time",
     "col_ip": "🌐 Attack IP",

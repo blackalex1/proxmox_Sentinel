@@ -16,7 +16,7 @@ def get_node_offline_alert(node_name, status):
 def get_node_online_alert(node_name):
     return _("nodes", "node_online_alert", node_name=node_name)
 
-def get_system_status_table(pve_nodes=None, pve_error=None, pve_configured=True, services=None):
+def get_system_status_table(pve_nodes=None, pve_error=None, pve_configured=True, services=None, panels=None):
     rows = []
     rows.append('<table bordered striped compact>')
     rows.append('  <tr>')
@@ -100,6 +100,34 @@ def get_system_status_table(pve_nodes=None, pve_error=None, pve_configured=True,
     rows.append(f'    <td align="left">{remote_status}</td>')
     rows.append('  </tr>')
     
+    # 3. Sentinel Panels section
+    if panels is not None:
+        rows.append('  <tr>')
+        rows.append(f'    <th colspan="2" align="left"><b>{_("nodes", "panels_header")}</b></th>')
+        rows.append('  </tr>')
+        
+        if len(panels) == 0:
+            rows.append('  <tr>')
+            rows.append(f'    <td colspan="2" align="left">{_("nodes", "panels_not_found")}</td>')
+            rows.append('  </tr>')
+        else:
+            for p in panels:
+                p_name = p.get('name', 'Panel')
+                p_status = p.get('status', 'offline')
+                if p_status == 'online':
+                    if 'online' in p and 'total' in p:
+                        detail = _("nodes", "panel_online_detail", online=p['online'], total=p['total'], cpu=p.get('cpu', 0.0))
+                    else:
+                        detail = _("nodes", "panel_online_simple")
+                else:
+                    err_text = html.escape(str(p.get('error', 'error')))
+                    detail = _("nodes", "panel_offline_detail", error=err_text)
+                rows.append('  <tr>')
+                rows.append(f'    <td align="left"><code>{html.escape(p_name)}</code></td>')
+                rows.append(f'    <td align="left">{detail}</td>')
+                rows.append('  </tr>')
+                
     rows.append('</table>')
     return "\n".join(rows)
+
 

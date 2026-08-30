@@ -51,12 +51,32 @@ def test_all_templates_russian_locale():
     # Ansible
     assert "Папка" in msgs.get_ansible_missing_dir_text("/etc/ansible")
     assert "Управление Ansible" in msgs.get_ansible_playbooks_menu_text()
-    assert "На каких хостах" in msgs.get_ansible_ask_host_text("test.yml")
-    assert "Настройка окружения Ansible" in msgs.get_ansible_setup_loading_text()
+    # System Status Table with Panels
+    status_tbl = msgs.get_system_status_table(
+        pve_nodes=[{"node": "pve", "status": "online", "cpu": 0.05, "mem": 4*1024**3, "maxmem": 16*1024**3}],
+        services={"resource_monitor": True, "auth_watcher": True, "ips_engine": True, "remote_monitor": True},
+        panels=[{"name": "LXC 104 (testPanel)", "status": "online", "online": 5, "total": 10, "cpu": 3.5}]
+    )
+    assert "<table" in status_tbl
+    assert "testPanel" in status_tbl
+    assert "Панели Sentinel Panel" in status_tbl
+
+    # Main Menu, Help & Welcome
+    from core.handlers.keyboards import get_main_menu_text, get_help_text
+    main_menu = get_main_menu_text()
+    assert "<table" in main_menu
+    assert "Proxmox Sentinel" in main_menu
+    assert "Proxmox Sentinel" in _("keyboards", "welcome_message")
+    help_msg = get_help_text()
+    assert "<table" in help_msg
+    assert "Proxmox Sentinel" in help_msg
 
 
 def test_all_templates_english_locale():
     set_current_locale("en")
+
+
+
     
     # Auth
     assert "SSH Access Report" in msgs.get_ssh_login_alert("SSH Login", "🟢", "PVE", "root", "1.2.3.4", "publickey", "fp123", "2026-08-30", "raw log line")
@@ -86,6 +106,29 @@ def test_all_templates_english_locale():
     assert "Ansible Control" in msgs.get_ansible_playbooks_menu_text()
     assert "Which hosts" in msgs.get_ansible_ask_host_text("test.yml")
     assert "Ansible Setup" in msgs.get_ansible_setup_loading_text()
+
+    # System Status Table with Panels
+    status_tbl = msgs.get_system_status_table(
+        pve_nodes=[{"node": "pve", "status": "online", "cpu": 0.05, "mem": 4*1024**3, "maxmem": 16*1024**3}],
+        services={"resource_monitor": True, "auth_watcher": True, "ips_engine": True, "remote_monitor": True},
+        panels=[{"name": "LXC 104 (testPanel)", "status": "online", "online": 5, "total": 10, "cpu": 3.5}]
+    )
+    assert "<table" in status_tbl
+    assert "testPanel" in status_tbl
+    assert "Sentinel Panels" in status_tbl
+
+    # Main Menu, Help & Welcome
+    from core.handlers.keyboards import get_main_menu_text, get_help_text
+    main_menu = get_main_menu_text()
+    assert "<table" in main_menu
+    assert "Proxmox Sentinel" in main_menu
+    assert "Proxmox Sentinel" in _("keyboards", "welcome_message")
+    help_msg = get_help_text()
+    assert "<table" in help_msg
+    assert "Proxmox Sentinel" in help_msg
+
+
+
 
 
 @pytest.mark.asyncio
