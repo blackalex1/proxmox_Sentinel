@@ -52,6 +52,15 @@ def init_db():
                 conn.execute("ALTER TABLE vpn_sessions ADD COLUMN upload_bytes INTEGER DEFAULT 0;")
             except sqlite3.OperationalError:
                 pass # уже существует
+            try:
+                conn.execute("ALTER TABLE vpn_sessions ADD COLUMN cumulative_tx INTEGER DEFAULT 0;")
+            except sqlite3.OperationalError:
+                pass # уже существует
+            try:
+                conn.execute("ALTER TABLE vpn_sessions ADD COLUMN cumulative_rx INTEGER DEFAULT 0;")
+            except sqlite3.OperationalError:
+                pass # уже существует
+
 
             conn.execute("CREATE INDEX IF NOT EXISTS idx_sessions_username ON vpn_sessions (username);")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_sessions_ip ON vpn_sessions (ip);")
@@ -452,6 +461,7 @@ async def save_vpn_connect(username: str, ip: str, connect_time_str: str, tx: in
 async def save_vpn_disconnect(username: str, ip: str, disconnect_time_str: str, tx: int, rx: int):
     """
     Обновляет сессию VPN информацией о времени отключения, длительности и потреблении трафика.
+    Корректно рассчитывает дельту сессии из накопительного счетчика tx/rx демона.
     """
     # 1. Ищем последнюю активную сессию пользователя с этого IP
     session = await execute_read_one(
@@ -465,9 +475,19 @@ async def save_vpn_disconnect(username: str, ip: str, disconnect_time_str: str, 
         initial_tx = session['download_bytes'] or 0
         initial_rx = session['upload_bytes'] or 0
         
-        # Расчет потребленного трафика за сессию (положительные значения)
-        diff_tx = max(0, tx - initial_tx)
-        diff_rx = max(0, rx - initial_rx)
+        # Если baseline при старте сессии был 0, проверяем последнюю закрытую сессию
+        if initial_tx == 0 and tx > 0:
+            prev = await execute_read_one(
+                "SELECT cumulative_tx, cumulative_rx FROM vpn_sessions WHERE username = ? AND session_id != ? AND cumulative_tx > 0 ORDER BY connect_time DESC LIMIT 1",
+                (username, session_id)
+            )
+            if prev:
+                initial_tx = prev['cumulative_tx'] or 0
+                initial_rx = prev['cumulative_rx'] or 0
+
+        # Расчет реальной дельты потребленного трафика за сессию
+        diff_tx = max(0, tx - initial_tx) if tx >= initial_tx else tx
+        diff_rx = max(0, rx - initial_rx) if rx >= initial_rx else rx
         
         # Расчет длительности
         try:
@@ -486,15 +506,15 @@ async def save_vpn_disconnect(username: str, ip: str, disconnect_time_str: str, 
             duration_str = f"{duration_sec // 3600} ч {(duration_sec % 3600) // 60} мин"
             
         await execute_write(
-            "UPDATE vpn_sessions SET disconnect_time = ?, duration = ?, download_bytes = ?, upload_bytes = ? WHERE username = ? AND session_id = ?",
-            (disconnect_time_str, duration_str, diff_tx, diff_rx, username, session_id)
+            "UPDATE vpn_sessions SET disconnect_time = ?, duration = ?, download_bytes = ?, upload_bytes = ?, cumulative_tx = ?, cumulative_rx = ? WHERE username = ? AND session_id = ?",
+            (disconnect_time_str, duration_str, diff_tx, diff_rx, tx, rx, username, session_id)
         )
         is_noise = (duration_sec <= 3 and diff_tx == 0 and diff_rx == 0)
         if not is_noise:
             logging.info("database_disconnection_registered_used_tx_rx", username, ip, diff_tx, diff_rx, session_id)
         return session_id, duration_sec, diff_tx, diff_rx
     else:
-        # Резервный вариант: если сессия не найдена (пропустили подключение), создаем завершенную с нулевым трафиком
+        # Резервный вариант: если сессия не найдена (пропустили подключение), создаем завершенную
         import uuid
         session_id = str(uuid.uuid4())
         
@@ -504,13 +524,22 @@ async def save_vpn_disconnect(username: str, ip: str, disconnect_time_str: str, 
         )
         is_new_ip = 0 if row else 1
         duration_str = "неизвестно"
+
+        prev = await execute_read_one(
+            "SELECT cumulative_tx, cumulative_rx FROM vpn_sessions WHERE username = ? AND cumulative_tx > 0 ORDER BY connect_time DESC LIMIT 1",
+            (username,)
+        )
+        prev_tx = prev['cumulative_tx'] or 0 if prev else 0
+        prev_rx = prev['cumulative_rx'] or 0 if prev else 0
+        diff_tx = max(0, tx - prev_tx) if tx >= prev_tx else tx
+        diff_rx = max(0, rx - prev_rx) if rx >= prev_rx else rx
         
         await execute_write(
-            "INSERT INTO vpn_sessions (session_id, username, ip, connect_time, disconnect_time, duration, is_new_ip, download_bytes, upload_bytes) VALUES (?, ?, ?, ?, ?, ?, ?, 0, 0)",
-            (session_id, username, ip, disconnect_time_str, disconnect_time_str, duration_str, is_new_ip)
+            "INSERT INTO vpn_sessions (session_id, username, ip, connect_time, disconnect_time, duration, is_new_ip, download_bytes, upload_bytes, cumulative_tx, cumulative_rx) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (session_id, username, ip, disconnect_time_str, disconnect_time_str, duration_str, is_new_ip, diff_tx, diff_rx, tx, rx)
         )
         logging.info("database_disconnection_registered_without_connection_session_id", username, ip, session_id)
-        return session_id, 0, 0, 0
+        return session_id, 0, diff_tx, diff_rx
 
 
 async def get_client_cumulative_traffic(username: str) -> tuple[int, int]:
@@ -518,12 +547,23 @@ async def get_client_cumulative_traffic(username: str) -> tuple[int, int]:
     if not username:
         return 0, 0
     try:
-        row = await execute_read_one(
+        row_max = await execute_read_one(
+            "SELECT MAX(cumulative_tx) as max_down, MAX(cumulative_rx) as max_up FROM vpn_sessions WHERE username = ?",
+            (username,)
+        )
+        max_down = int(row_max.get('max_down') or 0) if row_max else 0
+        max_up = int(row_max.get('max_up') or 0) if row_max else 0
+
+        row_sum = await execute_read_one(
             "SELECT SUM(download_bytes) as total_down, SUM(upload_bytes) as total_up FROM vpn_sessions WHERE username = ?",
             (username,)
         )
-        if row and (row.get('total_down') or row.get('total_up')):
-            return int(row.get('total_down') or 0), int(row.get('total_up') or 0)
+        total_down = int(row_sum.get('total_down') or 0) if row_sum else 0
+        total_up = int(row_sum.get('total_up') or 0) if row_sum else 0
+
+        final_down = max(max_down, total_down)
+        final_up = max(max_up, total_up)
+        return final_down, final_up
     except Exception:
         pass
     return 0, 0

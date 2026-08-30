@@ -126,7 +126,7 @@ async def test_singbox_connect_new_ip_alert():
     with patch("core.db.save_vpn_connect", AsyncMock(return_value="sess_sb_123")) as mock_save, \
          patch("modules.proxmox.monitor.hysteria_alerts.check_new_ip_and_get_history", AsyncMock(return_value=(True, mock_history))) as mock_chk, \
          patch("modules.proxmox.monitor.utils.get_geoip_info", AsyncMock(return_value="🇳🇱 Нидерланды, Амстердам")), \
-         patch("modules.proxmox.monitor.utils.send_rich_message", mock_send), \
+         patch("modules.proxmox.monitor.utils.send_alert_to_admins", mock_send), \
          patch("modules.proxmox.monitor.hysteria_alerts.get_traffic_from_api", AsyncMock(return_value=(500, 1000))), \
          patch("modules.proxmox.monitor.hysteria_alerts.check_and_send_card_delayed", AsyncMock()):
         
@@ -152,8 +152,8 @@ async def test_singbox_connect_new_ip_alert():
         assert mock_send.called
         call_kwargs = mock_send.call_args.kwargs
         call_args = mock_send.call_args[0]
-        alert_text = call_args[1] if len(call_args) > 1 else call_kwargs.get("text", "")
-        reply_markup = call_kwargs.get("reply_markup") or (call_args[2] if len(call_args) > 2 else None)
+        alert_text = call_args[0] if len(call_args) > 0 else call_kwargs.get("text", "")
+        reply_markup = call_kwargs.get("reply_markup") or (call_args[1] if len(call_args) > 1 else None)
         
         assert "Sing-box" in alert_text or "singbox" in alert_text.lower()
         assert "test_user_alpha" in alert_text
@@ -189,7 +189,7 @@ async def test_hysteria2_connect_new_ip_alert():
     with patch("core.db.save_vpn_connect", AsyncMock(return_value="sess_hy_456")) as mock_save, \
          patch("modules.proxmox.monitor.hysteria_alerts.check_new_ip_and_get_history", AsyncMock(return_value=(True, mock_history))) as mock_chk, \
          patch("modules.proxmox.monitor.utils.get_geoip_info", AsyncMock(return_value="🇩🇪 Германия, Франкфурт")), \
-         patch("modules.proxmox.monitor.utils.send_rich_message", mock_send), \
+         patch("modules.proxmox.monitor.utils.send_alert_to_admins", mock_send), \
          patch("modules.proxmox.monitor.hysteria_alerts.get_traffic_from_api", AsyncMock(return_value=(0, 0))), \
          patch("modules.proxmox.monitor.hysteria_alerts.check_and_send_card_delayed", AsyncMock()):
         
@@ -208,8 +208,8 @@ async def test_hysteria2_connect_new_ip_alert():
         assert mock_send.called
         call_kwargs = mock_send.call_args.kwargs
         call_args = mock_send.call_args[0]
-        alert_text = call_args[1] if len(call_args) > 1 else call_kwargs.get("text", "")
-        reply_markup = call_kwargs.get("reply_markup") or (call_args[2] if len(call_args) > 2 else None)
+        alert_text = call_args[0] if len(call_args) > 0 else call_kwargs.get("text", "")
+        reply_markup = call_kwargs.get("reply_markup") or (call_args[1] if len(call_args) > 1 else None)
         
         assert "Hysteria" in alert_text
         assert "hy_user_beta" in alert_text
