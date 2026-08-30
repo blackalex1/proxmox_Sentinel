@@ -424,7 +424,15 @@ class SocksProxyRotator:
                 logger.error("start_tunnel_for_node error: %s", e)
         return False
 
-    async def test_proxy_alive(self, proxy_url: str, target_host: str = "objects.githubusercontent.com", target_port: int = 443, timeout: float = 4.0) -> Tuple[bool, float]:
+    async def test_proxy_alive(
+        self,
+        proxy_url: str,
+        target_host: str = "objects.githubusercontent.com",
+        target_port: int = 443,
+        timeout: float = 4.0,
+        verbose: bool = False,
+        **kwargs
+    ) -> Tuple[bool, float]:
         """Проверяет доступность SOCKS5/HTTP прокси через быстрый curl-проб с фолбэком на RFC 1928 сокет."""
         loop = asyncio.get_running_loop()
 
