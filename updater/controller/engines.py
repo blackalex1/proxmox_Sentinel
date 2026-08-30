@@ -8,20 +8,19 @@ import os
 import platform
 import re
 import shutil
-import ssl
 import subprocess
 import sys
 import tarfile
-import urllib.request
 import zipfile
 from typing import Optional, Tuple
 
-from .common import (
+from ..core.common import (
     BOLD,
     CYAN,
     GREEN,
     RED,
     RESET,
+    WHITE,
     YELLOW,
     log_banner,
     log_error,
@@ -29,7 +28,7 @@ from .common import (
     log_success,
     log_warn,
 )
-from .downloader import Downloader
+from ..core.downloader import Downloader
 
 
 class ProxyEngineManager:
@@ -37,12 +36,11 @@ class ProxyEngineManager:
 
     def __init__(
         self,
-        project_dir: str,
+        bin_dir: str,
         proxy_url: Optional[str] = None,
         auto_mode: bool = False,
     ) -> None:
-        self.project_dir = project_dir
-        self.bin_dir = os.path.join(project_dir, "bot", "bin")
+        self.bin_dir = bin_dir
         self.proxy_url = proxy_url
         self.auto_mode = auto_mode
         self.downloader = Downloader(proxy_url=proxy_url)
@@ -130,14 +128,11 @@ class ProxyEngineManager:
         return None
 
     def download_singbox(self, tag: Optional[str] = None) -> bool:
-        """Downloads and installs Sing-box proxy engine binary into bot/bin/."""
+        """Downloads and installs Sing-box binary into target bin directory."""
         if not tag:
             tag = self.fetch_latest_release("SagerNet/sing-box")
             if not tag:
-                tag = input("Не удалось определить версию Sing-box с GitHub. Введите тег версии (например v1.13.20): ").strip()
-                if not tag:
-                    log_error("Версия Sing-box не указана.")
-                    return False
+                tag = "v1.13.20"
 
         if not tag.startswith("v") and not tag.startswith("V"):
             tag = "v" + tag
@@ -193,7 +188,7 @@ class ProxyEngineManager:
                     except Exception:
                         pass
                 os.replace(tmp_target, target_bin)
-                log_success(f"Sing-box {tag} успешно установлен -> {target_bin}")
+                log_success(f"Sing-box {tag} установлен -> {target_bin}")
                 return True
         except Exception as e:
             if os.path.exists(tmp_target):
@@ -207,14 +202,11 @@ class ProxyEngineManager:
         return False
 
     def download_xray(self, tag: Optional[str] = None) -> bool:
-        """Downloads and installs Xray-core proxy engine binary into bot/bin/."""
+        """Downloads and installs Xray-core binary into target bin directory."""
         if not tag:
             tag = self.fetch_latest_release("XTLS/Xray-core")
             if not tag:
-                tag = input("Не удалось определить версию Xray-core с GitHub. Введите тег версии (например v26.3.27): ").strip()
-                if not tag:
-                    log_error("Версия Xray-core не указана.")
-                    return False
+                tag = "v26.3.27"
 
         if not tag.startswith("v") and not tag.startswith("V"):
             tag = "v" + tag
@@ -259,7 +251,7 @@ class ProxyEngineManager:
                         os.replace(tmp_file, target_file)
 
             if os.path.isfile(target_bin) and os.path.getsize(target_bin) > 0:
-                log_success(f"Xray-core {tag} успешно установлен -> {target_bin}")
+                log_success(f"Xray-core {tag} установлен -> {target_bin}")
                 return True
         except Exception as e:
             log_error(f"Ошибка распаковки Xray-core: {e}")
@@ -271,7 +263,6 @@ class ProxyEngineManager:
         """Interactive or automated menu for managing Sing-box and Xray-core proxy engines."""
         sb_cur, xray_cur = self.get_installed_versions()
 
-        # In non-interactive auto mode: ensure at least Sing-box is installed
         if not sys.stdin.isatty() or self.auto_mode:
             if not sb_cur:
                 log_info("Sing-box не обнаружен. Автоматическая загрузка...")
@@ -281,38 +272,30 @@ class ProxyEngineManager:
         sb_latest = self.fetch_latest_release("SagerNet/sing-box")
         xray_latest = self.fetch_latest_release("XTLS/Xray-core")
 
-        log_banner("🚀  ВЫБОР PROXY / VPN ДВИЖКА (FAILOVER МОСТ)")
-        sb_display = f"{GREEN}{sb_cur}{RESET}" if sb_cur else f"{RED}Не установлен{RESET}"
-        xray_display = f"{GREEN}{xray_cur}{RESET}" if xray_cur else f"{RED}Не установлен{RESET}"
+        log_banner("🚀 PROXY / VPN ДВИЖКИ", "Установка и обновление Sing-box / Xray-core")
+        sb_disp = f"{GREEN}{sb_cur}{RESET}" if sb_cur else f"{RED}Не установлен{RESET}"
+        xray_disp = f"{GREEN}{xray_cur}{RESET}" if xray_cur else f"{RED}Не установлен{RESET}"
 
-        sb_latest_disp = f"{CYAN}{sb_latest}{RESET}" if sb_latest else f"{YELLOW}Не определена{RESET}"
-        xray_latest_disp = f"{CYAN}{xray_latest}{RESET}" if xray_latest else f"{YELLOW}Не определена{RESET}"
-
-        print(f"📌 Текущее состояние:")
-        print(f"  • Sing-box:  {sb_display} (Последняя на GitHub: {sb_latest_disp})")
-        print(f"  • Xray-core: {xray_display} (Последняя на GitHub: {xray_latest_disp})")
-        print("=" * 60)
+        print(f"  • Sing-box:  {sb_disp} (GitHub: {CYAN}{sb_latest or '—'}{RESET})")
+        print(f"  • Xray-core: {xray_disp} (GitHub: {CYAN}{xray_latest or '—'}{RESET})\n")
 
         is_sb_installed = bool(sb_cur)
         default_choice = "4" if is_sb_installed else "1"
 
-        sb_opt_label = f"Sing-box ({sb_latest})" if sb_latest else "Sing-box"
-        xray_opt_label = f"Xray-core ({xray_latest})" if xray_latest else "Xray-core"
-
         if not is_sb_installed:
-            print(f"  1) 🟢 Установить {sb_opt_label} [Рекомендуется / По умолчанию]")
-            print(f"  2) 🟢 Установить {xray_opt_label}")
-            print(f"  3) 🌐 Установить оба движка ({sb_opt_label} + {xray_opt_label})")
-            print(f"  4) ⏹️  Пропустить установку движков")
+            print(f"  {CYAN}1){RESET} 🟢 Установить Sing-box [Рекомендуется / По умолчанию]")
+            print(f"  {CYAN}2){RESET} 🟢 Установить Xray-core")
+            print(f"  {CYAN}3){RESET} 🌐 Установить оба движка (Sing-box + Xray-core)")
+            print(f"  {CYAN}4){RESET} ⏹️  Пропустить установку движков\n")
         else:
-            print(f"  1) 🔄 Обновить / переустановить {sb_opt_label}")
-            print(f"  2) 🔄 Обновить / переустановить {xray_opt_label}")
-            print(f"  3) 🌐 Установить / обновить оба движка")
-            print(f"  4) ⏹️  Оставить текущие версии [По умолчанию / Пропустить]")
+            print(f"  {CYAN}1){RESET} 🔄 Обновить / переустановить Sing-box")
+            print(f"  {CYAN}2){RESET} 🔄 Обновить / переустановить Xray-core")
+            print(f"  {CYAN}3){RESET} 🌐 Обновить оба движка")
+            print(f"  {CYAN}4){RESET} ⏹️  Оставить текущие версии [По умолчанию / Пропустить]\n")
 
         while True:
             try:
-                raw = input(f"Выберите вариант [1-4] (по умолчанию {default_choice}): ").strip()
+                raw = input(f"  {BOLD}Выберите вариант [1-4]{RESET} (по умолчанию {default_choice}): ").strip()
             except (EOFError, KeyboardInterrupt):
                 print("")
                 raw = default_choice
