@@ -402,4 +402,5 @@ translation = {
     "sentinel_core_traffic_polled": "[Sentinel-Core] Unified traffic polled: active users=%s, total bytes=%s",
     "sentinel_core_library_loaded": "[Sentinel-Core] sentinel-core library successfully loaded from %s",
     "sentinel_core_bridge_call_failed": "[Sentinel-Core] Bridge function call failed %s: %s",
+    "using_vpn_proxy_for_telegram_via_singbox": "Using VPN proxy for Telegram via Sing-box: %s",
 }
