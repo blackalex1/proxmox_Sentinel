@@ -121,9 +121,10 @@ def setup_logging():
     root_logger.addHandler(warnings_handler)
     root_logger.addHandler(console_handler)
 
-    # Настраиваем уровень логирования для библиотеки asyncssh на WARNING,
-    # чтобы не забивать логи INFO-сообщениями о каждом сессионном канале SSH.
+    # Настраиваем уровень логирования для сторонних библиотек (asyncssh, asyncio),
+    # чтобы не забивать логи отладочными сообщениями каналов и ложными warning-ами sigchld.
     logging.getLogger('asyncssh').setLevel(logging.WARNING)
+    logging.getLogger('asyncio').setLevel(logging.ERROR)
 
     logging.info("logging_general_logging_initialized_5x10mb", log_file)
     logging.info("logging_dedicated_warning_log_initialized_max", warnings_file)
