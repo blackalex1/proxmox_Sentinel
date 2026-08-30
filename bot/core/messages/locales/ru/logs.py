@@ -201,6 +201,8 @@ translation = {
     "outbox_network_failure_editing_message_redirecting": "[Outbox] Сбой сети при редактировании сообщения для %s (ID сообщения: %s) (%s). Перенаправляем в исходящую очередь...",
     "polling_network_error_reconnecting": "[Polling Loop] Сетевой сбой при пуллинге Telegram (%s). Повторная попытка через 5 секунд...",
     "polling_unexpected_error_reconnecting": "[Polling Loop] Непредвиденная ошибка при пуллинге Telegram (%s). Повторная попытка через 5 секунд...",
+    "bot_polling_started_and_ready": "[Polling Loop] Бот успешно запущен и готов к приему сообщений (polling active)...",
+    "critical_bot_startup_error": "[Fatal Error] Критическая ошибка при запуске или работе бота: %s",
     "port_traffic_monitoring_is_only_available_on": "Трафик портов: Мониторинг доступен только на Linux.",
     "private_key_successfully_copied_from_to": "Приватный ключ успешно скопирован из %s в %s",
     "checking_proxy_batch_items": "Проверка батча прокси #%s (%s шт)...",

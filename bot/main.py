@@ -59,7 +59,7 @@ import modules.ansible.handlers.setup_lxc
 import modules.ansible.handlers.setup_vps
 import modules.ansible.handlers.setup_host
 
-from core.proxy_rotator import safe_swap_bot_session, proxy_monitor_loop
+from core.proxy_rotator import safe_swap_bot_session, handle_telegram_connection_failure
 
 
 async def main():
@@ -179,57 +179,13 @@ async def main():
     else:
         logging.warning("warning_admin_ids_not_set_the_bot_will")
         
-    # Запуск фонового мониторинга и авто-ротации прокси
-    active_proxy = primary_proxy_endpoint
-    using_fallback = False
-
+    # Фоновое периодическое обновление списков с GitHub (раз в час)
     if settings.enable_free_proxy_rotation:
-        logging.info("proxy_monitor_checking_functionality_of_the_main")
         from core.proxy_rotator import proxy_rotator
-        from aiogram.client.session.aiohttp import AiohttpSession
-        
-        if primary_proxy_endpoint:
-            is_local = "127.0.0.1" in primary_proxy_endpoint or "localhost" in primary_proxy_endpoint
-            init_retries = 5 if is_local else 2
-            init_timeout = 8.0 if is_local else 4.0
-
-            is_alive = False
-            for attempt in range(init_retries):
-                if attempt > 0:
-                    await asyncio.sleep(2.0)
-                is_alive, _ = await proxy_rotator.test_proxy_alive(
-                    primary_proxy_endpoint,
-                    timeout=init_timeout,
-                    verbose=(attempt == init_retries - 1)
-                )
-                if is_alive:
-                    break
-
-            if not is_alive:
-                logging.warning("proxy_monitor_lost_connection_to_my_proxy")
-                new_proxy = await proxy_rotator.get_working_proxy()
-                if new_proxy:
-                    safe_swap_bot_session(bot, AiohttpSession(proxy=new_proxy, **session_kwargs))
-                    active_proxy = new_proxy
-                    using_fallback = True
-                    logging.info("proxy_monitor_successfully_switched_to_free_proxy", new_proxy)
-                    # Отправляем алерт в фоне, чтобы не задерживать запуск бота
-                    from modules.proxmox.monitor.utils import send_alert_to_admins
-                    from core.messages import get_proxy_switch_alert
-                    asyncio.create_task(send_alert_to_admins(
-                        get_proxy_switch_alert(primary_proxy_endpoint, new_proxy, tier_info=proxy_rotator._last_working_source_tier or "Tier 1")
-                    ))
-                else:
-                    logging.error("proxy_monitor_failed_to_find_a_live")
-            else:
-                logging.info("proxy_monitor_main_proxy_successfully_passed_the")
-                
-        logging.info("proxy_monitor_starting_background_proxy_auto-rotation_tracking")
-        asyncio.create_task(proxy_monitor_loop(bot, primary_proxy_endpoint, session_kwargs, active_proxy, using_fallback), name="proxy_monitor_loop")
-        
-        # Фоновый воркер периодического обновления кэша рабочих VPN-нод (по умолчанию раз в 1 час)
         refresh_interval = getattr(settings, "proxy_cache_refresh_interval", 3600)
         asyncio.create_task(proxy_rotator.periodic_cache_refresh_loop(interval_seconds=refresh_interval), name="proxy_cache_refresh_loop")
+        # Первичное пассивное сохранение списков с GitHub в дисковый кэш (без тестирования нод)
+        asyncio.create_task(proxy_rotator.refresh_disk_cache(), name="initial_cache_refresh")
         
     # Запуск фоновой службы отложенной отправки сообщений (Outbox)
     from core.outbox import outbox_sender_loop
@@ -241,6 +197,7 @@ async def main():
 
     # Запуск пулинга с авто-восстановлением при сетевых сбоях и мгновенной реакцией на SIGTERM
     import signal
+    import aiohttp
     from aiogram.exceptions import TelegramNetworkError
     from aiohttp.client_exceptions import ClientOSError
 
@@ -267,17 +224,23 @@ async def main():
                 except Exception as e:
                     logging.error("error_deleting_webhook", e)
                 
+                logging.info("bot_polling_started_and_ready")
                 poll_task = asyncio.create_task(dp.start_polling(bot, handle_signals=False), name="polling_task")
                 await poll_task
                 break
-            except (TelegramNetworkError, ClientOSError, asyncio.TimeoutError, ConnectionResetError) as net_err:
+            except (TelegramNetworkError, ClientOSError, asyncio.TimeoutError, ConnectionResetError, aiohttp.ClientError) as net_err:
                 if stop_event.is_set():
                     break
                 logging.warning("polling_network_error_reconnecting", net_err)
-                try:
-                    await asyncio.wait_for(stop_event.wait(), timeout=5.0)
-                except asyncio.TimeoutError:
-                    pass
+                
+                # При обрыве связи с Telegram по основному прокси запускаем подбор резервного рабочего канала
+                if settings.enable_free_proxy_rotation:
+                    await handle_telegram_connection_failure(bot, primary_proxy_endpoint, session_kwargs)
+                else:
+                    try:
+                        await asyncio.wait_for(stop_event.wait(), timeout=5.0)
+                    except asyncio.TimeoutError:
+                        pass
             except (asyncio.CancelledError, KeyboardInterrupt):
                 stop_event.set()
                 break
@@ -324,6 +287,13 @@ async def main():
 
 
 if __name__ == "__main__":
+    import sys
     from core.logging_setup import setup_logging
     setup_logging()
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except (KeyboardInterrupt, SystemExit):
+        pass
+    except Exception as e:
+        logging.critical("critical_bot_startup_error", e, exc_info=True)
+        sys.exit(1)

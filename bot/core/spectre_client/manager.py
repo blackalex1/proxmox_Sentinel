@@ -334,11 +334,11 @@ class SpectreClientManager:
     async def start_discovery_loop(self):
         """Фоновый периодический запуск поиска новых панелей раз в 5 минут."""
         while True:
+            await asyncio.sleep(300)
             try:
                 await self.discover_panels()
             except Exception as e:
                 logging.error("spectre_discovery_error_in_autodiscovery_loop", e)
-            await asyncio.sleep(300)
 
     # --- Высокоуровневые API для взаимодействия с панелями ---
 
