@@ -48,14 +48,13 @@ class LogTailer:
             while self.running:
                 line_bytes = await proc.stdout.readline()
                 if not line_bytes:
-                    if proc.returncode is not None:
-                        if self.running:
-                            stderr_bytes = await proc.stderr.read()
-                            stderr_text = stderr_bytes.decode('utf-8', errors='ignore').strip()
-                            logging.error("logtailer_process_terminated_code_error", self.source, proc.returncode, stderr_text)
-                        break
-                    await asyncio.sleep(1)
-                    continue
+                    # EOF reached - subprocess closed stdout and terminated
+                    await proc.wait()
+                    if self.running and proc.returncode != 0:
+                        stderr_bytes = await proc.stderr.read() if proc.stderr else b""
+                        stderr_text = stderr_bytes.decode('utf-8', errors='ignore').strip()
+                        logging.warning("logtailer_process_terminated_code_error", self.source, proc.returncode, stderr_text)
+                    break
                 line = line_bytes.decode('utf-8', errors='ignore')
                 await self._trigger_callback(line)
         except asyncio.CancelledError:
@@ -65,7 +64,9 @@ class LogTailer:
         finally:
             if proc:
                 try:
-                    proc.kill()
+                    if proc.returncode is None:
+                        proc.kill()
+                    await proc.wait()
                 except Exception:
                     pass
 
