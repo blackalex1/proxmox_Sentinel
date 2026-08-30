@@ -153,10 +153,10 @@ def get_sentinel_lib() -> Optional[ctypes.CDLL]:
         lib = ctypes.CDLL(lib_path)
         _init_sentinel_lib(lib)
         _SENTINEL_LIB = lib
-        logger.info("sentinel_core_library_loaded", lib_path)
+        logger.info("sentinel_core_library_loaded: %s", lib_path)
         return _SENTINEL_LIB
     except Exception as e:
-        logger.warning("sentinel_core_bridge_call_failed", "load_lib", e)
+        logger.warning("sentinel_core_bridge_call_failed: %s (%s)", "load_lib", e)
         return None
 
 
