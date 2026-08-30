@@ -161,13 +161,14 @@ class ProxyEngineManager:
             return False
 
         target_bin = os.path.join(self.bin_dir, "sing-box.exe" if os_name == "windows" else "sing-box")
+        tmp_target = f"{target_bin}.tmp.{os.getpid()}"
 
         try:
             if filename.endswith(".zip"):
                 with zipfile.ZipFile(io.BytesIO(data)) as zf:
                     for member in zf.namelist():
                         if member.endswith("sing-box") or member.endswith("sing-box.exe"):
-                            with zf.open(member) as src, open(target_bin, "wb") as dst:
+                            with zf.open(member) as src, open(tmp_target, "wb") as dst:
                                 shutil.copyfileobj(src, dst)
                             break
             else:
@@ -176,19 +177,30 @@ class ProxyEngineManager:
                         if member.name.endswith("sing-box") or member.name.endswith("sing-box.exe"):
                             f = tf.extractfile(member)
                             if f:
-                                with open(target_bin, "wb") as dst:
+                                with open(tmp_target, "wb") as dst:
                                     shutil.copyfileobj(f, dst)
                                 break
 
-            if os.path.isfile(target_bin) and os.path.getsize(target_bin) > 0:
+            if os.path.isfile(tmp_target) and os.path.getsize(tmp_target) > 0:
                 if os_name != "windows":
                     try:
-                        os.chmod(target_bin, 0o755)
+                        os.chmod(tmp_target, 0o755)
                     except Exception:
                         pass
+                if os.path.exists(target_bin):
+                    try:
+                        os.remove(target_bin)
+                    except Exception:
+                        pass
+                os.replace(tmp_target, target_bin)
                 log_success(f"Sing-box {tag} успешно установлен -> {target_bin}")
                 return True
         except Exception as e:
+            if os.path.exists(tmp_target):
+                try:
+                    os.remove(tmp_target)
+                except Exception:
+                    pass
             log_error(f"Ошибка распаковки Sing-box: {e}")
             return False
 
@@ -231,10 +243,20 @@ class ProxyEngineManager:
                     base = os.path.basename(member)
                     if base in ["xray", "xray.exe", "geoip.dat", "geosite.dat"]:
                         target_file = os.path.join(self.bin_dir, base)
-                        with zf.open(member) as src, open(target_file, "wb") as dst:
+                        tmp_file = f"{target_file}.tmp.{os.getpid()}"
+                        with zf.open(member) as src, open(tmp_file, "wb") as dst:
                             shutil.copyfileobj(src, dst)
                         if base in ["xray", "xray.exe"] and os_name != "windows":
-                            os.chmod(target_file, 0o755)
+                            try:
+                                os.chmod(tmp_file, 0o755)
+                            except Exception:
+                                pass
+                        if os.path.exists(target_file):
+                            try:
+                                os.remove(target_file)
+                            except Exception:
+                                pass
+                        os.replace(tmp_file, target_file)
 
             if os.path.isfile(target_bin) and os.path.getsize(target_bin) > 0:
                 log_success(f"Xray-core {tag} успешно установлен -> {target_bin}")
