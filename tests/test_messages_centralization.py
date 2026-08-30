@@ -1,0 +1,107 @@
+import sys
+import os
+import pytest
+from unittest.mock import AsyncMock, patch
+
+# Add bot to sys.path
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'bot')))
+
+from core.messages.i18n import set_current_locale, _
+import core.messages as msgs
+from core.sender import send_rich_message, edit_rich_message, send_rich_message_draft, send_alert_to_admins
+
+def test_all_templates_russian_locale():
+    set_current_locale("ru")
+    
+    # Auth
+    assert "SSH Access Report" in msgs.get_ssh_login_alert("SSH Login", "🟢", "PVE", "root", "1.2.3.4", "publickey", "fp123", "2026-08-30", "raw log line")
+    assert "SSH Auth Alert" in msgs.get_ssh_fail_alert("SSH Fail", "🔴", "PVE", "admin", "1.2.3.4", "password", "2026-08-30", "raw log line")
+    assert "Privileged Execution" in msgs.get_sudo_alert("SUDO", "⚡", "PVE", "root", "root", "apt update", "2026-08-30", "raw log line")
+    
+    # Nodes
+    assert "Сервер недоступен" in msgs.get_node_offline_alert("pve-node", "offline")
+    assert "Сервер снова в сети" in msgs.get_node_online_alert("pve-node")
+    
+    # Resources
+    assert "Высокая нагрузка CPU" in msgs.get_vps_cpu_alert("VPS-1", 95.0)
+    assert "Высокое потребление RAM" in msgs.get_vps_ram_alert("VPS-1", 92.0)
+    
+    # Traffic
+    assert "Traffic Security Alert" in msgs.get_ips_sensitive_access_alert("1.2.3.4", "TCP", "10.0.0.1", "1234", "10.0.0.2", "22", "2026-08-30")
+    
+    # Router
+    assert "Security Recovery" in msgs.get_router_recovery_alert("192.168.1.50", "Rule 1")
+    assert "Клиенты вашего роутера" in msgs.get_router_clients_list_text(True)
+    assert "Управление клиентом роутера" in msgs.get_router_client_details_card("Laptop", "192.168.1.10", "AA:BB", True, None, [])
+    
+    # Spectre
+    assert "Пользователь" in msgs.get_session_activity_card("VLESS", "Panel1", "test@user", "10 MB", "2 MB", "🟢 Connect")
+
+    
+    # Ban Center & Whitelist & Threats
+    table_bans = msgs.get_ban_center_table([], [])
+    assert "<table" in table_bans
+    
+    table_wl = msgs.get_whitelist_view_table("Node-1", ["192.168.1.1:80"], ["nginx"])
+    assert "<table" in table_wl
+    
+    table_threats = msgs.get_threats_table([])
+    assert "<table" in table_threats
+    
+    # Ansible
+    assert "Папка" in msgs.get_ansible_missing_dir_text("/etc/ansible")
+    assert "Управление Ansible" in msgs.get_ansible_playbooks_menu_text()
+    assert "На каких хостах" in msgs.get_ansible_ask_host_text("test.yml")
+    assert "Настройка окружения Ansible" in msgs.get_ansible_setup_loading_text()
+
+
+def test_all_templates_english_locale():
+    set_current_locale("en")
+    
+    # Auth
+    assert "SSH Access Report" in msgs.get_ssh_login_alert("SSH Login", "🟢", "PVE", "root", "1.2.3.4", "publickey", "fp123", "2026-08-30", "raw log line")
+    assert "SSH Auth Alert" in msgs.get_ssh_fail_alert("SSH Fail", "🔴", "PVE", "admin", "1.2.3.4", "password", "2026-08-30", "raw log line")
+    assert "Privileged Execution" in msgs.get_sudo_alert("SUDO", "⚡", "PVE", "root", "root", "apt update", "2026-08-30", "raw log line")
+
+    # Nodes
+    assert "Server is offline" in msgs.get_node_offline_alert("pve-node", "offline")
+    assert "Server is back online" in msgs.get_node_online_alert("pve-node")
+
+    # Resources
+    assert "High CPU load" in msgs.get_vps_cpu_alert("VPS-1", 95.0)
+    assert "High RAM usage" in msgs.get_vps_ram_alert("VPS-1", 92.0)
+    
+    # Traffic
+    assert "Traffic Security Alert" in msgs.get_ips_sensitive_access_alert("1.2.3.4", "TCP", "10.0.0.1", "1234", "10.0.0.2", "22", "2026-08-30")
+
+
+
+    
+    # Router
+    assert "Router connected devices" in msgs.get_router_clients_list_text(True)
+    assert "Router Client Management" in msgs.get_router_client_details_card("Laptop", "192.168.1.10", "AA:BB", True, None, [])
+    
+    # Ansible
+    assert "Folder" in msgs.get_ansible_missing_dir_text("/etc/ansible")
+    assert "Ansible Control" in msgs.get_ansible_playbooks_menu_text()
+    assert "Which hosts" in msgs.get_ansible_ask_host_text("test.yml")
+    assert "Ansible Setup" in msgs.get_ansible_setup_loading_text()
+
+
+@pytest.mark.asyncio
+async def test_sender_dispatch():
+    with patch("core.sender.bot") as mock_bot:
+        mock_bot.send_message = AsyncMock(return_value=AsyncMock())
+        mock_bot.send_rich_message = AsyncMock(return_value=AsyncMock())
+        mock_bot.edit_message_text = AsyncMock(return_value=AsyncMock())
+        mock_bot.edit_rich_message = AsyncMock(return_value=AsyncMock())
+        
+        # Test send_rich_message with plain text / rich blocks
+        await send_rich_message(12345, "Hello <b>World</b>")
+        assert mock_bot.send_rich_message.called or mock_bot.send_message.called
+        
+        # Test edit_rich_message
+        await edit_rich_message(12345, 67890, "Updated <b>Text</b>")
+        assert mock_bot.edit_rich_message.called or mock_bot.edit_message_text.called
+
+

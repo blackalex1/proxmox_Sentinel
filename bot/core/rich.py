@@ -6,7 +6,7 @@ Markdown/HTML документов в валидный список блоков
 """
 
 import re
-from typing import Union, List, Any
+from typing import Union, List, Any, Optional, Dict
 
 try:
     from aiogram.types import (
@@ -180,6 +180,62 @@ def _detect_code_language(code_text: str, explicit_lang: str = None) -> str:
     return 'bash'
 
 
+def _parse_html_table(table_html: str) -> Optional[Any]:
+    """Парсит HTML-таблицу <table>...</table> в InputRichBlockTable."""
+    if not HAS_RICH_API or InputRichBlockTable is None:
+        return None
+        
+    rows = re.findall(r'<tr\b[^>]*>(.*?)</tr>', table_html, flags=re.DOTALL | re.IGNORECASE)
+    if not rows:
+        return None
+        
+    table_cells = []
+    is_bordered = "bordered" in table_html.lower() or "border=" in table_html.lower()
+    is_striped = "striped" in table_html.lower()
+    
+    for r_html in rows:
+        cells_match = re.findall(r'<t([dh])\b([^>]*)>(.*?)</t\1>', r_html, flags=re.DOTALL | re.IGNORECASE)
+        if not cells_match:
+            continue
+            
+        row_cells = []
+        for tag_type, attrs, cell_content in cells_match:
+            is_header = (tag_type.lower() == 'h')
+            align_match = re.search(r'align=["\'](left|center|right)["\']', attrs, flags=re.IGNORECASE)
+            align = align_match.group(1).lower() if align_match else ("center" if is_header else "left")
+            
+            colspan_match = re.search(r'colspan=["\'](\d+)["\']', attrs, flags=re.IGNORECASE)
+            colspan = int(colspan_match.group(1)) if colspan_match else None
+            
+            rowspan_match = re.search(r'rowspan=["\'](\d+)["\']', attrs, flags=re.IGNORECASE)
+            rowspan = int(rowspan_match.group(1)) if rowspan_match else None
+            
+            clean_text = cell_content.strip()
+            clean_text = re.sub(r'</?(?:span|div|p)\b[^>]*>', '', clean_text)
+            
+            row_cells.append(
+                RichBlockTableCell(
+                    text=parse_to_rich_text(clean_text),
+                    align=align,
+                    valign="middle",
+                    is_header=is_header,
+                    colspan=colspan,
+                    rowspan=rowspan
+                )
+            )
+        if row_cells:
+
+            table_cells.append(row_cells)
+            
+    if table_cells:
+        return InputRichBlockTable(
+            is_bordered=is_bordered,
+            is_striped=is_striped,
+            cells=table_cells
+        )
+    return None
+
+
 def build_rich_message(content: Any) -> Any:
     """
     Преобразует произвольный контент (InputRichMessage, список блоков, или строку Markdown/HTML)
@@ -196,36 +252,51 @@ def build_rich_message(content: Any) -> Any:
 
     blocks = []
     
-    # 1. Извлекаем <details><summary>...</summary>...</details>
-    details_pattern = re.compile(
-        r'<details\b[^>]*>\s*<summary\b[^>]*>(.*?)</summary>(.*?)</details>',
+    # 1. Извлекаем крупные структурные блоки: details, table, pre
+    structural_pattern = re.compile(
+        r'(<details\b[^>]*>\s*<summary\b[^>]*>.*?</summary>.*?</details>)'
+        r'|(<table\b[^>]*>.*?</table>)'
+        r'|(<pre\b[^>]*>\s*<code\b[^>]*>.*?</code>\s*</pre>)',
         flags=re.DOTALL | re.IGNORECASE
     )
     
     segments = []
     last_idx = 0
-    for m in details_pattern.finditer(content):
+    for m in structural_pattern.finditer(content):
         start, end = m.span()
         if start > last_idx:
             segments.append(('text', content[last_idx:start]))
-        segments.append(('details', m.group(1).strip(), m.group(2).strip()))
+            
+        matched_str = m.group(0)
+        if matched_str.lower().startswith('<details'):
+            d_match = re.search(r'<details\b[^>]*>\s*<summary\b[^>]*>(.*?)</summary>(.*?)</details>', matched_str, flags=re.DOTALL | re.IGNORECASE)
+            if d_match:
+                segments.append(('details', d_match.group(1).strip(), d_match.group(2).strip()))
+        elif matched_str.lower().startswith('<table'):
+            segments.append(('table', matched_str))
+        elif matched_str.lower().startswith('<pre'):
+            p_match = re.search(r'<pre\b[^>]*>\s*<code(?:\s+class=["\'](?:language-)?([a-zA-Z0-9_-]+)["\'])?[^>]*>(.*?)</code>\s*</pre>', matched_str, flags=re.DOTALL | re.IGNORECASE)
+            if p_match:
+                lang = _detect_code_language(p_match.group(2), p_match.group(1))
+                segments.append(('code', p_match.group(2).strip(), lang))
         last_idx = end
+        
     if last_idx < len(content):
         segments.append(('text', content[last_idx:]))
 
     for seg in segments:
-        if seg[0] == 'details':
+        seg_type = seg[0]
+        
+        if seg_type == 'details':
             summary_raw = seg[1]
             body_raw = seg[2]
             
-            # Извлекаем code внутри details если есть
             code_m = re.search(r'<pre\b[^>]*>\s*<code(?:\s+class=["\'](?:language-)?([a-zA-Z0-9_-]+)["\'])?[^>]*>(.*?)</code>\s*</pre>', body_raw, flags=re.DOTALL | re.IGNORECASE)
             inner_blocks = []
             if code_m:
                 lang = _detect_code_language(code_m.group(2), code_m.group(1))
                 inner_blocks.append(InputRichBlockPreformatted(text=code_m.group(2).strip(), language=lang))
             else:
-                # Markdown code block ```lang ... ```
                 md_code_m = re.search(r'```([a-zA-Z0-9_-]*)\n([\s\S]*?)```', body_raw)
                 if md_code_m:
                     lang = _detect_code_language(md_code_m.group(2), md_code_m.group(1))
@@ -245,6 +316,16 @@ def build_rich_message(content: Any) -> Any:
                     blocks=inner_blocks
                 )
             )
+            continue
+
+        elif seg_type == 'table':
+            t_block = _parse_html_table(seg[1])
+            if t_block:
+                blocks.append(t_block)
+            continue
+            
+        elif seg_type == 'code':
+            blocks.append(InputRichBlockPreformatted(text=seg[1], language=seg[2]))
             continue
 
         # Обрабатываем обычный текстовый сегмент
@@ -310,7 +391,16 @@ def build_rich_message(content: Any) -> Any:
             line = lines[i]
             trimmed = line.strip()
 
-            # 1. Заголовки: # Title, ## Title, ### Title
+            # 1. Заголовки: HTML (<h1>, <h2>, <h3>) или Markdown (# Title, ## Title)
+            h_html = re.match(r'^<h([1-6])\b[^>]*>(.*?)</h\1>$', trimmed, flags=re.IGNORECASE)
+            if h_html:
+                flush_paragraph()
+                flush_table()
+                size = 1 if h_html.group(1) == '1' else (2 if h_html.group(1) in ('2', '3') else 3)
+                blocks.append(InputRichBlockSectionHeading(text=parse_to_rich_text(h_html.group(2).strip()), size=size))
+                i += 1
+                continue
+
             h1_m = re.match(r'^#\s+(.+)$', trimmed)
             if h1_m:
                 flush_paragraph()
@@ -327,8 +417,8 @@ def build_rich_message(content: Any) -> Any:
                 i += 1
                 continue
 
-            # 2. Разделитель: --- или ⎯⎯⎯⎯ или <hr>
-            if re.match(r'^(?:---|⎯+|—+|<hr\s*/?>)$', trimmed):
+            # 2. Разделитель: --- или ⎯⎯⎯⎯ или <hr> или ━━━━━━━━
+            if re.match(r'^(?:---|⎯+|—+|━+|<hr\s*/?>)$', trimmed):
                 flush_paragraph()
                 flush_table()
                 blocks.append(InputRichBlockDivider())
@@ -380,3 +470,4 @@ def build_rich_message(content: Any) -> Any:
         blocks.append(InputRichBlockParagraph(text=parse_to_rich_text(content)))
 
     return InputRichMessage(blocks=blocks)
+

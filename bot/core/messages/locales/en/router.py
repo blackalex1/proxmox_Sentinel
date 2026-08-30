@@ -53,4 +53,21 @@ translation = {
     "ip_unblock_error": "Error during unblock: {e}",
     "device_blocked_text": "\n\n🛑 <b>DEVICE {ip} BLOCKED ON ROUTER!</b>",
     "invalid_data_format": "Error: invalid data format.",
+    
+    # UI and Client Details
+    "clients_list_empty": "⚠️ No devices found or router monitoring is disabled in configuration.",
+    "clients_list_header": "🖥 <b>Router connected devices:</b>\nSelect a device below to manage network restrictions.\n",
+    "client_details_title": "🖥 Router Client Management",
+    "col_device_name": "Device Name",
+    "col_ip": "IP Address",
+    "col_mac": "MAC Address",
+    "col_net_status": "Network Status",
+    "col_ban_status": "Restriction Status",
+    "status_active": "🟢 Active",
+    "status_offline": "⚪ Offline",
+    "ban_status_full": "🛑 Fully Blocked",
+    "ban_status_ports": "🔒 Port Restrictions Active",
+    "ban_status_none": "🟢 Access Allowed",
+    "client_active_rules_footer": "🔒 Active restriction rules count: <b>{count}</b>",
 }
+

@@ -15,6 +15,7 @@ from .router import (
 )
 from core.db import execute_read_all, execute_read_one
 from core.messages.i18n import _
+from core.messages import get_router_clients_list_text, get_router_client_details_card
 
 router = Router()
 
@@ -25,17 +26,13 @@ class RouterPortControlState(StatesGroup):
 
 async def render_clients_list():
     clients = await get_router_clients()
-    
-    text = "🖥 <b>Клиенты вашего роутера:</b>\n"
-    text += "Выберите устройство из списка ниже для управления блокировками.\n\n"
+    text = get_router_clients_list_text(bool(clients))
     
     kb_buttons = []
-    if not clients:
-        text += "⚠️ Устройства не найдены или мониторинг роутера отключен в конфигурации."
-    else:
+    if clients:
         for c in clients:
             status_emoji = "🟢" if c.get('active') else "⚪"
-            hostname = c.get('hostname', 'Неизвестно')
+            hostname = c.get('hostname', 'Unknown')
             ip = c.get('ip')
             kb_buttons.append([
                 InlineKeyboardButton(
@@ -45,7 +42,7 @@ async def render_clients_list():
             ])
             
     kb_buttons.append([
-        InlineKeyboardButton(text="🔄 Обновить список", callback_data="r_list")
+        InlineKeyboardButton(text=_("keyboards", "btn_refresh", "🔄 Обновить список"), callback_data="r_list")
     ])
     kb_buttons.append([
         InlineKeyboardButton(text=_("keyboards", "btn_back_to_menu", "Главное меню"), callback_data="main_menu")
@@ -58,8 +55,8 @@ async def render_client_details(ip: str):
     clients = await get_router_clients()
     client = next((c for c in clients if c['ip'] == ip), None)
     
-    hostname = client['hostname'] if client else 'Неизвестно'
-    mac = client['mac'] if client else 'Неизвестно'
+    hostname = client['hostname'] if client else 'Unknown'
+    mac = client['mac'] if client else 'Unknown'
     active = client['active'] if client else False
     
     # Проверяем наличие полной блокировки
@@ -68,30 +65,17 @@ async def render_client_details(ip: str):
     port_bans = await execute_read_all("SELECT * FROM temp_port_bans WHERE server_ip = 'router' AND client_ip = ?", (ip,))
     
     bans_count = (1 if full_ban else 0) + len(port_bans)
-    
-    status_emoji = "🟢 Активен" if active else "⚪ Офлайн"
-    ban_status = "🛑 Заблокирован полностью" if full_ban else ("🔒 Есть блокировки портов" if port_bans else "🟢 Доступ разрешен")
-    
-    text = (
-        f"🖥 <b>Управление клиентом роутера</b>\n"
-        f"-----------------------------\n"
-        f"<b>Имя устройства:</b> <code>{hostname}</code>\n"
-        f"<b>IP-адрес:</b> <code>{ip}</code>\n"
-        f"<b>MAC-адрес:</b> <code>{mac}</code>\n"
-        f"<b>Статус сети:</b> {status_emoji}\n"
-        f"<b>Статус блокировки:</b> {ban_status}\n\n"
-        f"🔒 Всего активных правил блокировки: <b>{bans_count}</b>"
-    )
+    text = get_router_client_details_card(hostname, ip, mac, active, full_ban, port_bans)
     
     kb_buttons = []
     
     if not full_ban:
         kb_buttons.append([
-            InlineKeyboardButton(text="🛑 Заблокировать полностью", callback_data=f"r_ban_all_menu:{ip}")
+            InlineKeyboardButton(text=_("router", "btn_block_ip_router", "🛑 Заблокировать полностью"), callback_data=f"r_ban_all_menu:{ip}")
         ])
     else:
         kb_buttons.append([
-            InlineKeyboardButton(text="🟢 Разблокировать полностью", callback_data=f"r_unban_all:{ip}")
+            InlineKeyboardButton(text=_("router", "btn_unblock_ip_router", "🟢 Разблокировать полностью"), callback_data=f"r_unban_all:{ip}")
         ])
         
     kb_buttons.append([

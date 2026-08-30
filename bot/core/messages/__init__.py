@@ -46,6 +46,8 @@ from .router import (
     get_router_unknown_block_alert,
     get_router_autoblock_alert,
     get_router_port_alert,
+    get_router_clients_list_text,
+    get_router_client_details_card,
 )
 from .spectre import (
     get_new_ip_alert,
@@ -55,6 +57,7 @@ from .spectre import (
     get_login_success_alert,
     get_spectre_2fa_alert,
     get_top_traffic_table,
+    get_panel_status_message,
 )
 from .proxy import (
     get_proxy_switch_alert,
@@ -66,6 +69,34 @@ from .whitelist import (
 )
 from .ban_center import (
     get_ban_center_table,
+)
+from .ansible import (
+    get_ansible_missing_dir_text,
+    get_ansible_playbooks_menu_text,
+    get_ansible_ask_host_text,
+    get_ansible_setup_loading_text,
+    get_ansible_setup_menu_text,
+    get_ansible_setup_host_start_text,
+    get_ansible_setup_lxc_start_text,
+    get_ansible_setup_vps_start_text,
+    get_ansible_setup_success_text,
+    get_ansible_setup_failed_text,
+    get_ansible_run_start_text,
+    get_ansible_run_success_text,
+    get_ansible_run_failed_text,
+    get_ansible_reboot_start_text,
+    get_ansible_reboot_success_text,
+    get_ansible_reboot_failed_text,
+)
+from .threats import (
+    get_threats_table,
+)
+from core.rich import build_rich_message, parse_to_rich_text
+from core.sender import (
+    send_rich_message,
+    edit_rich_message,
+    send_rich_message_draft,
+    send_alert_to_admins,
 )
 
 __all__ = [
@@ -105,13 +136,15 @@ __all__ = [
     "get_ips_process_warning_alert",
     "get_local_traffic_alert",
     
-    # Router alerts
+    # Router alerts & UI
     "get_router_recovery_alert",
     "get_router_unknown_block_alert",
     "get_router_autoblock_alert",
     "get_router_port_alert",
+    "get_router_clients_list_text",
+    "get_router_client_details_card",
     
-    # Spectre Panel alerts
+    # Spectre Panel alerts & tables
     "get_new_ip_alert",
     "get_session_activity_card",
     "get_client_disconnected_alert",
@@ -119,6 +152,7 @@ __all__ = [
     "get_login_success_alert",
     "get_spectre_2fa_alert",
     "get_top_traffic_table",
+    "get_panel_status_message",
     
     # Proxy alerts
     "get_proxy_switch_alert",
@@ -131,9 +165,35 @@ __all__ = [
     # Ban Center templates
     "get_ban_center_table",
     
+    # Ansible templates
+    "get_ansible_missing_dir_text",
+    "get_ansible_playbooks_menu_text",
+    "get_ansible_ask_host_text",
+    "get_ansible_setup_loading_text",
+    "get_ansible_setup_menu_text",
+    "get_ansible_setup_host_start_text",
+    "get_ansible_setup_lxc_start_text",
+    "get_ansible_setup_vps_start_text",
+    "get_ansible_setup_success_text",
+    "get_ansible_setup_failed_text",
+    "get_ansible_run_start_text",
+    "get_ansible_run_success_text",
+    "get_ansible_run_failed_text",
+    "get_ansible_reboot_start_text",
+    "get_ansible_reboot_success_text",
+    "get_ansible_reboot_failed_text",
+    
+    # Threats table
+    "get_threats_table",
+    
     # Rich Message Engine
     "build_rich_message",
     "parse_to_rich_text",
+    
+    # Sender functions
+    "send_rich_message",
+    "edit_rich_message",
+    "send_rich_message_draft",
+    "send_alert_to_admins",
 ]
 
-from core.rich import build_rich_message, parse_to_rich_text

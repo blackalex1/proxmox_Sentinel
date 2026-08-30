@@ -53,4 +53,21 @@ translation = {
     "ip_unblock_error": "Ошибка при разблокировке: {e}",
     "device_blocked_text": "\n\n🛑 <b>УСТРОЙСТВО {ip} ЗАБЛОКИРОВАНО НА РОУТЕРЕ!</b>",
     "invalid_data_format": "Ошибка: неверный формат данных.",
+    
+    # UI and Client Details
+    "clients_list_empty": "⚠️ Устройства не найдены или мониторинг роутера отключен в конфигурации.",
+    "clients_list_header": "🖥 <b>Клиенты вашего роутера:</b>\nВыберите устройство из списка ниже для управления блокировками.\n",
+    "client_details_title": "🖥 Управление клиентом роутера",
+    "col_device_name": "Имя устройства",
+    "col_ip": "IP-адрес",
+    "col_mac": "MAC-адрес",
+    "col_net_status": "Статус сети",
+    "col_ban_status": "Статус блокировки",
+    "status_active": "🟢 Активен",
+    "status_offline": "⚪ Офлайн",
+    "ban_status_full": "🛑 Заблокирован полностью",
+    "ban_status_ports": "🔒 Есть блокировки портов",
+    "ban_status_none": "🟢 Доступ разрешен",
+    "client_active_rules_footer": "🔒 Всего активных правил блокировки: <b>{count}</b>",
 }
+

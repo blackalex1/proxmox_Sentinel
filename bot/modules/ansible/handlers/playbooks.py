@@ -14,6 +14,12 @@ ANSIBLE_PLAYBOOKS_DIR = settings.ansible_playbooks_dir or os.path.join(base_dir,
 from modules.ansible.keyboards import get_ansible_main_keyboard, get_ansible_dynamic_host_keyboard
 from modules.ansible.inventory import generate_ansible_hosts_ini
 from modules.ansible.executor import execute_ansible_playbook
+from core.messages import (
+    get_ansible_missing_dir_text,
+    get_ansible_playbooks_menu_text,
+    get_ansible_ask_host_text,
+)
+
 
 router = Router(name="ansible_router")
 
@@ -29,11 +35,10 @@ async def process_ansible_main(callback: CallbackQuery, state: FSMContext):
     generate_ansible_hosts_ini(ANSIBLE_PLAYBOOKS_DIR)
     
     if not ANSIBLE_PLAYBOOKS_DIR or not os.path.exists(ANSIBLE_PLAYBOOKS_DIR):
+        missing_msg = get_ansible_missing_dir_text(ANSIBLE_PLAYBOOKS_DIR or "")
         try:
             await callback.message.edit_text(
-                f"🛠 <b>Управление Ansible:</b>\n"
-                f"❌ Папка <code>{ANSIBLE_PLAYBOOKS_DIR}</code> не найдена.\n"
-                f"Создайте эту папку (Playbooks) во время запуска или проверьте настройки <code>ANSIBLE_PLAYBOOKS_DIR</code> в .env",
+                missing_msg,
                 parse_mode="HTML",
                 reply_markup=get_ansible_main_keyboard()
             )
@@ -41,9 +46,7 @@ async def process_ansible_main(callback: CallbackQuery, state: FSMContext):
             if "there is no text in the message to edit" in str(e):
                 await callback.message.delete()
                 await callback.message.answer(
-                    f"🛠 <b>Управление Ansible:</b>\n"
-                    f"❌ Папка <code>{ANSIBLE_PLAYBOOKS_DIR}</code> не найдена.\n"
-                    f"Создайте эту папку (Playbooks) во время запуска или проверьте настройки <code>ANSIBLE_PLAYBOOKS_DIR</code> в .env",
+                    missing_msg,
                     parse_mode="HTML",
                     reply_markup=get_ansible_main_keyboard()
                 )
@@ -52,9 +55,10 @@ async def process_ansible_main(callback: CallbackQuery, state: FSMContext):
         await callback.answer()
         return
         
+    menu_msg = get_ansible_playbooks_menu_text()
     try:
         await callback.message.edit_text(
-            "🛠 <b>Управление Ansible:</b>\nВыберите плейбук для запуска:",
+            menu_msg,
             parse_mode="HTML",
             reply_markup=get_ansible_main_keyboard()
         )
@@ -63,7 +67,7 @@ async def process_ansible_main(callback: CallbackQuery, state: FSMContext):
             if "there is no text in the message to edit" in str(e):
                 await callback.message.delete()
                 await callback.message.answer(
-                    "🛠 <b>Управление Ansible:</b>\nВыберите плейбук для запуска:",
+                    menu_msg,
                     parse_mode="HTML",
                     reply_markup=get_ansible_main_keyboard()
                 )
@@ -88,12 +92,10 @@ async def ask_for_host(callback: CallbackQuery, state: FSMContext):
     await state.update_data(playbook_path=playbook_path, real_filename=real_filename, selected_hosts=[])
     await state.set_state(AnsibleState.waiting_for_host)
     
+    ask_msg = get_ansible_ask_host_text(real_filename)
     try:
         await callback.message.edit_text(
-            f"🛠 Плейбук: <b>{real_filename}</b>\n\n"
-            f"На каких хостах (или группах) вы хотите его запустить?\n"
-            f"<i>✏️ Выберите цель из списка (прочитано из вашего hosts.ini)</i>\n"
-            f"<i>или напишите свой вариант вручную прямо в чат:</i>",
+            ask_msg,
             parse_mode="HTML",
             reply_markup=get_ansible_dynamic_host_keyboard([])
         )
@@ -101,15 +103,13 @@ async def ask_for_host(callback: CallbackQuery, state: FSMContext):
         if "there is no text in the message to edit" in str(e):
             await callback.message.delete()
             await callback.message.answer(
-                f"🛠 Плейбук: <b>{real_filename}</b>\n\n"
-                f"На каких хостах (или группах) вы хотите его запустить?\n"
-                f"<i>✏️ Выберите цель из списка (прочитано из вашего hosts.ini)</i>\n"
-                f"<i>или напишите свой вариант вручную прямо в чат:</i>",
+                ask_msg,
                 parse_mode="HTML",
                 reply_markup=get_ansible_dynamic_host_keyboard([])
             )
         else:
             raise e
+
 
 
 

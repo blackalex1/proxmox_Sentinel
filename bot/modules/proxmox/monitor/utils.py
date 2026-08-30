@@ -246,88 +246,13 @@ def convert_rich_html_to_standard(html):
     return html.strip()
 
 
-async def send_rich_message(chat_id, text, parse_mode="HTML", reply_markup=None, ephemeral_params=None):
-    """
-    Отправка Rich Message (Bot API 10.1 - 10.3 / sendRichMessage) или стандартного сообщения через aiogram.
-    Возвращает объект Message при успехе, или None при ошибке.
-    """
-    from core.rich import build_rich_message
-    from aiogram.types import Message, InputRichMessage
-    
-    sent_msg = None
+from core.sender import (
+    send_rich_message,
+    edit_rich_message,
+    send_rich_message_draft,
+    send_alert_to_admins,
+)
 
-    # 1. Попытка отправить через нативный sendRichMessage (Bot API 10.1-10.3)
-    try:
-        rich_message = build_rich_message(text)
-        kwargs = {}
-        if reply_markup is not None:
-            kwargs["reply_markup"] = reply_markup
-        if ephemeral_params:
-            kwargs["ephemeral_message_parameters"] = ephemeral_params
-
-        sent_msg = await bot.send_rich_message(chat_id=chat_id, rich_message=rich_message, **kwargs)
-    except Exception as e:
-        logging.debug(f"Rich message attempt skipped for chat_id={chat_id}: {e}")
-
-    # 2. Стандартная и надежная отправка через aiogram bot.send_message (fallback)
-    if not sent_msg:
-        try:
-            fallback_text = convert_rich_html_to_standard(text) if isinstance(text, str) else str(text)
-            sent_msg = await bot.send_message(chat_id, fallback_text, parse_mode="HTML", reply_markup=reply_markup)
-        except Exception as e:
-            logging.error(f"Failed to send standard message for chat_id={chat_id}: {e}")
-            raise e
-    return sent_msg
-
-
-async def edit_rich_message(chat_id, message_id, text, parse_mode="HTML", reply_markup=None):
-    """
-    Редактирование сообщения через aiogram bot.edit_message_text.
-    Возвращает объект Message при успехе, или None при ошибке.
-    """
-    from aiogram.types import Message
-    
-    edited_msg = None
-    try:
-        fallback_text = convert_rich_html_to_standard(text) if isinstance(text, str) else str(text)
-        edited_msg = await bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=fallback_text, parse_mode="HTML", reply_markup=reply_markup)
-    except Exception as e:
-        if "message is not modified" not in str(e).lower():
-            logging.error(f"Failed to edit message for chat_id={chat_id}: {e}")
-            raise e
-    return edited_msg
-
-
-async def send_rich_message_draft(chat_id, text: str, draft_id: int = 1, can_stop: bool = False, keep_on_stop: bool = False):
-    """
-    Отправка потокового драфта Rich Message (Bot API 10.1 - 10.3 / sendRichMessageDraft).
-    Позволяет боту выводить процесс генерации или ожидания в реальном времени.
-    """
-    from core.rich import build_rich_message
-    try:
-        rich_message = build_rich_message(text)
-        res = await bot.send_rich_message_draft(chat_id=chat_id, draft_id=draft_id, rich_message=rich_message)
-        return bool(res)
-    except Exception as e:
-        logging.debug(f"sendRichMessageDraft skipped: {e}")
-    return False
-
-
-async def send_alert_to_admins(text, parse_mode="HTML", reply_markup=None):
-    """
-    Отправка алертов всем администраторам с поддержкой Rich Message.
-    """
-    if not settings.admin_ids:
-        return
-        
-    admin_ids = []
-    if isinstance(settings.admin_ids, list):
-        admin_ids = settings.admin_ids
-    elif isinstance(settings.admin_ids, str):
-        admin_ids = [int(i.strip()) for i in settings.admin_ids.split(",") if i.strip().isdigit()]
-        
-    for admin_id in admin_ids:
-        await send_rich_message(admin_id, text, parse_mode=parse_mode, reply_markup=reply_markup)
 
 
 

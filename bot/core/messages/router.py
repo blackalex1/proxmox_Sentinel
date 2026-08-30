@@ -1,6 +1,8 @@
 # bot/core/messages/router.py
-"""Шаблоны сообщений для мониторинга роутера на GFM Markdown с поддержкой i18n."""
+"""Шаблоны сообщений для роутера и управления клиентами с поддержкой Rich Bot API и i18n."""
 
+import html
+from typing import List, Dict, Any, Optional
 from core.config import settings
 from core.messages.i18n import _
 
@@ -30,3 +32,57 @@ def get_router_port_alert(type_str, proto, src_ip, src_port, dst_host, dst_port,
         src_port=src_port, dst_host=dst_host, dst_port=dst_port,
         timestamp=timestamp
     )
+
+def get_router_clients_list_text(has_clients: bool) -> str:
+    if not has_clients:
+        return _("router", "clients_list_empty")
+    return _("router", "clients_list_header")
+
+def get_router_client_details_card(
+    hostname: str,
+    ip: str,
+    mac: str,
+    active: bool,
+    full_ban: Optional[Dict[str, Any]],
+    port_bans: List[Dict[str, Any]]
+) -> str:
+    status_emoji = _("router", "status_active") if active else _("router", "status_offline")
+    if full_ban:
+        ban_status = _("router", "ban_status_full")
+    elif port_bans:
+        ban_status = _("router", "ban_status_ports")
+    else:
+        ban_status = _("router", "ban_status_none")
+        
+    bans_count = (1 if full_ban else 0) + len(port_bans)
+    
+    rows = []
+    rows.append('<table bordered striped compact>')
+    rows.append('  <tr>')
+    rows.append(f'    <th colspan="2" align="center"><b>{_("router", "client_details_title")}</b></th>')
+    rows.append('  </tr>')
+    rows.append('  <tr>')
+    rows.append(f'    <td align="left"><b>{_("router", "col_device_name")}</b></td>')
+    rows.append(f'    <td align="left"><code>{html.escape(hostname)}</code></td>')
+    rows.append('  </tr>')
+    rows.append('  <tr>')
+    rows.append(f'    <td align="left"><b>{_("router", "col_ip")}</b></td>')
+    rows.append(f'    <td align="left"><code>{html.escape(ip)}</code></td>')
+    rows.append('  </tr>')
+    rows.append('  <tr>')
+    rows.append(f'    <td align="left"><b>{_("router", "col_mac")}</b></td>')
+    rows.append(f'    <td align="left"><code>{html.escape(mac)}</code></td>')
+    rows.append('  </tr>')
+    rows.append('  <tr>')
+    rows.append(f'    <td align="left"><b>{_("router", "col_net_status")}</b></td>')
+    rows.append(f'    <td align="left">{status_emoji}</td>')
+    rows.append('  </tr>')
+    rows.append('  <tr>')
+    rows.append(f'    <td align="left"><b>{_("router", "col_ban_status")}</b></td>')
+    rows.append(f'    <td align="left">{ban_status}</td>')
+    rows.append('  </tr>')
+    rows.append('</table>\n')
+    
+    rows.append(_("router", "client_active_rules_footer", count=bans_count))
+    return "\n".join(rows)
+
