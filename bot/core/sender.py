@@ -1,6 +1,7 @@
 import time
 import re
 import logging
+import asyncio
 from typing import Any, Optional, Union, List
 
 from core.bot import bot
@@ -9,6 +10,17 @@ from core.rich import build_rich_message
 from core.outbox import clean_html_for_telegram
 
 _flood_cooldown: dict[int, float] = {}
+_last_send_time: dict[int, float] = {}
+
+
+async def _throttle_chat(cid: int):
+    """Guarantees at least 1.05s between consecutive messages to the same chat."""
+    now = time.time()
+    last = _last_send_time.get(cid, 0.0)
+    diff = now - last
+    if diff < 1.05:
+        await asyncio.sleep(1.05 - diff)
+    _last_send_time[cid] = time.time()
 
 
 def _record_flood_cooldown(chat_id: Union[int, str], err_str: str):
@@ -36,6 +48,7 @@ async def send_rich_message(
     Отправка Rich Message (Bot API 10.1 - 10.3 / SendRichMessage) или стандартного сообщения через aiogram.
     Возвращает объект Message при успехе, или None при ошибке.
     """
+    cid = 0
     try:
         cid = int(chat_id)
         if time.time() < _flood_cooldown.get(cid, 0.0):
@@ -45,6 +58,8 @@ async def send_rich_message(
             except Exception:
                 pass
             return None
+        if cid:
+            await _throttle_chat(cid)
     except Exception:
         pass
 
