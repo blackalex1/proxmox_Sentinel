@@ -39,6 +39,11 @@ async def send_rich_message(
     try:
         cid = int(chat_id)
         if time.time() < _flood_cooldown.get(cid, 0.0):
+            try:
+                from core.outbox import outbox
+                await outbox.add_message(chat_id, text, parse_mode=parse_mode, reply_markup=reply_markup)
+            except Exception:
+                pass
             return None
     except Exception:
         pass
@@ -60,6 +65,11 @@ async def send_rich_message(
         err_str = str(e)
         if "flood control" in err_str.lower() or "too many requests" in err_str.lower() or "retry after" in err_str.lower():
             _record_flood_cooldown(chat_id, err_str)
+            try:
+                from core.outbox import outbox
+                await outbox.add_message(chat_id, text, parse_mode=parse_mode, reply_markup=reply_markup)
+            except Exception:
+                pass
             return None
         logging.debug(f"Native SendRichMessage attempt skipped for chat_id={chat_id}: {e}")
 
@@ -72,6 +82,11 @@ async def send_rich_message(
             err_str = str(e)
             if "flood control" in err_str.lower() or "too many requests" in err_str.lower() or "retry after" in err_str.lower():
                 _record_flood_cooldown(chat_id, err_str)
+                try:
+                    from core.outbox import outbox
+                    await outbox.add_message(chat_id, text, parse_mode=parse_mode, reply_markup=reply_markup)
+                except Exception:
+                    pass
                 return None
             logging.error(f"Failed to send standard message for chat_id={chat_id}: {e}")
             raise e
