@@ -286,7 +286,7 @@ async def process_hysteria_audit_event(panel, action, client_ip, log_timestamp, 
             try:
                 is_new_ip, history = await check_new_ip_and_get_history(username, client_ip, session_id)
                 logging.info(f"[Controller Alerts] Connect event evaluated: user={username}, ip={client_ip}, is_new_ip={is_new_ip}, session_id={session_id}")
-                if is_new_ip:
+                if is_new_ip and not is_too_old:
                     from .utils import get_geoip_info, send_alert_to_admins
                     geoip_info = await get_geoip_info(client_ip)
                     alert_text = get_new_ip_alert(protocol, panel_name, username, client_ip, timestamp_str, history, geoip_info=geoip_info)
@@ -302,44 +302,46 @@ async def process_hysteria_audit_event(panel, action, client_ip, log_timestamp, 
             except Exception as e:
                 logging.error(f"[Controller Alerts] Error checking new IP: {e}")
 
-        event_line = _("spectre", "timeline_connect", timestamp=timestamp_str, ip=client_ip)
-        
-        if card and is_card_active(card, now_time):
-            card['lines'].append({
-                'session_id': session_id,
-                'text': event_line,
-                'type': 'connect'
-            })
-            card['last_activity_at'] = now_time
-            if client_ip not in card['connections']:
-                card['connections'][client_ip] = []
-            card['connections'][client_ip].append(datetime.datetime.now())
+        # Activity cards are only generated for LIVE (fresh) events, never during historical catch-up
+        if not is_too_old:
+            event_line = _("spectre", "timeline_connect", timestamp=timestamp_str, ip=client_ip)
             
-            # Start background task to process send/noise checks after delay
-            asyncio.create_task(check_and_send_card_delayed(key, session_id))
-            
-            if not is_too_old and not card.get('pending_send', True):
-                msg_text = format_card_msg(panel_name, username, protocol, [l['text'] for l in card['lines']], tx, rx)
-                await trigger_card_edit(card, msg_text)
-        else:
-            lines = [{
-                'session_id': session_id,
-                'text': event_line,
-                'type': 'connect'
-            }]
-            connections = {client_ip: [datetime.datetime.now()]}
-            
-            active_activity_cards[key] = {
-                'started_at': now_time,
-                'last_activity_at': now_time,
-                'last_edited_at': time.time(),
-                'lines': lines,
-                'connections': connections,
-                'admin_messages': [],
-                'pending_send': True
-            }
-            # Start background task to process send/noise checks after delay
-            asyncio.create_task(check_and_send_card_delayed(key, session_id))
+            if card and is_card_active(card, now_time):
+                card['lines'].append({
+                    'session_id': session_id,
+                    'text': event_line,
+                    'type': 'connect'
+                })
+                card['last_activity_at'] = now_time
+                if client_ip not in card['connections']:
+                    card['connections'][client_ip] = []
+                card['connections'][client_ip].append(datetime.datetime.now())
+                
+                # Start background task to process send/noise checks after delay
+                asyncio.create_task(check_and_send_card_delayed(key, session_id))
+                
+                if not card.get('pending_send', True):
+                    msg_text = format_card_msg(panel_name, username, protocol, [l['text'] for l in card['lines']], tx, rx)
+                    await trigger_card_edit(card, msg_text)
+            else:
+                lines = [{
+                    'session_id': session_id,
+                    'text': event_line,
+                    'type': 'connect'
+                }]
+                connections = {client_ip: [datetime.datetime.now()]}
+                
+                active_activity_cards[key] = {
+                    'started_at': now_time,
+                    'last_activity_at': now_time,
+                    'last_edited_at': time.time(),
+                    'lines': lines,
+                    'connections': connections,
+                    'admin_messages': [],
+                    'pending_send': True
+                }
+                # Start background task to process send/noise checks after delay
+                asyncio.create_task(check_and_send_card_delayed(key, session_id))
             
     elif is_disconnect:
         # Записываем событие отключения в SQLite БД
@@ -356,8 +358,8 @@ async def process_hysteria_audit_event(panel, action, client_ip, log_timestamp, 
             session_id, duration_sec, diff_tx, diff_rx = None, 0, 0, 0
 
         is_noise = (duration_sec <= 3 and diff_tx == 0 and diff_rx == 0)
-        if is_noise:
-            # Noise disconnect is ignored completely
+        if is_noise or is_too_old:
+            # Noise disconnect or historical catch-up is ignored for live UI cards
             return
 
         if card and is_card_active(card, now_time):
