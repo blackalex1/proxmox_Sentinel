@@ -24,16 +24,28 @@ async def test_proxy_alive_check():
     """
     rotator = SocksProxyRotator()
 
-    # Сценарий 1: SOCKS5 прокси успешно отвечает (рукопожатие 0x05, 0x00 + CONNECT 0x05 0x00)
+    # Сценарий 1: SOCKS5 прокси успешно отвечает (рукопожатие 0x05, 0x00 + CONNECT 0x05 0x00 + TLS/HTTP probe)
     mock_sock_ok = MagicMock()
-    mock_sock_ok.recv.side_effect = [b"\x05\x00", b"\x05\x00\x00\x01\x7f\x00\x00\x01\x01\xbb"]
-    with patch('socket.socket', return_value=mock_sock_ok):
+    mock_sock_ok.recv.side_effect = [
+        b"\x05\x00",                 # 1. Greeting response (2 bytes)
+        b"\x05\x00\x00\x01",         # 2. Connect reply header (4 bytes: VER, REP, RSV, ATYP=1)
+        b"\x7f\x00\x00\x01\x01\xbb"  # 3. Bound addr + port (6 bytes)
+    ]
+    mock_tls_sock = MagicMock()
+    mock_tls_sock.recv.return_value = b"HTTP/1.1 200 OK\r\n"
+    mock_ctx = MagicMock()
+    mock_ctx.wrap_socket.return_value = mock_tls_sock
+
+    with patch('core.proxy_rotator.shutil.which', return_value=None), \
+         patch('core.proxy_rotator._create_raw_socket', return_value=mock_sock_ok), \
+         patch('ssl.create_default_context', return_value=mock_ctx):
         is_alive, latency = await rotator.test_proxy_alive("socks5://127.0.0.1:10808", timeout=1.0)
         assert is_alive is True
         assert latency >= 0
 
     # Сценарий 2: Ошибка подключения сокета (Exception)
-    with patch('socket.socket', side_effect=ConnectionRefusedError("Connection refused")):
+    with patch('core.proxy_rotator.shutil.which', return_value=None), \
+         patch('core.proxy_rotator._create_raw_socket', side_effect=ConnectionRefusedError("Connection refused")):
         is_alive, latency = await rotator.test_proxy_alive("socks5://127.0.0.1:10808", timeout=1.0)
         assert is_alive is False
         assert latency >= 999999
@@ -106,7 +118,7 @@ async def test_passive_refresh_disk_cache():
     без вызова активного пакетного сканирования портов.
     """
     rotator = SocksProxyRotator()
-    sample_nodes = ["vless://uuid@host:443#sample1", "ss://YWVzLTEyOC1nY206cGFzcw@1.2.3.4:8388#sample2"]
+    sample_nodes = ["vless://uuid@host:443#sample1", "ss://YWVzLTEyOC1nY206cGFzcw@198.51.100.4:8388#sample2"]
 
     with patch.object(rotator, '_fetch_single_source', AsyncMock(return_value=sample_nodes)), \
          patch.object(rotator, '_save_working_nodes_to_disk') as mock_save:
@@ -150,6 +162,7 @@ async def test_start_or_reload_singbox_tunnel_passthrough(tmp_path):
     with patch.object(rotator, '_find_proxy_engine_bin', return_value=("sing-box", "singbox")), \
          patch('builtins.open', side_effect=mock_open_file), \
          patch('subprocess.Popen') as mock_popen, \
+         patch('asyncio.sleep', AsyncMock()), \
          patch.object(rotator, 'test_proxy_alive', AsyncMock(return_value=(True, 20.0))):
 
         mock_proc = MagicMock()
@@ -169,7 +182,7 @@ async def test_node_testing_and_activation_with_core():
     передачу списка URI в check_proxies, проверку success и запуск sing-box.
     """
     rotator = SocksProxyRotator()
-    sample_uris = ["vless://uuid@1.2.3.4:443?type=tcp&security=reality#Node1"]
+    sample_uris = ["vless://uuid@198.51.100.4:443?type=tcp&security=reality#Node1"]
 
     mock_check_results = [
         {
@@ -183,7 +196,7 @@ async def test_node_testing_and_activation_with_core():
 
     mock_parsed_profile = {
         "protocol": "vless",
-        "address": "1.2.3.4",
+        "address": "198.51.100.4",
         "port": 443,
         "name": "Node1"
     }
@@ -215,9 +228,10 @@ async def test_proxy_selection_scope_and_router_bypass():
     # До входа в scope
     assert is_proxy_selection_in_progress() is False
 
-    async with proxy_selection_scope(duration=10.0):
-        assert is_proxy_selection_in_progress() is True
-        # Локальный хост во время подбора прокси признается легитимным
-        is_trusted = await check_is_bot_or_admin("127.0.0.1", 54321, "8.8.8.8", 443)
-        assert is_trusted is True
+    with patch('modules.proxmox.monitor.remote.helpers.get_bot_public_ip', AsyncMock(return_value="127.0.0.1")):
+        async with proxy_selection_scope(duration=10.0):
+            assert is_proxy_selection_in_progress() is True
+            # Локальный хост во время подбора прокси признается легитимным
+            is_trusted = await check_is_bot_or_admin("127.0.0.1", 54321, "198.51.100.1", 443)
+            assert is_trusted is True
 

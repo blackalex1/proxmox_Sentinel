@@ -6,7 +6,7 @@ import pytest
 import tempfile
 import subprocess
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch, MagicMock, AsyncMock
 
 from core.spectre_client.log_parser import (
     find_email_and_ip_in_xray_log,
@@ -187,7 +187,7 @@ async def test_real_xray_execution_and_investigation():
 
         now_str = time.strftime("%Y/%m/%d %H:%M:%S")
         log_lines = [
-            f"Aug 08 14:00:00 pve xray[123]: {now_str} 192.168.1.65:41926 accepted tcp:1.2.3.4:41926 [vless-inbound] email: xray_hacker@cyber.com",
+            f"Aug 08 14:00:00 pve xray[123]: {now_str} 192.168.1.65:41926 accepted tcp:198.51.100.4:41926 [vless-inbound] email: xray_hacker@cyber.com",
             f"{now_str} 192.168.1.104:54321 accepted tcp:198.51.100.99:5432 [trojan-inbound] email: postgres_attacker@db.org",
             f"{now_str} 192.168.1.104:33333 accepted tcp:198.51.100.100:3306 [vmess-inbound] email: mysql_dumper@db.org",
         ]
@@ -197,7 +197,7 @@ async def test_real_xray_execution_and_investigation():
         lines = log_path.read_text(encoding="utf-8").splitlines()
 
         # Investigate Port 41926 attack
-        res_vless = find_email_and_ip_in_xray_log(lines, client_ip="192.168.1.65", dst_ip="1.2.3.4", dst_port=41926)
+        res_vless = find_email_and_ip_in_xray_log(lines, client_ip="192.168.1.65", dst_ip="198.51.100.4", dst_port=41926)
         assert res_vless is not None
         assert res_vless[0] == "xray_hacker@cyber.com"
         assert res_vless[1] == "192.168.1.65"
@@ -278,21 +278,16 @@ def test_hysteria2_investigation_and_client_resolution():
 @pytest.mark.asyncio
 async def test_find_xray_client_email_and_tag_async_fallback():
     """
-    Проверяет вызов find_xray_client_email_and_tag, когда API панели недоступно,
-    и бот выполняет асинхронный поиск по логам контейнера через subprocess.
+    Проверяет вызов find_xray_client_email через API Spectre Panel.
     """
-    now_str = time.strftime("%Y/%m/%d %H:%M:%S")
-    simulated_output = (
-        f"{now_str} [info] 192.168.1.65:41926 accepted tcp:1.2.3.4:41926 [vless-direct] email: targeted_threat@corp.com\n"
-    )
+    mock_panel = MagicMock()
+    mock_panel.name = "MasterPanel"
+    mock_result = ("targeted_threat@corp.com", mock_panel, "lxc", "192.168.1.65", "vless-direct")
 
-    with patch("platform.system", return_value="Linux"), \
-         patch("subprocess.run") as mock_run:
-        mock_run.return_value = MagicMock(returncode=0, stdout=simulated_output)
-
+    with patch("core.spectre_client.spectre_manager.get_client_by_connection", AsyncMock(return_value=mock_result)):
         email, tag = await find_xray_client_email(
             vmid=104,
-            dst_ip="1.2.3.4",
+            dst_ip="198.51.100.4",
             dpt=41926,
             client_ip="192.168.1.65"
         )
@@ -309,8 +304,8 @@ def test_find_real_vpn_client_ip_conntrack(tmp_path):
     Проверяет сопоставление внутренних IP-адресов клиентов через таблицу conntrack.
     """
     conntrack_data = (
-        "tcp      6 431999 ESTABLISHED src=10.0.0.2 dst=1.2.3.4 sport=51234 dport=443 "
-        "src=1.2.3.4 dst=192.168.1.65 sport=443 dport=41926 [ASSURED] mark=0 use=1\n"
+        "tcp      6 431999 ESTABLISHED src=10.0.0.2 dst=198.51.100.4 sport=51234 dport=443 "
+        "src=198.51.100.4 dst=192.168.1.65 sport=443 dport=41926 [ASSURED] mark=0 use=1\n"
     )
     fake_proc_file = tmp_path / "nf_conntrack"
     fake_proc_file.write_text(conntrack_data, encoding="utf-8")
@@ -322,7 +317,7 @@ def test_find_real_vpn_client_ip_conntrack(tmp_path):
         real_ip = find_real_vpn_client_ip(
             proto="tcp",
             container_ip="192.168.1.65",
-            dst_ip="1.2.3.4",
+            dst_ip="198.51.100.4",
             sport=41926,
             dpt=443
         )

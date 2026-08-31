@@ -122,6 +122,10 @@ def _init_sentinel_lib(lib: Any) -> Any:
         ("SentinelFindFastestProxy", [ctypes.c_char_p, ctypes.c_char_p, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int]),
         ("SentinelBuildFailoverClientConfig", [ctypes.c_char_p, ctypes.c_char_p, ctypes.c_int, ctypes.c_int, ctypes.c_char_p]),
         ("SentinelSetLanguage", [ctypes.c_char_p]),
+        ("SentinelStartSecurityPipeline", [ctypes.c_char_p]),
+        ("SentinelPollSecurityEvent", [ctypes.c_int]),
+        ("SentinelStopSecurityPipeline", []),
+        ("SentinelProcessTrafficLine", [ctypes.c_char_p, ctypes.c_char_p]),
     ]
 
     for name, argtypes in func_signatures:
@@ -493,6 +497,21 @@ def parse_router_iptables_line(line: str) -> Optional[Dict[str, Any]]:
 
     res = run_core_command(["security", "parse-router", "--line", line])
     if isinstance(res, dict) and "src_ip" in res:
+        return res
+    return None
+
+
+def process_traffic_line(source: str, line: str) -> Optional[Dict[str, Any]]:
+    """Processes a traffic/conntrack/auth line through sentinel-core security pipeline."""
+    try:
+        res = _ffi_call_json("SentinelProcessTrafficLine", source, line)
+        if isinstance(res, dict) and "event_type" in res:
+            return res
+    except Exception as e:
+        logger.debug("FFI process_traffic_line error: %s", e)
+
+    res = run_core_command(["security", "process-traffic-line", "--source", source, "--line", line])
+    if isinstance(res, dict) and "event_type" in res:
         return res
     return None
 

@@ -170,12 +170,12 @@ async def test_parse_router_conntrack_line():
     from modules.router.monitor.parser import parse_router_conntrack_line
     
     # Realistic conntrack -E output line (IPv4)
-    line = "[NEW] tcp      6 120 SYN_SENT src=192.168.1.69 dst=5.255.255.242 sport=33296 dport=22 [UNREPLIED] src=5.255.255.242 dst=1.2.3.4 sport=443 dport=33296"
+    line = "[NEW] tcp      6 120 SYN_SENT src=192.168.1.69 dst=198.51.100.242 sport=33296 dport=22 [UNREPLIED] src=198.51.100.242 dst=203.0.113.4 sport=443 dport=33296"
     event = parse_router_conntrack_line(line)
     
     assert event is not None
     assert event['src_ip'] == "192.168.1.69"
-    assert event['dst_host'] == "5.255.255.242"
+    assert event['dst_host'] == "198.51.100.242"
     assert event['proto'] == "TCP"
     assert event['src_port'] == 33296
     assert event['dst_port'] == 22
@@ -319,13 +319,13 @@ async def test_check_is_bot_or_admin():
             assert await check_is_bot_or_admin("192.168.1.120", 47278, "198.51.100.42", 22) is True
             # Proxmox host connecting to some random IP on port 22 (should fall back to is_local_bot_process, returning False)
             with patch("modules.router.monitor.helpers.is_local_bot_process", AsyncMock(return_value=False)):
-                assert await check_is_bot_or_admin("192.168.1.120", 47278, "8.8.8.8", 22) is False
+                assert await check_is_bot_or_admin("192.168.1.120", 47278, "198.51.100.1", 22) is False
         finally:
             settings.remote_servers = original_remote_servers
 
         # Bot's own public IP bypass check
-        with patch("modules.proxmox.monitor.remote.helpers.get_bot_public_ip", AsyncMock(return_value="1.2.3.4")):
-            assert await check_is_bot_or_admin("1.2.3.4", 12345) is True
+        with patch("modules.proxmox.monitor.remote.helpers.get_bot_public_ip", AsyncMock(return_value="198.51.100.4")):
+            assert await check_is_bot_or_admin("198.51.100.4", 12345) is True
 
         # Normal client IP
         assert await check_is_bot_or_admin("192.168.1.50", 12345) is False

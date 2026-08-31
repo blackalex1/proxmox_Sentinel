@@ -8,8 +8,44 @@ from .router_handlers import (
     handle_router_iptables_log_line
 )
 
+CONNTRACK_QUEUE_MAXSIZE = 5000
+NUM_CONNTRACK_WORKERS = 4
+SYSLOG_QUEUE_MAXSIZE = 2000
+NUM_SYSLOG_WORKERS = 2
+
+
+async def _conntrack_worker(queue: asyncio.Queue):
+    """Фоновый потребитель очереди сетевых событий conntrack."""
+    while True:
+        try:
+            line = await queue.get()
+            try:
+                await handle_router_conntrack_log_line(line)
+            except Exception as e:
+                logging.error("error_processing_router_conntrack_log", e)
+            finally:
+                queue.task_done()
+        except asyncio.CancelledError:
+            break
+
+
+async def _syslog_worker(queue: asyncio.Queue):
+    """Фоновый потребитель очереди логов iptables/nftables роутера."""
+    while True:
+        try:
+            line = await queue.get()
+            try:
+                await handle_router_iptables_log_line(line)
+            except Exception as e:
+                logging.error("error_processing_router_iptables_log", e)
+            finally:
+                queue.task_done()
+        except asyncio.CancelledError:
+            break
+
+
 async def monitor_router_conntrack():
-    """Фоновый воркер для чтения событий conntrack роутера через SSH в реальном времени."""
+    """Фоновый воркер для чтения событий conntrack роутера через SSH в реальном времени с параллельной очередью."""
     if not settings.router_monitor_enable:
         logging.warning("router_ips_router_monitoring_is_disabled_in_1")
         return
@@ -43,6 +79,8 @@ async def monitor_router_conntrack():
         connect_kwargs['client_keys'] = [key_path]
         
     while True:
+        queue = asyncio.Queue(maxsize=CONNTRACK_QUEUE_MAXSIZE)
+        workers = [asyncio.create_task(_conntrack_worker(queue)) for _ in range(NUM_CONNTRACK_WORKERS)]
         try:
             import asyncssh
             async with asyncssh.connect(**connect_kwargs) as conn:
@@ -57,18 +95,33 @@ async def monitor_router_conntrack():
                 logging.info("router_ips_successfully_connected_via_ssh_to")
                 async with conn.create_process(cmd) as process:
                     async for line in process.stdout:
-                        await handle_router_conntrack_log_line(line)
+                        try:
+                            queue.put_nowait(line)
+                        except asyncio.QueueFull:
+                            try:
+                                _ = queue.get_nowait()
+                                queue.task_done()
+                            except (asyncio.QueueEmpty, ValueError):
+                                pass
+                            queue.put_nowait(line)
         except asyncio.CancelledError:
+            for w in workers:
+                w.cancel()
+            await asyncio.gather(*workers, return_exceptions=True)
             break
         except Exception as e:
             err_msg = str(e) or type(e).__name__
             logging.warning("router_ips_error_connecting_via_ssh_router_conntrack", err_msg)
+        finally:
+            for w in workers:
+                w.cancel()
+            await asyncio.gather(*workers, return_exceptions=True)
             
         logging.info("router_ips_reconnecting_ssh_conntrack_15_seconds")
         await asyncio.sleep(15)
 
 async def monitor_router_syslog():
-    """Фоновый воркер для чтения логов роутера через SSH в реальном времени."""
+    """Фоновый воркер для чтения логов роутера через SSH в реальном времени с параллельной очередью."""
     if not settings.router_monitor_enable:
         logging.warning("router_ips_router_monitoring_is_disabled_in_2")
         return
@@ -106,6 +159,8 @@ async def monitor_router_syslog():
         connect_kwargs['client_keys'] = [key_path]
         
     while True:
+        queue = asyncio.Queue(maxsize=SYSLOG_QUEUE_MAXSIZE)
+        workers = [asyncio.create_task(_syslog_worker(queue)) for _ in range(NUM_SYSLOG_WORKERS)]
         try:
             import asyncssh
             async with asyncssh.connect(**connect_kwargs) as conn:
@@ -121,12 +176,27 @@ async def monitor_router_syslog():
                 async with conn.create_process(cmd) as process:
                     async for line in process.stdout:
                         if "ROUTER-IPS:" in line:
-                            await handle_router_iptables_log_line(line)
+                            try:
+                                queue.put_nowait(line)
+                            except asyncio.QueueFull:
+                                try:
+                                    _ = queue.get_nowait()
+                                    queue.task_done()
+                                except (asyncio.QueueEmpty, ValueError):
+                                    pass
+                                queue.put_nowait(line)
         except asyncio.CancelledError:
+            for w in workers:
+                w.cancel()
+            await asyncio.gather(*workers, return_exceptions=True)
             break
         except Exception as e:
             err_msg = str(e) or type(e).__name__
             logging.warning("router_ips_error_connecting_via_ssh_to", err_msg)
+        finally:
+            for w in workers:
+                w.cancel()
+            await asyncio.gather(*workers, return_exceptions=True)
             
         logging.info("router_ips_reconnecting_to_ssh_in_15")
         await asyncio.sleep(15)

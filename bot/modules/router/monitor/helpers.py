@@ -3,6 +3,7 @@ import re
 import os
 import socket
 import logging
+import platform
 from core.config import settings
 
 async def is_local_bot_process(sport, dst_ip=None):
@@ -50,6 +51,9 @@ async def is_local_bot_process(sport, dst_ip=None):
                     pass
         except Exception:
             pass
+
+    if platform.system() != 'Linux':
+        return False
 
     try:
         cmd = ["ss", "-atnup"]
@@ -132,14 +136,15 @@ def get_host_local_ips() -> set:
         except Exception:
             pass
 
-        try:
-            import subprocess
-            out = subprocess.check_output(["hostname", "-I"], timeout=1, stderr=subprocess.DEVNULL).decode('utf-8', errors='ignore')
-            for part in out.split():
-                if part.strip():
-                    ips.add(part.strip())
-        except Exception:
-            pass
+        if platform.system() == 'Linux':
+            try:
+                import subprocess
+                out = subprocess.check_output(["hostname", "-I"], timeout=1, stderr=subprocess.DEVNULL).decode('utf-8', errors='ignore')
+                for part in out.split():
+                    if part.strip():
+                        ips.add(part.strip())
+            except Exception:
+                pass
         _host_local_ips_cache = ips
         _host_local_ips_last_check = time.time()
 

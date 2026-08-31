@@ -6,6 +6,7 @@ import re
 import shutil
 import signal
 import socket
+import ssl
 import subprocess
 import sys
 import time
@@ -51,6 +52,10 @@ def _free_port(port: int):
         subprocess.run(["fuser", "-k", f"{port}/tcp"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     except Exception:
         pass
+
+
+def _create_raw_socket(family=socket.AF_INET, type=socket.SOCK_STREAM):
+    return socket.socket(family, type)
 
 
 def parse_vpn_uri(uri: str) -> Optional[Dict[str, Any]]:
@@ -475,7 +480,7 @@ class SocksProxyRotator:
                 parsed = urllib.parse.urlparse(proxy_url)
                 host = parsed.hostname or "127.0.0.1"
                 port = parsed.port or 1080
-                s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                s = _create_raw_socket(socket.AF_INET, socket.SOCK_STREAM)
                 s.settimeout(timeout)
                 s.connect((host, port))
                 if proxy_url.startswith("socks5://") or proxy_url.startswith("socks5h://"):

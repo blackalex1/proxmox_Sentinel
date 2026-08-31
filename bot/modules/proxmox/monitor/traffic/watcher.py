@@ -88,10 +88,8 @@ async def handle_traffic_log_line(line):
                     is_bot = True
                     logging.debug("traffic_monitor_match_found_for_router_ssh_host", dst, dpt)
 
-                # Вносим кратковременную задержку для устранения гонки при установлении сессии
-                # (так как логирование трафика ОС опережает завершение хэндшейка asyncssh/ansible)
+                # Проверяем порт сокета бота
                 if not is_bot and (dpt == settings.router_ssh_port or dpt == 22):
-                    await asyncio.sleep(0.5)
                     if spt in recent_bot_ports:
                         is_bot = True
                         logging.debug("traffic_monitor_port_found_in_recent_bot_ports_after", spt)
@@ -190,8 +188,6 @@ async def handle_traffic_log_line(line):
             from core.spectre_client import spectre_manager
             is_panel_container = (vmid == settings.vpn_vmid or spectre_manager.get_panel_by_vmid(int(vmid)) is not None)
             if is_panel_container and not is_local and direction == 'OUT':
-                # Пауза 1.0 секунды, чтобы conntrack обновился и ядро сбросило буфер в singbox/xray/hysteria.log
-                await asyncio.sleep(1.0)
                 real_client_ip = find_real_vpn_client_ip(proto, src, dst, spt, dpt)
                 xray_client_email, inbound_tag = await find_xray_client_email(vmid, dst, dpt, real_client_ip)
 
