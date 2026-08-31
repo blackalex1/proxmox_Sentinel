@@ -1,10 +1,5 @@
-# bot/core/sender.py
-"""
-Централизованный диспетчер отправки сообщений (Rich Bot API 10.1 - 10.3).
-Предоставляет методы отправки, редактирования, стриминга драфтов и рассылки
-алертов администраторам через нативные Rich Messages или надежный fallback.
-"""
-
+import time
+import re
 import logging
 from typing import Any, Optional, Union, List
 
@@ -12,6 +7,22 @@ from core.bot import bot
 from core.config import settings
 from core.rich import build_rich_message
 from core.outbox import clean_html_for_telegram
+
+_flood_cooldown: dict[int, float] = {}
+
+
+def _record_flood_cooldown(chat_id: Union[int, str], err_str: str):
+    """Records retry_after cooldown for chat_id so we do not spam requests."""
+    try:
+        cid = int(chat_id)
+        m = re.search(r'retry(?:_|\s+)after[:\s]+(\d+)', err_str, re.IGNORECASE)
+        if not m:
+            m = re.search(r'retry in (\d+) seconds', err_str, re.IGNORECASE)
+        secs = int(m.group(1)) if m else 60
+        _flood_cooldown[cid] = time.time() + secs
+        logging.warning(f"Telegram flood cooldown active for chat_id={cid} for {secs} seconds.")
+    except Exception:
+        pass
 
 
 async def send_rich_message(
@@ -25,6 +36,13 @@ async def send_rich_message(
     Отправка Rich Message (Bot API 10.1 - 10.3 / SendRichMessage) или стандартного сообщения через aiogram.
     Возвращает объект Message при успехе, или None при ошибке.
     """
+    try:
+        cid = int(chat_id)
+        if time.time() < _flood_cooldown.get(cid, 0.0):
+            return None
+    except Exception:
+        pass
+
     sent_msg = None
 
     # 1. Попытка отправить через нативный SendRichMessage (Bot API 10.1-10.3)
@@ -39,8 +57,9 @@ async def send_rich_message(
 
         sent_msg = await bot(SendRichMessage(chat_id=chat_id, rich_message=rich_message, **kwargs))
     except Exception as e:
-        if "flood control" in str(e).lower() or "too many requests" in str(e).lower() or "retry after" in str(e).lower():
-            logging.warning(f"Telegram flood limit reached for chat_id={chat_id}: {e}")
+        err_str = str(e)
+        if "flood control" in err_str.lower() or "too many requests" in err_str.lower() or "retry after" in err_str.lower():
+            _record_flood_cooldown(chat_id, err_str)
             return None
         logging.debug(f"Native SendRichMessage attempt skipped for chat_id={chat_id}: {e}")
 
@@ -50,8 +69,9 @@ async def send_rich_message(
             fallback_text = clean_html_for_telegram(text) if isinstance(text, str) else str(text)
             sent_msg = await bot.send_message(chat_id, fallback_text, parse_mode="HTML", reply_markup=reply_markup)
         except Exception as e:
-            if "flood control" in str(e).lower() or "too many requests" in str(e).lower() or "retry after" in str(e).lower():
-                logging.warning(f"Telegram flood limit reached on fallback for chat_id={chat_id}: {e}")
+            err_str = str(e)
+            if "flood control" in err_str.lower() or "too many requests" in err_str.lower() or "retry after" in err_str.lower():
+                _record_flood_cooldown(chat_id, err_str)
                 return None
             logging.error(f"Failed to send standard message for chat_id={chat_id}: {e}")
             raise e

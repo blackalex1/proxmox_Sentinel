@@ -391,17 +391,6 @@ async def process_hysteria_audit_event(panel, action, client_ip, log_timestamp, 
             if not is_too_old and not card.get('pending_send', True):
                 msg_text = format_card_msg(panel_name, username, protocol, [l['text'] for l in card['lines']], tx, rx)
                 await trigger_card_edit(card, msg_text)
-        else:
-            if not is_too_old:
-                from .utils import get_geoip_info
-                geoip_info = await get_geoip_info(client_ip)
-                msg_text = get_client_disconnected_alert(protocol, panel_name, username, client_ip, timestamp_str, geoip_info=geoip_info)
-                from .utils import send_rich_message
-                for admin_id in settings.admin_ids:
-                    try:
-                        await send_rich_message(admin_id, msg_text, parse_mode="HTML")
-                    except Exception as e:
-                        logging.error(f"[Controller Alerts] Error sending disconnect message: {e}")
 
 async def update_controller_active_cards_traffic():
     now_time = time.time()
