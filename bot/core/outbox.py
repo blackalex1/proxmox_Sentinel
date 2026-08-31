@@ -335,7 +335,7 @@ class ResilientOutbox:
                         rich_edit = await self._edit_rich_message_impl(bot, chat_id, message_id, rich_text, parse_mode=parse_mode, reply_markup=reply_markup)
                         if rich_edit:
                             logger.info("outbox_message_successfully_edited_as_rich", chat_id, message_id, idx, total_count)
-                            await asyncio.sleep(0.5)
+                            await asyncio.sleep(1.05)
                             continue
                             
                         # Если Rich Message не сработал, очищаем форматирование для стандартного API
@@ -355,12 +355,12 @@ class ResilientOutbox:
                         
                         await bot._original_edit_message_text(chat_id=chat_id, message_id=message_id, text=resilient_text, **kwargs)
                         logger.info("outbox_message_successfully_edited_queue", chat_id, message_id, idx, total_count)
-                        await asyncio.sleep(0.5)
+                        await asyncio.sleep(1.05)
                     else:
                         rich_msg = await self._send_rich_message_impl(bot, chat_id, rich_text, parse_mode=parse_mode, reply_markup=reply_markup)
                         if rich_msg:
                             logger.info("outbox_message_successfully_delivered_as_rich", chat_id, idx, total_count)
-                            await asyncio.sleep(0.5)
+                            await asyncio.sleep(1.05)
                             continue
                         
                         # Если Rich Message не сработал, очищаем форматирование для стандартного API
@@ -381,7 +381,7 @@ class ResilientOutbox:
                         # Используем оригинальный метод класса Bot для отправки без перехвата
                         await bot._original_send_message(chat_id, resilient_text, **kwargs)
                         logger.info("outbox_message_successfully_delivered_queue", chat_id, idx, total_count)
-                        await asyncio.sleep(0.5)
+                        await asyncio.sleep(1.05)
                 except NETWORK_ERRORS as e:
                     # Если всё еще нет сети, прерываем отправку и оставляем это и все последующие сообщения
                     logger.warning("outbox_network_error_sending_message_suspending", chat_id, e)
