@@ -159,7 +159,7 @@ async def test_watcher_host_ssh_verification():
         mock_alert.assert_not_called()
         assert len(lxc_traffic_history[0]) == 1
         assert lxc_traffic_history[0][0]['risk_level'] == 'INFO'
-        assert '🟢 Служебный SSH Хоста (Бот)' in lxc_traffic_history[0][0]['label']
+        assert '🟢 Служебный трафик бота' in lxc_traffic_history[0][0]['label']
 
     # B) Simulate malicious/unauthorized connection by someone else: port 56088 is NOT in recent_bot_ports
     recent_bot_ports.clear()
@@ -211,7 +211,7 @@ async def test_watcher_lxc_inbound_ssh_verification():
             mock_alert.assert_not_called()
             assert len(lxc_traffic_history[109]) == 1
             assert lxc_traffic_history[109][0]['risk_level'] == 'INFO'
-            assert '🟢 Служебный SSH Хоста (Бот)' in lxc_traffic_history[109][0]['label']
+            assert '🟢 Служебный трафик бота' in lxc_traffic_history[109][0]['label']
 
         # B) Simulate malicious/unauthorized connection by someone else on the host (is_local_bot_process returns False)
         recent_bot_ports.clear()
