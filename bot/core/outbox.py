@@ -440,9 +440,11 @@ class ResilientOutbox:
             kwargs = {}
             if reply_markup is not None:
                 kwargs["reply_markup"] = reply_markup
-            edit_method = getattr(bot, "_original_edit_message_text", None)
+            edit_method = getattr(bot, "_original_edit_rich_message", None)
             if edit_method:
-                return await edit_method(chat_id=chat_id, message_id=message_id, text=fallback_text, parse_mode="HTML", **kwargs)
+                from core.rich import build_rich_message
+                rich_message = build_rich_message(text)
+                return await edit_method(chat_id=chat_id, message_id=message_id, rich_message=rich_message, **kwargs)
         except (TelegramRetryAfter, TelegramAPIError) as e:
             raise e
         except NETWORK_ERRORS as e:
@@ -462,7 +464,7 @@ class ResilientOutbox:
         # Сохраняем оригинальные методы
         bot._original_send_message = bot.send_message
         bot._original_edit_message_text = bot.edit_message_text
-        if hasattr(bot, "send_rich_message"):
+        if hasattr(type(bot), "send_rich_message"):
             bot._original_send_rich_message = bot.send_rich_message
         
         async def resilient_send_message(chat_id, text, *args, **kwargs):
