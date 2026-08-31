@@ -39,6 +39,9 @@ async def send_rich_message(
 
         sent_msg = await bot(SendRichMessage(chat_id=chat_id, rich_message=rich_message, **kwargs))
     except Exception as e:
+        if "flood control" in str(e).lower() or "too many requests" in str(e).lower() or "retry after" in str(e).lower():
+            logging.warning(f"Telegram flood limit reached for chat_id={chat_id}: {e}")
+            return None
         logging.debug(f"Native SendRichMessage attempt skipped for chat_id={chat_id}: {e}")
 
     # 2. Стандартная и надежная отправка через aiogram bot.send_message (fallback)
@@ -47,6 +50,9 @@ async def send_rich_message(
             fallback_text = clean_html_for_telegram(text) if isinstance(text, str) else str(text)
             sent_msg = await bot.send_message(chat_id, fallback_text, parse_mode="HTML", reply_markup=reply_markup)
         except Exception as e:
+            if "flood control" in str(e).lower() or "too many requests" in str(e).lower() or "retry after" in str(e).lower():
+                logging.warning(f"Telegram flood limit reached on fallback for chat_id={chat_id}: {e}")
+                return None
             logging.error(f"Failed to send standard message for chat_id={chat_id}: {e}")
             raise e
 
