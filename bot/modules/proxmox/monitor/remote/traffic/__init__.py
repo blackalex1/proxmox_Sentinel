@@ -347,7 +347,7 @@ async def handle_remote_traffic_line(line, server=None):
                     
                     proc_name, killed_pid = await get_and_kill_remote_process(server, spt)
                     
-                    proc_info = f"\n📁 Процесс: <code>{proc_name}</code> (PID: <code>{killed_pid}</code>)" if proc_name and killed_pid else ""
+                    proc_info = f" (Процесс: <code>{proc_name}</code>, PID: <code>{killed_pid}</code>)" if proc_name and killed_pid else ""
                     msg = get_ips_xray_attack_alert(
                         server['ip'], email, proto, src_display, spt, dst, dpt, block_details_str, proc_info, timestamp, inbound_tag=inbound_tag
                     )

@@ -47,14 +47,16 @@ def get_router_client_details_card(
     port_bans: List[Dict[str, Any]]
 ) -> str:
     status_emoji = _("router", "status_active") if active else _("router", "status_offline")
+    port_bans_list = port_bans if isinstance(port_bans, list) else []
     if full_ban:
         ban_status = _("router", "ban_status_full")
-    elif port_bans:
+    elif port_bans_list:
         ban_status = _("router", "ban_status_ports")
     else:
         ban_status = _("router", "ban_status_none")
         
-    bans_count = (1 if full_ban else 0) + len(port_bans)
+    bans_count = (1 if full_ban else 0) + len(port_bans_list)
+
     
     rows = []
     rows.append('<table bordered striped compact>')
