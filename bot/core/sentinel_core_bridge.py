@@ -126,7 +126,9 @@ def _init_sentinel_lib(lib: Any) -> Any:
         ("SentinelPollSecurityEvent", [ctypes.c_int]),
         ("SentinelStopSecurityPipeline", []),
         ("SentinelProcessTrafficLine", [ctypes.c_char_p, ctypes.c_char_p]),
+        ("SentinelConfigureRouterThreatDetector", [ctypes.c_char_p]),
     ]
+
 
     for name, argtypes in func_signatures:
         if hasattr(lib, name):
@@ -734,5 +736,32 @@ def set_core_language(lang: str) -> bool:
         return isinstance(res, dict) and res.get("success") is True
     except Exception:
         return False
+
+
+def configure_router_threat_detector(
+    scan_limit: int = 3,
+    burst_limit_1m: int = 10,
+    burst_limit_3m: int = 15,
+    target_brute_limit: int = 5,
+    window_minutes: int = 10,
+    sensitive_ports: Optional[List[int]] = None
+) -> bool:
+    """Configures Go RouterThreatDetector thresholds and sensitive ports dynamically."""
+    payload = {
+        "scan_limit": int(scan_limit),
+        "burst_limit_1m": int(burst_limit_1m),
+        "burst_limit_3m": int(burst_limit_3m),
+        "target_brute_limit": int(target_brute_limit),
+        "window_minutes": int(window_minutes),
+        "sensitive_ports": sensitive_ports or [22, 8006, 2222, 3389],
+    }
+    payload_json = json.dumps(payload)
+    try:
+        res = _ffi_call_json("SentinelConfigureRouterThreatDetector", payload_json)
+        return isinstance(res, dict) and res.get("success") is True
+    except Exception as e:
+        logger.debug("FFI configure_router_threat_detector error: %s", e)
+        return False
+
 
 
