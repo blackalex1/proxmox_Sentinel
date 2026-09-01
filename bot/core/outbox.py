@@ -196,16 +196,43 @@ def clean_html_for_telegram(text: str) -> str:
     text = re.sub(r'\n{3,}', '\n\n', text)
     return text.strip()
 
+def _extract_dedup_key(msg: dict) -> Optional[tuple]:
+    """Возвращает ключ дедупликации для перезаписываемых сообщений (карточки активности, меню)."""
+    if msg.get("is_edit"):
+        return ("edit", msg.get("chat_id"), msg.get("message_id"))
+    
+    text = msg.get("text", "")
+    if not isinstance(text, str):
+        return None
+    chat_id = msg.get("chat_id")
+    
+    # 1. Главное меню / панель управления
+    if "Proxmox Sentinel • Панель управления" in text:
+        return ("menu", chat_id)
+        
+    # 2. Карточка активности сессий (таблица с пользователем)
+    if "👤 Пользователь" in text or "Пользователь" in text:
+        m = re.search(r'<code>([a-zA-Z0-9_\-\.]+)</code>', text)
+        if m:
+            username = m.group(1)
+            proto_m = re.search(r'\[(Sing-box|Hysteria 2|Xray|VPN)\]\s*([^<\n]+)', text)
+            server_info = proto_m.group(0) if proto_m else ""
+            return ("card", chat_id, username, server_info)
+            
+    return None
+
 class ResilientOutbox:
+    """Менеджер отложенной отправки сообщений."""
+
     def __init__(self):
         self.queue = []
         self.lock = asyncio.Lock()
-        self.rate_limit_until = 0
-        self._message_cooldowns = {}
+        self.rate_limit_until = 0.0
+        self._message_cooldowns: dict[tuple, float] = {}
         self.load_from_disk()
 
     def load_from_disk(self):
-        """Загружает очередь сообщений с диска с автоматической очисткой и дедупликацией старых правок."""
+        """Загружает очередь сообщений с диска с автоматической очисткой и дедупликацией старых правок и дубликатов карточек."""
         if os.path.exists(OUTBOX_FILE):
             try:
                 with open(OUTBOX_FILE, 'r', encoding='utf-8') as f:
@@ -235,16 +262,18 @@ class ResilientOutbox:
                     
                 now = time.time()
                 cleaned_queue = []
-                seen_edits = {}
+                seen_keys = {}
                 for msg in raw_queue:
-                    if msg.get("is_edit"):
-                        if msg.get("timestamp") and (now - msg["timestamp"] > 1800):
-                            continue
-                        key = (msg.get("chat_id"), msg.get("message_id"))
-                        if key in seen_edits:
-                            cleaned_queue[seen_edits[key]] = msg
+                    # Если правка старше 30 минут, это устаревший трафик — пропускаем
+                    if msg.get("is_edit") and msg.get("timestamp") and (now - msg["timestamp"] > 1800):
+                        continue
+                        
+                    dedup_key = _extract_dedup_key(msg)
+                    if dedup_key:
+                        if dedup_key in seen_keys:
+                            cleaned_queue[seen_keys[dedup_key]] = msg
                         else:
-                            seen_edits[key] = len(cleaned_queue)
+                            seen_keys[dedup_key] = len(cleaned_queue)
                             cleaned_queue.append(msg)
                     else:
                         cleaned_queue.append(msg)
@@ -288,7 +317,7 @@ class ResilientOutbox:
             logger.error("outbox_error_saving_queue_disk", e)
 
     async def add_message(self, chat_id, text, **kwargs):
-        """Добавляет сообщение в очередь."""
+        """Добавляет сообщение в очередь с авто-дедупликацией карточек и меню."""
         async with self.lock:
             # Формируем структуру сообщения
             msg_data = {
@@ -297,6 +326,19 @@ class ResilientOutbox:
                 "kwargs": kwargs,
                 "timestamp": time.time()
             }
+            dedup_key = _extract_dedup_key(msg_data)
+            if dedup_key:
+                existing_idx = None
+                for idx, item in enumerate(self.queue):
+                    if not item.get("is_edit") and _extract_dedup_key(item) == dedup_key:
+                        existing_idx = idx
+                        break
+                if existing_idx is not None:
+                    self.queue[existing_idx] = msg_data
+                    self.save_to_disk()
+                    logger.info("outbox_message_updated_in_queue_total", chat_id, len(self.queue))
+                    return
+
             self.queue.append(msg_data)
             self.save_to_disk()
             logger.info("outbox_message_added_deferred_queue_total", chat_id, len(self.queue))
@@ -631,6 +673,7 @@ class ResilientOutbox:
 
 
 # Глобальный инстанс исходящей очереди
+OutboxManager = ResilientOutbox
 outbox = ResilientOutbox()
 
 async def outbox_sender_loop(bot: Bot):
