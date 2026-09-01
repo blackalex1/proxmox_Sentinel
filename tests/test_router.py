@@ -170,18 +170,21 @@ async def test_parse_router_conntrack_line():
     from modules.router.monitor.parser import parse_router_conntrack_line
     
     # Realistic conntrack -E output line (IPv4)
-    line = "[NEW] tcp      6 120 SYN_SENT src=192.168.1.69 dst=198.51.100.242 sport=33296 dport=22 [UNREPLIED] src=198.51.100.242 dst=203.0.113.4 sport=443 dport=33296"
+    line = "[NEW] tcp      6 120 SYN_SENT src=192.168.1.200 dst=198.51.100.242 sport=33296 dport=22 [UNREPLIED] src=198.51.100.242 dst=203.0.113.4 sport=443 dport=33296"
     event = parse_router_conntrack_line(line)
     
     assert event is not None
-    assert event['src_ip'] == "192.168.1.69"
+    assert event['src_ip'] == "192.168.1.200"
     assert event['dst_host'] == "198.51.100.242"
     assert event['proto'] == "TCP"
     assert event['src_port'] == 33296
     assert event['dst_port'] == 22
+    assert event.get('is_threat') is True
+    assert event.get('should_autoban') is False
+    assert event.get('threat_type') == "sensitive_port"
 
     # Non-matching line
-    bad_line = "[UPDATE] tcp      6 120 src=192.168.1.69"
+    bad_line = "[UPDATE] tcp      6 120 src=192.168.1.200"
     assert parse_router_conntrack_line(bad_line) is None
 
 
@@ -194,22 +197,22 @@ async def test_handle_router_conntrack_log_line():
     lxc_alert_throttle.clear()
     
     # Sensitive port 22
-    line = "[NEW] tcp      6 120 SYN_SENT src=192.168.1.69 dst=192.168.1.1 sport=33296 dport=22 [UNREPLIED]"
+    line = "[NEW] tcp      6 120 SYN_SENT src=192.168.1.200 dst=192.168.1.1 sport=33296 dport=22 [UNREPLIED]"
     
     with patch("modules.router.monitor.router_handlers.parse_router_conntrack_line", return_value={
-        'src_ip': '192.168.1.69', 'src_port': 33296, 'dst_host': '192.168.1.1', 'dst_port': 22,
+        'src_ip': '192.168.1.200', 'src_port': 33296, 'dst_host': '192.168.1.1', 'dst_port': 22,
         'proto': 'TCP', 'is_threat': True, 'should_autoban': False
     }), patch("modules.router.monitor.router_handlers.send_alert_to_admins", AsyncMock()) as mock_alert:
         await handle_router_conntrack_log_line(line)
         mock_alert.assert_called_once()
         alert_text = mock_alert.call_args[0][0]
         assert "Router Security: Conntrack" in alert_text
-        assert "192.168.1.69" in alert_text
+        assert "192.168.1.200" in alert_text
         assert "192.168.1.1:22" in alert_text
 
     # Safe port 443
     lxc_alert_throttle.clear()
-    safe_line = "[NEW] tcp      6 120 SYN_SENT src=192.168.1.69 dst=8.8.8.8 sport=33296 dport=443 [UNREPLIED]"
+    safe_line = "[NEW] tcp      6 120 SYN_SENT src=192.168.1.200 dst=8.8.8.8 sport=33296 dport=443 [UNREPLIED]"
     
     with patch("modules.router.monitor.router_handlers.send_alert_to_admins", AsyncMock()) as mock_alert:
         await handle_router_conntrack_log_line(safe_line)
@@ -231,7 +234,7 @@ async def test_monitor_router_conntrack_execution():
         mock_process = AsyncMock()
         
         async def mock_stdout_iter(*args, **kwargs):
-            yield "[NEW] tcp      6 120 SYN_SENT src=192.168.1.69 dst=192.168.1.1 sport=33296 dport=22"
+            yield "[NEW] tcp      6 120 SYN_SENT src=192.168.1.200 dst=192.168.1.1 sport=33296 dport=22"
             await asyncio.sleep(3600)
             
         mock_process.stdout.__aiter__ = mock_stdout_iter

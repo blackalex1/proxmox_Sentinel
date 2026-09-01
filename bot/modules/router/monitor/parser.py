@@ -4,7 +4,7 @@ from core import sentinel_core_bridge
 def parse_router_conntrack_line(line: str) -> Optional[Dict[str, Any]]:
     """
     Разбор строки событий conntrack роутера через Go-ядро sentinel_core.
-    Пример: "[NEW] tcp      6 120 SYN_SENT src=192.168.1.69 dst=5.255.255.242 sport=33296 dport=443 ..."
+    Пример: "[NEW] tcp      6 120 SYN_SENT src=192.168.1.100 dst=5.255.255.242 sport=33296 dport=443 ..."
     """
     return sentinel_core_bridge.parse_router_conntrack_line(line)
 

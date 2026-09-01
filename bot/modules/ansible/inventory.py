@@ -31,7 +31,7 @@ def get_existing_ip_mappings(directory: str) -> tuple:
                                 k, v = line.split('=', 1)
                                 global_vars[k.strip()] = v.strip()
                         else:
-                            # Парсим строку хоста: host_name ansible_host=192.168.1.69 ...
+                            # Парсим строку хоста: host_name ansible_host=192.168.1.100 ...
                             parts = line.split()
                             if len(parts) >= 2:
                                 host_name = parts[0]
