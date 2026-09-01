@@ -58,6 +58,12 @@ def get_dummy_args(func):
             class MockPanel:
                 name = "MockPanel"
             val = [(MockPanel(), True, {"success": True, "users": [{"email": "user@test.com", "total": 1024**3}]})]
+        elif name_lower == "incidents":
+            val = [{"timestamp": "12:00:00", "ip": "1.1.1.1", "tunnel_name": "xray", "attacker_email": "user@test.com", "reaction_time": "0.01s"}]
+        elif name_lower == "port_bans":
+            val = [{"port": 80, "protocol": "tcp", "reason": "test"}]
+        elif name_lower == "full_ban":
+            val = {"reason": "test", "created_at": 1600000000}
         elif name_lower == "active_bans":
             val = [{"dst_ip": "1.1.1.1", "label": "node1", "reason": "test", "remaining": "10m"}]
         elif name_lower == "banned_keys":
@@ -72,6 +78,7 @@ def get_dummy_args(func):
             val = f"mock_{name}"
             
         args.append(val)
+
     return args
 
 @pytest.mark.parametrize("lang", ["ru", "en"])
@@ -83,11 +90,12 @@ def test_all_messages_functions_can_be_translated(lang):
     translator.cache.clear()
     
     for func_name in core.messages.__all__:
-        if func_name == "build_rich_message":
+        if func_name in ("build_rich_message", "send_rich_message", "edit_rich_message"):
             continue
         func = getattr(core.messages, func_name)
-        if not callable(func):
+        if not callable(func) or inspect.iscoroutinefunction(func):
             continue
+
             
         args = get_dummy_args(func)
         try:
