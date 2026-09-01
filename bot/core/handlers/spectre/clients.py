@@ -1,12 +1,15 @@
 import logging
 import datetime
 import html
+from contextlib import suppress
 from aiogram import Router, types, F
 from aiogram.filters.command import Command
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery, BufferedInputFile, InputMediaPhoto
+from aiogram.exceptions import TelegramBadRequest, TelegramAPIError
 
 from core.spectre_client import spectre_manager
 from core.messages.i18n import _
+
 
 router = Router(name="spectre_clients_router")
 
@@ -123,6 +126,9 @@ async def cmd_my_spectre(message: types.Message):
 
 @router.callback_query(F.data.startswith("unban_tunnel:"))
 async def cb_unban_tunnel(callback: CallbackQuery):
+    with suppress(TelegramBadRequest, TelegramAPIError):
+        await callback.answer()
+        
     tunnel_email = callback.data.split(":", 1)[1]
     
     original_text = callback.message.html_text if callback.message else ""
@@ -133,10 +139,13 @@ async def cb_unban_tunnel(callback: CallbackQuery):
     elif "👇 Вы можете разблокировать туннель вручную в один клик:" in original_text:
         original_text = original_text.split("👇 Вы можете разблокировать туннель вручную в один клик:")[0].strip()
         
-    await callback.message.edit_text(
-        f"{original_text}\n\n" + _("spectre", "unbanning_tunnel_progress"),
-        parse_mode="HTML"
-    )
+    try:
+        await callback.message.edit_text(
+            f"{original_text}\n\n" + _("spectre", "unbanning_tunnel_progress"),
+            parse_mode="HTML"
+        )
+    except Exception as e:
+        logging.debug(f"Failed to edit unban progress message: {e}")
     
     try:
         unblock_res = await spectre_manager.enable_client_everywhere(tunnel_email)
@@ -163,8 +172,7 @@ async def cb_unban_tunnel(callback: CallbackQuery):
             parse_mode="HTML",
             reply_markup=callback.message.reply_markup
         )
-        
-    await callback.answer()
+
  
 @router.message(Command("ban"))
 async def cmd_ban_client(message: types.Message):
@@ -252,9 +260,12 @@ async def cb_tg_2fa_approve(callback: CallbackQuery):
             error_msg = res.get("msg")
             
     if success_found:
+        with suppress(TelegramBadRequest, TelegramAPIError):
+            await callback.answer()
         await callback.message.edit_text(_("spectre", "tg_2fa_approved"), parse_mode="HTML")
     else:
-        await callback.answer(_("spectre", "tg_2fa_error", error=error_msg or _("spectre", "tg_2fa_approve_failed")), show_alert=True)
+        with suppress(TelegramBadRequest, TelegramAPIError):
+            await callback.answer(_("spectre", "tg_2fa_error", error=error_msg or _("spectre", "tg_2fa_approve_failed")), show_alert=True)
 
 @router.callback_query(F.data.startswith("tg_2fa_block:"))
 async def cb_tg_2fa_block(callback: CallbackQuery):
@@ -273,9 +284,12 @@ async def cb_tg_2fa_block(callback: CallbackQuery):
                 error_msg = res.get("msg")
                 
         if success_found:
+            with suppress(TelegramBadRequest, TelegramAPIError):
+                await callback.answer()
             await callback.message.edit_text(_("spectre", "tg_2fa_blocked"), parse_mode="HTML")
         else:
-            await callback.answer(_("spectre", "tg_2fa_error", error=error_msg or _("spectre", "tg_2fa_unblock_failed")), show_alert=True)
+            with suppress(TelegramBadRequest, TelegramAPIError):
+                await callback.answer(_("spectre", "tg_2fa_error", error=error_msg or _("spectre", "tg_2fa_unblock_failed")), show_alert=True)
         return
         
     # Запрос подтверждения
@@ -292,7 +306,8 @@ async def cb_tg_2fa_block(callback: CallbackQuery):
         parse_mode="HTML",
         reply_markup=kb
     )
-    await callback.answer()
+    with suppress(TelegramBadRequest, TelegramAPIError):
+        await callback.answer()
 
 
 @router.callback_query(F.data.startswith("tg_2fa_cancel_block:"))
@@ -321,7 +336,8 @@ async def cb_tg_2fa_cancel_block(callback: CallbackQuery):
         parse_mode="HTML",
         reply_markup=kb
     )
-    await callback.answer(_("spectre", "tg_2fa_block_cancelled_alert"))
+    with suppress(TelegramBadRequest, TelegramAPIError):
+        await callback.answer(_("spectre", "tg_2fa_block_cancelled_alert"))
 
 
 @router.callback_query(F.data.startswith("block_ip:"))
@@ -332,7 +348,8 @@ async def cb_block_ip(callback: CallbackQuery):
     """
     parts = callback.data.split(":", 3)
     if len(parts) < 4:
-        await callback.answer("Ошибка формата данных", show_alert=True)
+        with suppress(TelegramBadRequest, TelegramAPIError):
+            await callback.answer("Ошибка формата данных", show_alert=True)
         return
         
     panel_name = parts[1]
@@ -349,7 +366,8 @@ async def cb_block_ip(callback: CallbackQuery):
         panel = list(spectre_manager.panels.values())[0]
         
     if not panel:
-        await callback.answer("Панель управления не найдена", show_alert=True)
+        with suppress(TelegramBadRequest, TelegramAPIError):
+            await callback.answer("Панель управления не найдена", show_alert=True)
         return
         
     success, res = await panel.request("POST", "/api/security/block-ip", json={"ip": ip, "email": username})
@@ -362,10 +380,12 @@ async def cb_block_ip(callback: CallbackQuery):
             f"<i>IP занесен в черный список файрвола, активные соединения на всех ядрах (Xray, Hysteria 2, Sing-box) принудительно сброшены.</i>"
         )
         await callback.message.edit_text(new_text, parse_mode="HTML")
-        await callback.answer("IP-адрес успешно заблокирован!", show_alert=True)
+        with suppress(TelegramBadRequest, TelegramAPIError):
+            await callback.answer("IP-адрес успешно заблокирован!", show_alert=True)
     else:
         err = res.get("msg") if isinstance(res, dict) else "Ошибка запроса"
-        await callback.answer(f"Не удалось заблокировать IP: {err}", show_alert=True)
+        with suppress(TelegramBadRequest, TelegramAPIError):
+            await callback.answer(f"Не удалось заблокировать IP: {err}", show_alert=True)
 
 
 @router.callback_query(F.data.startswith("approve_ip:") | F.data.startswith("tg_allow_ip:"))
@@ -376,7 +396,8 @@ async def cb_approve_ip(callback: CallbackQuery):
     """
     parts = callback.data.split(":", 2)
     if len(parts) < 3:
-        await callback.answer("Ошибка формата данных", show_alert=True)
+        with suppress(TelegramBadRequest, TelegramAPIError):
+            await callback.answer("Ошибка формата данных", show_alert=True)
         return
         
     username = parts[1]
@@ -393,7 +414,9 @@ async def cb_approve_ip(callback: CallbackQuery):
         f"<i>IP-адрес подтвержден как доверенный.</i>"
     )
     await callback.message.edit_text(new_text, parse_mode="HTML")
-    await callback.answer("Соединение разрешено")
+    with suppress(TelegramBadRequest, TelegramAPIError):
+        await callback.answer("Соединение разрешено")
+
 
 
 @router.message(Command("allow_ip"))
