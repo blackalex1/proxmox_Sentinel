@@ -56,7 +56,7 @@ def test_bridge_find_xray_client_email():
 
 def test_bridge_find_hysteria_client_email():
     import datetime
-    now_str = datetime.datetime.now().strftime("%Y-%m-%dT%H:%M:%SZ")
+    now_str = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     lines = [
         f'{{"time":"{now_str}","id":"tunnel_user","reqAddr":"13.251.130.193:22"}}'
     ]
@@ -76,10 +76,10 @@ def test_bridge_parse_auth_line():
     assert ev["key_fingerprint"] == "SHA256:abc123xyz"
 
 def test_bridge_parse_router():
-    ct_line = "[NEW] tcp      6 120 SYN_SENT src=192.168.1.69 dst=5.255.255.242 sport=33296 dport=443 [UNREPLIED]"
+    ct_line = "[NEW] tcp      6 120 SYN_SENT src=192.168.1.100 dst=5.255.255.242 sport=33296 dport=443 [UNREPLIED]"
     ev = sentinel_core_bridge.parse_router_conntrack_line(ct_line)
     assert ev is not None
-    assert ev["src_ip"] == "192.168.1.69"
+    assert ev["src_ip"] == "192.168.1.100"
     assert ev["dst_host"] == "5.255.255.242"
     assert ev["proto"] == "TCP"
     assert ev["src_port"] == 33296
