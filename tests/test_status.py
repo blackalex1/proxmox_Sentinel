@@ -62,21 +62,15 @@ async def test_cmd_status():
     mock_message.chat.id = 67890
 
     mock_send_rich = AsyncMock(return_value=mock_status_msg)
-    mock_edit_rich = AsyncMock()
 
     with patch("core.handlers.status.get_system_status_text", AsyncMock(return_value="Dummy Status Text")), \
-         patch("core.handlers.status.send_rich_message", mock_send_rich), \
-         patch("core.handlers.status.edit_rich_message", mock_edit_rich):
+         patch("core.handlers.status.send_rich_message", mock_send_rich):
         await cmd_status(mock_message)
         
-        # Verify initial send_rich_message was called
+        # Verify send_rich_message was called with final status text
         mock_send_rich.assert_called_once()
-        
-        # Verify edit_rich_message was called
-        mock_edit_rich.assert_called_once()
-        args, kwargs = mock_edit_rich.call_args
+        args, kwargs = mock_send_rich.call_args
         assert kwargs.get("chat_id") == 67890
-        assert kwargs.get("message_id") == 12345
         assert kwargs.get("text") == "Dummy Status Text"
         assert kwargs.get("reply_markup") is not None
 
@@ -92,21 +86,13 @@ async def test_callback_status_check():
          patch("core.handlers.status.edit_rich_message", AsyncMock()) as mock_edit_rich:
         await callback_status_check(mock_callback)
         
-        # Verify edit_rich_message was called twice (first loading, then final status)
-        assert mock_edit_rich.call_count == 2
-        
-        # Check first call (loading status)
-        first_args, first_kwargs = mock_edit_rich.call_args_list[0]
-        assert first_kwargs.get("chat_id") == 67890
-        assert first_kwargs.get("message_id") == 12345
-        assert "status_loading" in first_kwargs.get("text") or "Сбор информации" in first_kwargs.get("text") or "⏳" in first_kwargs.get("text")
-        
-        # Check second call (final status)
-        second_args, second_kwargs = mock_edit_rich.call_args_list[1]
-        assert second_kwargs.get("chat_id") == 67890
-        assert second_kwargs.get("message_id") == 12345
-        assert second_kwargs.get("text") == "Dummy Status Text Callback"
-        assert second_kwargs.get("reply_markup") is not None
+        # Verify edit_rich_message was called with final status text
+        mock_edit_rich.assert_called_once()
+        args, kwargs = mock_edit_rich.call_args
+        assert kwargs.get("chat_id") == 67890
+        assert kwargs.get("message_id") == 12345
+        assert kwargs.get("text") == "Dummy Status Text Callback"
+        assert kwargs.get("reply_markup") is not None
         
         # Verify callback.answer() was called at the end
         mock_callback.answer.assert_called_once()

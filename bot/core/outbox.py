@@ -473,17 +473,16 @@ class ResilientOutbox:
                     logger.warning("outbox_telegram_flood_control_limit_exceeded", e.retry_after)
                     if msg_key:
                         self._message_cooldowns[msg_key] = time.time() + min(e.retry_after, 300)
-                    if not is_edit:
+                    if is_edit:
+                        logger.warning("[Outbox] Discarding stale edit for message %s due to flood control (%s s)", message_id, e.retry_after)
+                        continue
+                    else:
                         self.rate_limit_until = time.time() + min(e.retry_after, 60)
                         remaining_queue.append(msg)
                         current_idx = self.queue.index(msg)
                         remaining_queue.extend(self.queue[current_idx+1:])
                         await asyncio.sleep(min(e.retry_after, 5))
                         break
-                    elif e.retry_after <= 300:
-                        remaining_queue.append(msg)
-                    else:
-                        logger.warning("[Outbox] Discarding stale edit for message %s due to huge cooldown (%s s)", message_id, e.retry_after)
 
                 except TelegramAPIError as e:
                     # Если это ошибка Telegram API (например, пользователь заблокировал бота),
@@ -550,6 +549,8 @@ class ResilientOutbox:
         bot._original_edit_message_text = bot.edit_message_text
         if hasattr(type(bot), "send_rich_message"):
             bot._original_send_rich_message = bot.send_rich_message
+        if hasattr(type(bot), "edit_rich_message"):
+            bot._original_edit_rich_message = bot.edit_rich_message
         
         async def resilient_send_message(chat_id, text, *args, **kwargs):
             parse_mode = kwargs.get("parse_mode", "HTML")
