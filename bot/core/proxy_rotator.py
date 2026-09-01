@@ -671,7 +671,7 @@ async def handle_telegram_connection_failure(bot, primary_proxy, session_kwargs)
         from modules.proxmox.monitor.utils import send_alert_to_admins
         from core.messages import get_proxy_switch_alert
 
-        logger.warning("[Proxy Rotator] Потеря связи с Telegram. Ожидаем 5 секунд перед повторной проверкой основного канала...")
+        logger.warning("[Proxy Rotator] Lost connection to Telegram. Waiting 5s before re-checking primary channel...")
         await asyncio.sleep(5)
 
         # 1. Перепроверяем доступность Telegram через основной канал
@@ -681,7 +681,7 @@ async def handle_telegram_connection_failure(bot, primary_proxy, session_kwargs)
             timeout=4.0
         )
         if is_primary_alive:
-            logger.info("[Proxy Rotator] Связь с Telegram через основной канал (%s) подтверждена (задержка: %.1f мс). Ротация не требуется.", primary_proxy or "direct", lat)
+            logger.info("[Proxy Rotator] Connection to Telegram via primary channel (%s) confirmed (latency: %.1f ms). No rotation needed.", primary_proxy or "direct", lat)
             if _using_fallback and primary_proxy:
                 safe_swap_bot_session(bot, AiohttpSession(proxy=primary_proxy, **session_kwargs))
                 _using_fallback = False
@@ -689,13 +689,13 @@ async def handle_telegram_connection_failure(bot, primary_proxy, session_kwargs)
             return
 
         # 2. Если основной канал действительно не работает, начинаем перебор прокси
-        logger.warning("[Proxy Rotator] Основной канал (%s) не отвечает. Запускаем перебор и подбор резервного прокси...", primary_proxy or "direct")
+        logger.warning("[Proxy Rotator] Primary channel (%s) is not responding. Searching for working fallback proxy...", primary_proxy or "direct")
         new_proxy = await proxy_rotator.get_working_proxy(target_host="api.telegram.org")
         if new_proxy:
             safe_swap_bot_session(bot, AiohttpSession(proxy=new_proxy, **session_kwargs))
             _using_fallback = True
             _active_fallback_proxy = new_proxy
-            logger.info("[Proxy Rotator] Бот успешно переключен на резервный прокси: %s", new_proxy)
+            logger.info("[Proxy Rotator] Bot successfully switched to fallback proxy: %s", new_proxy)
             
             tier_info = proxy_rotator._last_working_source_tier or "Tier 1"
             asyncio.create_task(send_alert_to_admins(
@@ -709,9 +709,9 @@ async def handle_telegram_connection_failure(bot, primary_proxy, session_kwargs)
                     name="primary_proxy_recovery_loop"
                 )
         else:
-            logger.error("[Proxy Rotator] Не удалось найти рабочий резервный прокси среди списков.")
+            logger.error("[Proxy Rotator] Failed to find working fallback proxy.")
     except Exception as e:
-        logger.error("[Proxy Rotator] Ошибка при обработке сбоя связи: %s", e)
+        logger.error("[Proxy Rotator] Error handling connection failure: %s", e)
     finally:
         _is_rotating = False
 
@@ -726,17 +726,17 @@ async def _primary_proxy_recovery_loop(bot, primary_proxy, session_kwargs):
     from aiogram.client.session.aiohttp import AiohttpSession
     from modules.proxmox.monitor.utils import send_alert_to_admins
 
-    logger.info("[Proxy Rotator] Запущен фоновый контроль восстановления основного прокси (%s)...", primary_proxy)
+    logger.info("[Proxy Rotator] Started background recovery monitor for primary proxy (%s)...", primary_proxy)
     while _using_fallback:
         try:
             await asyncio.sleep(60)
             if not _using_fallback:
                 break
 
-            logger.debug("[Proxy Rotator] Проверка доступности основного прокси (%s)...", primary_proxy)
+            logger.debug("[Proxy Rotator] Checking primary proxy availability (%s)...", primary_proxy)
             is_alive, _ = await proxy_rotator.test_proxy_alive(primary_proxy, target_host="api.telegram.org", timeout=4.0)
             if is_alive:
-                logger.info("[Proxy Rotator] Основной прокси (%s) снова доступен! Возвращаемся на стабильный канал.", primary_proxy)
+                logger.info("[Proxy Rotator] Primary proxy (%s) is alive again! Returning to stable channel.", primary_proxy)
                 safe_swap_bot_session(bot, AiohttpSession(proxy=primary_proxy, **session_kwargs))
                 _using_fallback = False
                 _active_fallback_proxy = None
@@ -749,7 +749,7 @@ async def _primary_proxy_recovery_loop(bot, primary_proxy, session_kwargs):
         except asyncio.CancelledError:
             break
         except Exception as e:
-            logger.error("[Proxy Rotator] Ошибка в цикле восстановления основного прокси: %s", e)
+            logger.error("[Proxy Rotator] Error in primary proxy recovery loop: %s", e)
 
 
 async def proxy_monitor_loop(bot, primary_proxy, session_kwargs, start_active_proxy=None, start_using_fallback=False):

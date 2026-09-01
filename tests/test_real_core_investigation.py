@@ -221,7 +221,7 @@ def test_hysteria2_investigation_and_client_resolution():
     4. Текстовый connection: ...
     5. Поиск реального IP клиента по email в логах подключения
     """
-    now_str = time.strftime("%Y-%m-%dT%H:%M:%SZ")
+    now_str = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     
     # 1. JSON Debug logs
     json_lines = [

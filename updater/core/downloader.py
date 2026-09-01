@@ -363,5 +363,7 @@ class Downloader:
         h = hashlib.sha256()
         with open(file_path, "rb") as f:
             while chunk := f.read(65536):
+                if isinstance(chunk, str):
+                    chunk = chunk.encode("utf-8")
                 h.update(chunk)
         return h.hexdigest()
