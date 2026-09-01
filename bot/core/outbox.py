@@ -205,7 +205,7 @@ class ResilientOutbox:
         self.load_from_disk()
 
     def load_from_disk(self):
-        """Загружает очередь сообщений с диска."""
+        """Загружает очередь сообщений с диска с автоматической очисткой и дедупликацией старых правок."""
         if os.path.exists(OUTBOX_FILE):
             try:
                 with open(OUTBOX_FILE, 'r', encoding='utf-8') as f:
@@ -213,7 +213,7 @@ class ResilientOutbox:
                 
                 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
                 
-                self.queue = []
+                raw_queue = []
                 for msg in serialized_queue:
                     if "kwargs" in msg:
                         kwargs = msg["kwargs"]
@@ -231,8 +231,25 @@ class ResilientOutbox:
                             except Exception as e:
                                 logger.error("outbox_error_deserializing_reply_markup", e)
                                 kwargs["reply_markup"] = None
-                    self.queue.append(msg)
+                    raw_queue.append(msg)
                     
+                now = time.time()
+                cleaned_queue = []
+                seen_edits = {}
+                for msg in raw_queue:
+                    if msg.get("is_edit"):
+                        if msg.get("timestamp") and (now - msg["timestamp"] > 1800):
+                            continue
+                        key = (msg.get("chat_id"), msg.get("message_id"))
+                        if key in seen_edits:
+                            cleaned_queue[seen_edits[key]] = msg
+                        else:
+                            seen_edits[key] = len(cleaned_queue)
+                            cleaned_queue.append(msg)
+                    else:
+                        cleaned_queue.append(msg)
+                        
+                self.queue = cleaned_queue
                 logger.info("outbox_deferred_messages_queue_loaded_items", len(self.queue))
             except Exception as e:
                 logger.error("outbox_error_reading", OUTBOX_FILE, e)
@@ -413,15 +430,18 @@ class ResilientOutbox:
                     logger.warning("outbox_telegram_flood_control_limit_exceeded", e.retry_after)
                     if msg_key:
                         self._message_cooldowns[msg_key] = time.time() + min(e.retry_after, 300)
-                    if not is_edit or e.retry_after <= 15:
+                    if not is_edit:
                         self.rate_limit_until = time.time() + min(e.retry_after, 60)
                         remaining_queue.append(msg)
                         current_idx = self.queue.index(msg)
                         remaining_queue.extend(self.queue[current_idx+1:])
                         await asyncio.sleep(min(e.retry_after, 5))
                         break
-                    else:
+                    elif e.retry_after <= 300:
                         remaining_queue.append(msg)
+                    else:
+                        logger.warning("[Outbox] Discarding stale edit for message %s due to huge cooldown (%s s)", message_id, e.retry_after)
+
                 except TelegramAPIError as e:
                     # Если это ошибка Telegram API (например, пользователь заблокировал бота),
                     # сообщение больше не отправляем, удаляем из очереди
