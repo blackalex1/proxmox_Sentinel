@@ -30,9 +30,10 @@ def _record_flood_cooldown(chat_id: Union[int, str], err_str: str):
         m = re.search(r'retry(?:_|\s+)after[:\s]+(\d+)', err_str, re.IGNORECASE)
         if not m:
             m = re.search(r'retry in (\d+) seconds', err_str, re.IGNORECASE)
-        secs = int(m.group(1)) if m else 60
+        raw_secs = int(m.group(1)) if m else 60
+        secs = min(raw_secs, 60)
         _flood_cooldown[cid] = time.time() + secs
-        logging.warning(f"Telegram flood cooldown active for chat_id={cid} for {secs} seconds.")
+        logging.warning(f"Telegram flood cooldown active for chat_id={cid} for {secs} seconds (Telegram requested: {raw_secs}s).")
     except Exception:
         pass
 
@@ -118,8 +119,23 @@ async def edit_rich_message(
 ) -> Optional[Any]:
     """
     Редактирование сообщения через aiogram bot(EditMessageText) с поддержкой rich_message
-    или стандартный fallback.
+    или стандартный fallback с троттлингом.
     """
+    cid = 0
+    try:
+        cid = int(chat_id)
+        if time.time() < _flood_cooldown.get(cid, 0.0):
+            try:
+                from core.outbox import outbox
+                await outbox.add_edit(chat_id, message_id, text, parse_mode=parse_mode, reply_markup=reply_markup)
+            except Exception:
+                pass
+            return None
+        if cid:
+            await _throttle_chat(cid)
+    except Exception:
+        pass
+
     edited_msg = None
 
     # 1. Попытка нативного редактирования с rich_message
@@ -140,6 +156,15 @@ async def edit_rich_message(
     except Exception as e:
         if "message is not modified" in str(e).lower():
             return None
+        err_str = str(e)
+        if "flood control" in err_str.lower() or "too many requests" in err_str.lower() or "retry after" in err_str.lower():
+            _record_flood_cooldown(chat_id, err_str)
+            try:
+                from core.outbox import outbox
+                await outbox.add_edit(chat_id, message_id, text, parse_mode=parse_mode, reply_markup=reply_markup)
+            except Exception:
+                pass
+            return None
         logging.debug(f"Native EditMessageText with rich_message skipped for chat_id={chat_id}: {e}")
 
     # 2. Fallback через bot.edit_message_text
@@ -154,9 +179,19 @@ async def edit_rich_message(
         )
     except Exception as e:
         if "message is not modified" not in str(e).lower():
+            err_str = str(e)
+            if "flood control" in err_str.lower() or "too many requests" in err_str.lower() or "retry after" in err_str.lower():
+                _record_flood_cooldown(chat_id, err_str)
+                try:
+                    from core.outbox import outbox
+                    await outbox.add_edit(chat_id, message_id, text, parse_mode=parse_mode, reply_markup=reply_markup)
+                except Exception:
+                    pass
+                return None
             logging.error(f"Failed to edit message for chat_id={chat_id}: {e}")
             raise e
     return edited_msg
+
 
 
 async def send_rich_message_draft(
