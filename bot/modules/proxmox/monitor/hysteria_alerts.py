@@ -54,7 +54,7 @@ def format_card_msg(panel_name, username, protocol, lines, tx, rx):
 def is_card_active(card, now_time):
     if not card:
         return False
-    if not card.get('admin_messages') and not card.get('pending_send'):
+    if not card.get('admin_messages') and not card.get('pending_send') and not card.get('in_outbox'):
         return False
     has_active = False
     for ip, conns in card.get('connections', {}).items():
@@ -187,6 +187,8 @@ async def check_and_send_card_delayed(key, session_id):
             
             card['admin_messages'] = admin_messages
             card['last_sent_text'] = msg_text
+            if not admin_messages:
+                card['in_outbox'] = True
 
 
 async def check_new_ip_and_get_history(username, current_ip, session_id):
