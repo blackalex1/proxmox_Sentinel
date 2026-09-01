@@ -113,6 +113,13 @@ class Settings(BaseSettings):
     router_monitor_mode: str = Field(default='conntrack', validation_alias='ROUTER_MONITOR_MODE')
     router_auto_ban: bool = Field(default=False, validation_alias='ROUTER_AUTO_BAN')
     router_max_violations: int = Field(default=3, validation_alias='ROUTER_MAX_VIOLATIONS')
+    router_scan_limit: int = Field(default=3, validation_alias='ROUTER_SCAN_LIMIT')
+    router_burst_limit_1m: int = Field(default=10, validation_alias='ROUTER_BURST_LIMIT_1M')
+    router_burst_limit_3m: int = Field(default=15, validation_alias='ROUTER_BURST_LIMIT_3M')
+    router_max_attempts_per_target: int = Field(default=5, validation_alias='ROUTER_MAX_ATTEMPTS_PER_TARGET')
+    router_window_minutes: int = Field(default=10, validation_alias='ROUTER_WINDOW_MINUTES')
+    router_sensitive_ports: str = Field(default='22,8006,2222,3389', validation_alias='ROUTER_SENSITIVE_PORTS')
+
 
     # Настройки SSH для роутера
     router_ssh_host: str = Field(default='192.168.1.1', validation_alias='ROUTER_SSH_HOST')

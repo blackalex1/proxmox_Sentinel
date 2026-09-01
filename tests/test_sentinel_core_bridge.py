@@ -84,3 +84,16 @@ def test_bridge_parse_router():
     assert ev["proto"] == "TCP"
     assert ev["src_port"] == 33296
     assert ev["dst_port"] == 443
+
+
+def test_bridge_configure_router_threat_detector():
+    res = sentinel_core_bridge.configure_router_threat_detector(
+        scan_limit=5,
+        burst_limit_1m=12,
+        burst_limit_3m=18,
+        target_brute_limit=4,
+        window_minutes=15,
+        sensitive_ports=[22, 8006, 5432]
+    )
+    assert res is True
+
