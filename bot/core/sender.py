@@ -10,6 +10,8 @@ from core.rich import build_rich_message
 from core.outbox import clean_html_for_telegram
 
 _flood_cooldown: dict[int, float] = {}
+_flood_cooldown_send: dict[int, float] = {}
+_flood_cooldown_edit: dict[int, float] = {}
 _last_send_time: dict[int, float] = {}
 
 
@@ -23,7 +25,7 @@ async def _throttle_chat(cid: int):
     _last_send_time[cid] = time.time()
 
 
-def _record_flood_cooldown(chat_id: Union[int, str], err_str: str):
+def _record_flood_cooldown(chat_id: Union[int, str], err_str: str, is_edit: bool = False):
     """Records retry_after cooldown for chat_id so we do not spam requests."""
     try:
         cid = int(chat_id)
@@ -32,8 +34,14 @@ def _record_flood_cooldown(chat_id: Union[int, str], err_str: str):
             m = re.search(r'retry in (\d+) seconds', err_str, re.IGNORECASE)
         raw_secs = int(m.group(1)) if m else 60
         secs = min(raw_secs, 60)
-        _flood_cooldown[cid] = time.time() + secs
-        logging.warning(f"Telegram flood cooldown active for chat_id={cid} for {secs} seconds (Telegram requested: {raw_secs}s).")
+        cooldown_until = time.time() + secs
+        if is_edit:
+            _flood_cooldown_edit[cid] = cooldown_until
+        else:
+            _flood_cooldown_send[cid] = cooldown_until
+        _flood_cooldown[cid] = cooldown_until
+        target = "edit" if is_edit else "send"
+        logging.warning(f"Telegram flood cooldown active for chat_id={cid} ({target}) for {secs} seconds (Telegram requested: {raw_secs}s).")
     except Exception:
         pass
 
@@ -52,7 +60,7 @@ async def send_rich_message(
     cid = 0
     try:
         cid = int(chat_id)
-        if time.time() < _flood_cooldown.get(cid, 0.0):
+        if time.time() < _flood_cooldown_send.get(cid, 0.0):
             try:
                 from core.outbox import outbox
                 await outbox.add_message(chat_id, text, parse_mode=parse_mode, reply_markup=reply_markup)
@@ -80,7 +88,7 @@ async def send_rich_message(
     except Exception as e:
         err_str = str(e)
         if "flood control" in err_str.lower() or "too many requests" in err_str.lower() or "retry after" in err_str.lower():
-            _record_flood_cooldown(chat_id, err_str)
+            _record_flood_cooldown(chat_id, err_str, is_edit=False)
             try:
                 from core.outbox import outbox
                 await outbox.add_message(chat_id, text, parse_mode=parse_mode, reply_markup=reply_markup)
@@ -97,7 +105,7 @@ async def send_rich_message(
         except Exception as e:
             err_str = str(e)
             if "flood control" in err_str.lower() or "too many requests" in err_str.lower() or "retry after" in err_str.lower():
-                _record_flood_cooldown(chat_id, err_str)
+                _record_flood_cooldown(chat_id, err_str, is_edit=False)
                 try:
                     from core.outbox import outbox
                     await outbox.add_message(chat_id, text, parse_mode=parse_mode, reply_markup=reply_markup)
@@ -124,13 +132,9 @@ async def edit_rich_message(
     cid = 0
     try:
         cid = int(chat_id)
-        if time.time() < _flood_cooldown.get(cid, 0.0):
-            try:
-                from core.outbox import outbox
-                await outbox.add_edit(chat_id, message_id, text, parse_mode=parse_mode, reply_markup=reply_markup)
-            except Exception:
-                pass
-            return None
+        if time.time() < _flood_cooldown_edit.get(cid, 0.0):
+            # Fallback to sending a new rich message when edits are temporarily flood-restricted
+            return await send_rich_message(chat_id, text, parse_mode=parse_mode, reply_markup=reply_markup)
         if cid:
             await _throttle_chat(cid)
     except Exception:
@@ -158,13 +162,8 @@ async def edit_rich_message(
             return None
         err_str = str(e)
         if "flood control" in err_str.lower() or "too many requests" in err_str.lower() or "retry after" in err_str.lower():
-            _record_flood_cooldown(chat_id, err_str)
-            try:
-                from core.outbox import outbox
-                await outbox.add_edit(chat_id, message_id, text, parse_mode=parse_mode, reply_markup=reply_markup)
-            except Exception:
-                pass
-            return None
+            _record_flood_cooldown(chat_id, err_str, is_edit=True)
+            return await send_rich_message(chat_id, text, parse_mode=parse_mode, reply_markup=reply_markup)
         logging.debug(f"Native EditMessageText with rich_message skipped for chat_id={chat_id}: {e}")
 
     # 2. Fallback через bot.edit_message_text
@@ -181,13 +180,8 @@ async def edit_rich_message(
         if "message is not modified" not in str(e).lower():
             err_str = str(e)
             if "flood control" in err_str.lower() or "too many requests" in err_str.lower() or "retry after" in err_str.lower():
-                _record_flood_cooldown(chat_id, err_str)
-                try:
-                    from core.outbox import outbox
-                    await outbox.add_edit(chat_id, message_id, text, parse_mode=parse_mode, reply_markup=reply_markup)
-                except Exception:
-                    pass
-                return None
+                _record_flood_cooldown(chat_id, err_str, is_edit=True)
+                return await send_rich_message(chat_id, text, parse_mode=parse_mode, reply_markup=reply_markup)
             logging.error(f"Failed to edit message for chat_id={chat_id}: {e}")
             raise e
     return edited_msg

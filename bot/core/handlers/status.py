@@ -100,32 +100,19 @@ async def get_system_status_text() -> str:
 
 @router.message(Command("status"))
 async def cmd_status(message: types.Message):
-    status_msg = await send_rich_message(message.chat.id, _("keyboards", "status_loading"))
     response_text = await get_system_status_text()
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text=_("keyboards", "btn_refresh_status"), callback_data="status_check")],
         [InlineKeyboardButton(text=_("keyboards", "btn_back_to_menu"), callback_data="main_menu")]
     ])
-    msg_id = status_msg.message_id if status_msg else message.message_id
-    await edit_rich_message(
+    await send_rich_message(
         chat_id=message.chat.id,
-        message_id=msg_id,
         text=response_text,
         reply_markup=kb
     )
 
 @router.callback_query(F.data == "status_check")
 async def callback_status_check(callback: CallbackQuery):
-    try:
-        if callback.message:
-            await edit_rich_message(
-                chat_id=callback.message.chat.id,
-                message_id=callback.message.message_id,
-                text=_("keyboards", "status_loading")
-            )
-    except Exception:
-        pass
-        
     response_text = await get_system_status_text()
     
     kb = InlineKeyboardMarkup(inline_keyboard=[
