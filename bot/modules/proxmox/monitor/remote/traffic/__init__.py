@@ -64,6 +64,45 @@ async def get_and_kill_remote_process(server, spt):
         logging.error("remote_ips_error_searching_and_killing_process", server['ip'], e)
     return None, None
 
+async def resolve_cascaded_tunnel_name(target_panel, server, vps_client_email: Optional[str] = None, proto: str = "TCP") -> str:
+    """
+    Определяет точное и реальное название туннеля между upstream LXC-панелью и удаленным VPS.
+    Берет реальный remark/tag/protocol из БД Outbounds панели LXC или зарегистрированное имя ноды VPS.
+    Никаких заглушек.
+    """
+    from core.spectre_client import spectre_manager
+    vps_ip = server['ip']
+    vps_panel = spectre_manager.get_panel_by_vps_ip(vps_ip)
+    vps_display_name = vps_panel.name if vps_panel else f"VPS {vps_ip}"
+    
+    matched_ob = None
+    if target_panel:
+        try:
+            outbounds = await target_panel.get_outbounds()
+            for ob in outbounds:
+                ob_settings_str = json.dumps(ob.get("settings", {}))
+                ob_stream_str = json.dumps(ob.get("streamSettings", {}))
+                ob_tag = ob.get("tag", "")
+                ob_remark = ob.get("remark", "")
+                if vps_ip in ob_settings_str or vps_ip in ob_stream_str or vps_ip in ob_tag or vps_ip in ob_remark:
+                    matched_ob = ob
+                    break
+        except Exception as e:
+            logging.debug(f"Error resolving outbound tunnel from {target_panel.name}: {e}")
+            
+    if matched_ob:
+        ob_name = matched_ob.get("remark") or matched_ob.get("tag")
+        ob_protocol = (matched_ob.get("protocol") or proto).upper()
+        if vps_client_email and vps_client_email != "phone":
+            return f"{ob_name} ({ob_protocol}) [{vps_client_email}]"
+        return f"{ob_name} ({ob_protocol})"
+        
+    if vps_client_email and vps_client_email != "phone":
+        return f"{vps_client_email} ({vps_display_name})"
+        
+    return f"{vps_display_name} ({proto.upper()})"
+
+
 async def investigate_and_resolve_remote_attack(server, dst_ip, dpt, tunnel_email, proto, src_ip, spt, source="tunnel"):
     """
     Асинхронная задача универсального расследования каскадной атаки:
@@ -99,11 +138,12 @@ async def investigate_and_resolve_remote_attack(server, dst_ip, dpt, tunnel_emai
             )
             if res_conn:
                 email, panel, u_source, real_client_ip, tag = res_conn
-                if email and email != tunnel_email:
+                if email and email != tunnel_email and panel.identifier == str(p.identifier):
                     culprit_client = email
                     target_panel = panel
                     inbound_tag = tag
                     break
+
         except Exception as e:
             logging.debug(f"Investigation error on LXC panel {p.name}: {e}")
             
@@ -122,17 +162,21 @@ async def investigate_and_resolve_remote_attack(server, dst_ip, dpt, tunnel_emai
         
         # Гарантируем разбан транзитного туннеля на панели этого VPS
         vps_panel = spectre_manager.get_panel_by_vps_ip(server['ip'])
-        if vps_panel:
+        if vps_panel and tunnel_email:
             success, res = await vps_panel.request("POST", "/api/security/enable-client", data={"email": tunnel_email})
             unblock_res = [(vps_panel.name, success and res.get("success", False), res.get("msg", "OK"))]
-        else:
+        elif tunnel_email:
             unblock_res = await spectre_manager.enable_client_everywhere(tunnel_email)
+        else:
+            unblock_res = []
             
-        _, unblock_details = spectre_manager.parse_action_results(unblock_res, action="unban")
+        _, unblock_details = spectre_manager.parse_action_results(unblock_res, action="unban") if unblock_res else ("", ["🟢 Туннель активен"])
         unblock_details_str = "\n".join(unblock_details)
         
+        real_tunnel_display = await resolve_cascaded_tunnel_name(target_panel, server, vps_client_email=tunnel_email if tunnel_email != culprit_client else None, proto=proto)
+        
         msg = get_ips_investigation_success_alert(
-            culprit_client, tunnel_email, target_panel.name if target_panel else 'LXC',
+            culprit_client, real_tunnel_display, target_panel.name if target_panel else 'LXC',
             server['ip'], dst_ip, dpt, block_details_str, unblock_details_str, timestamp,
             inbound_tag=inbound_tag
         )
@@ -304,7 +348,7 @@ async def handle_remote_traffic_line(line, server=None):
                     )
                     if res_upstream:
                         u_email, u_panel, u_source, u_real_ip, u_tag = res_upstream
-                        if u_email:
+                        if u_email and u_panel.identifier == str(p.identifier):
                             culprit_client = u_email
                             target_panel = u_panel
                             upstream_inbound_tag = u_tag
@@ -312,18 +356,21 @@ async def handle_remote_traffic_line(line, server=None):
                 except Exception as e:
                     logging.debug(f"Error checking upstream LXC panel {p.name}: {e}")
 
-            # 2. Ищем учетную запись на самом удаленном VPS
+            # 2. Ищем учетную запись на самом удаленном VPS (строго на этом VPS)
             res_connection = None
             try:
-                res_connection = await spectre_manager.get_client_by_connection(
+                raw_conn = await spectre_manager.get_client_by_connection(
                     client_ip=None,
                     dst_ip=dst,
                     port=dpt,
                     source_type='vps',
                     source_id=server['ip']
                 )
+                if raw_conn and raw_conn[1].source_type == 'vps' and str(raw_conn[1].identifier) == str(server['ip']):
+                    res_connection = raw_conn
             except Exception as e:
                 logging.error(f"Error resolving remote traffic client on VPS: {e}")
+
 
             # СЦЕНАРИЙ 1: Найден реальный нарушитель на домашней LXC-панели!
             if culprit_client:
@@ -333,21 +380,23 @@ async def handle_remote_traffic_line(line, server=None):
                 _, block_details = spectre_manager.parse_action_results(block_res, action="ban")
                 block_details_str = "\n".join(block_details)
                 
-                vps_tunnel_name = res_connection[0] if res_connection else "Transit Tunnel"
+                # Реальное имя туннеля (из БД outbounds панели LXC или ноды VPS)
+                vps_inbound_account = res_connection[0] if (res_connection and res_connection[0] != culprit_client) else None
+                real_tunnel_display = await resolve_cascaded_tunnel_name(target_panel, server, vps_client_email=vps_inbound_account, proto=proto)
                 
                 # Гарантируем, что транзитный аккаунт на VPS НЕ заблокирован (сохраняем туннель для всех)
-                if res_connection:
+                if vps_inbound_account:
                     vps_panel = spectre_manager.get_panel_by_vps_ip(server['ip'])
                     if vps_panel:
-                        await vps_panel.request("POST", "/api/security/enable-client", data={"email": vps_tunnel_name})
+                        await vps_panel.request("POST", "/api/security/enable-client", data={"email": vps_inbound_account})
                         
-                unblock_details_str = f"• {server['ip']}: 🟢 Транзитный канал ({vps_tunnel_name}) активен для всех остальных клиентов"
+                unblock_details_str = f"• {server['ip']}: 🟢 Транзитный канал ({real_tunnel_display}) активен для всех остальных клиентов"
                 
                 from core.db import log_ips_incident
                 await log_ips_incident(attacker_ip=src, tunnel_name=f"Cascaded-{target_panel.name}", attacker_email=culprit_client, reaction_time="< 0.5s")
                 
                 msg = get_ips_investigation_success_alert(
-                    culprit_client, vps_tunnel_name, target_panel.name,
+                    culprit_client, real_tunnel_display, target_panel.name,
                     server['ip'], dst, dpt, block_details_str, unblock_details_str, timestamp,
                     inbound_tag=upstream_inbound_tag
                 )
@@ -355,6 +404,7 @@ async def handle_remote_traffic_line(line, server=None):
                 return
 
             # СЦЕНАРИЙ 2: На LXC виновник сразу не найден, но на VPS зафиксировано соединение
+
             if res_connection:
                 email, panel, source, real_client_ip, inbound_tag = res_connection
                 src_display = f"{src} ({real_client_ip})" if real_client_ip else src

@@ -248,12 +248,13 @@ def test_log_parser_extended_window():
     assert tag == "VLESS-TCP >> direct"
 
     # Hysteria log test 45s ago
-    h_time = (datetime.datetime.now() - datetime.timedelta(seconds=45)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    h_time = (datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(seconds=45)).strftime("%Y-%m-%dT%H:%M:%SZ")
     hysteria_log_lines = [
         f'{{"time":"{h_time}","id":"tunnel_user","reqAddr":"13.251.130.193:22"}}'
     ]
     h_email = find_email_in_hysteria_log(hysteria_log_lines, dst_ip="13.251.130.193", dst_port=22)
     assert h_email == "tunnel_user"
+
 
 
 def test_log_parser_bracketed_ip():

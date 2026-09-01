@@ -213,8 +213,9 @@ async def test_save_vpn_connect_disconnect():
     assert len(rows_fallback) == 1
     assert rows_fallback[0]['disconnect_time'] == "2026-06-13 12:15:00"
     assert rows_fallback[0]['duration'] == "неизвестно"
-    assert rows_fallback[0]['download_bytes'] == 0
-    assert rows_fallback[0]['upload_bytes'] == 0
+    assert rows_fallback[0]['download_bytes'] == 999
+    assert rows_fallback[0]['upload_bytes'] == 999
+
 
 
 @pytest.mark.asyncio

@@ -201,6 +201,7 @@ class ResilientOutbox:
         self.queue = []
         self.lock = asyncio.Lock()
         self.rate_limit_until = 0
+        self._message_cooldowns = {}
         self.load_from_disk()
 
     def load_from_disk(self):
@@ -284,8 +285,15 @@ class ResilientOutbox:
             logger.info("outbox_message_added_deferred_queue_total", chat_id, len(self.queue))
 
     async def add_edit(self, chat_id, message_id, text, **kwargs):
-        """Добавляет запрос на редактирование сообщения в очередь."""
+        """Добавляет запрос на редактирование сообщения в очередь с авто-дедупликацией."""
         async with self.lock:
+            # Дедупликация: если в очереди уже есть запрос на редактирование этого же сообщения, обновляем его
+            existing_idx = None
+            for idx, item in enumerate(self.queue):
+                if item.get("is_edit") and item.get("chat_id") == chat_id and item.get("message_id") == message_id:
+                    existing_idx = idx
+                    break
+
             msg_data = {
                 "chat_id": chat_id,
                 "message_id": message_id,
@@ -294,9 +302,13 @@ class ResilientOutbox:
                 "is_edit": True,
                 "timestamp": time.time()
             }
-            self.queue.append(msg_data)
+            if existing_idx is not None:
+                self.queue[existing_idx] = msg_data
+            else:
+                self.queue.append(msg_data)
             self.save_to_disk()
             logger.info("outbox_edit_added_deferred_queue_total", chat_id, message_id, len(self.queue))
+
 
     async def flush_queue(self, bot: Bot):
         """
@@ -322,9 +334,14 @@ class ResilientOutbox:
                 kwargs = msg.get("kwargs", {}).copy()
                 is_edit = msg.get("is_edit", False)
                 message_id = msg.get("message_id")
+                msg_key = (chat_id, message_id) if is_edit and chat_id and message_id else None
+                if msg_key and time.time() < self._message_cooldowns.get(msg_key, 0):
+                    remaining_queue.append(msg)
+                    continue
                 
                 # Пометка с номером сообщения в очереди
                 queue_tag = f"\n\n[Отложенное сообщение {idx}/{total_count}]"
+
                 
                 try:
                     parse_mode = kwargs.get("parse_mode", "HTML")
@@ -394,13 +411,17 @@ class ResilientOutbox:
                 except TelegramRetryAfter as e:
                     # Защита от флуда: если Telegram попросил подождать (Flood Control)
                     logger.warning("outbox_telegram_flood_control_limit_exceeded", e.retry_after)
-                    self.rate_limit_until = time.time() + e.retry_after
-                    remaining_queue.append(msg)
-                    current_idx = self.queue.index(msg)
-                    remaining_queue.extend(self.queue[current_idx+1:])
-                    # Спим указанное время и завершаем текущий раунд отправки
-                    await asyncio.sleep(e.retry_after)
-                    break
+                    if msg_key:
+                        self._message_cooldowns[msg_key] = time.time() + min(e.retry_after, 300)
+                    if not is_edit or e.retry_after <= 15:
+                        self.rate_limit_until = time.time() + min(e.retry_after, 60)
+                        remaining_queue.append(msg)
+                        current_idx = self.queue.index(msg)
+                        remaining_queue.extend(self.queue[current_idx+1:])
+                        await asyncio.sleep(min(e.retry_after, 5))
+                        break
+                    else:
+                        remaining_queue.append(msg)
                 except TelegramAPIError as e:
                     # Если это ошибка Telegram API (например, пользователь заблокировал бота),
                     # сообщение больше не отправляем, удаляем из очереди
@@ -492,7 +513,7 @@ class ResilientOutbox:
                 return await bot._original_send_message(chat_id, cleaned_text, *args, **kwargs)
             except TelegramRetryAfter as e:
                 logger.warning("[Outbox] Telegram flood control limit exceeded. Delaying for %s seconds. Redirecting to outbox.", e.retry_after)
-                self.rate_limit_until = time.time() + e.retry_after
+                self.rate_limit_until = time.time() + min(e.retry_after, 60)
                 await self.add_message(chat_id, original_text, **original_kwargs)
                 return None
             except Exception as e:
@@ -536,7 +557,13 @@ class ResilientOutbox:
             if 'message_id' in original_kwargs:
                 del original_kwargs['message_id']
             
-            if time.time() < self.rate_limit_until:
+            now = time.time()
+            msg_key = (chat_id, message_id) if chat_id and message_id else None
+            if msg_key and now < self._message_cooldowns.get(msg_key, 0):
+                await self.add_edit(chat_id, message_id, original_text, **original_kwargs)
+                return None
+
+            if now < self.rate_limit_until:
                 logger.warning("[Outbox] Bot is currently rate-limited. Queueing edit for message %s in chat %s.", message_id, chat_id)
                 await self.add_edit(chat_id, message_id, original_text, **original_kwargs)
                 return None
@@ -558,9 +585,15 @@ class ResilientOutbox:
             try:
                 return await bot._original_edit_message_text(*args_list, **kwargs)
             except TelegramRetryAfter as e:
-                logger.warning("[Outbox] Telegram flood control limit exceeded on edit. Delaying for %s seconds. Redirecting to outbox.", e.retry_after)
-                self.rate_limit_until = time.time() + e.retry_after
-                await self.add_edit(chat_id, message_id, original_text, **original_kwargs)
+                logger.warning("[Outbox] Telegram flood control limit exceeded on edit (msg %s). Delaying for %s seconds.", message_id, e.retry_after)
+                if msg_key:
+                    self._message_cooldowns[msg_key] = time.time() + min(e.retry_after, 300)
+                if e.retry_after <= 15:
+                    self.rate_limit_until = time.time() + e.retry_after
+                if e.retry_after <= 300:
+                    await self.add_edit(chat_id, message_id, original_text, **original_kwargs)
+                else:
+                    logger.warning("[Outbox] Discarding edit for message %s due to huge cooldown (%s s)", message_id, e.retry_after)
                 return None
             except Exception as e:
                 is_network = isinstance(e, (TelegramNetworkError, ClientOSError, asyncio.TimeoutError))
@@ -575,6 +608,7 @@ class ResilientOutbox:
             
         bot.edit_message_text = resilient_edit_message_text
         logger.info("outbox_bot_successfully_patched_all_outgoing")
+
 
 # Глобальный инстанс исходящей очереди
 outbox = ResilientOutbox()

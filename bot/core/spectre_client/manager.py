@@ -479,10 +479,11 @@ class SpectreClientManager:
                 
         return None
 
-    async def get_client_by_connection(self, client_ip: Optional[str], dst_ip: Optional[str], port: int, source_type: str, source_id: str) -> Optional[Tuple[str, SpectrePanelInstance, str, Optional[str], Optional[str]]]:
+    async def get_client_by_connection(self, client_ip: Optional[str], dst_ip: Optional[str], port: int, source_type: str, source_id: str, strict_target_only: bool = False) -> Optional[Tuple[str, SpectrePanelInstance, str, Optional[str], Optional[str]]]:
         """
         Ищет email клиента, парся логи Xray/Hysteria напрямую на стороне бота.
         Возвращает кортеж (email, panel, source, real_client_ip, inbound_tag) или None.
+        Если strict_target_only=True, ищет строго на указанной панели без fallback на другие узлы.
         """
         panel = None
         if source_type == 'lxc':
@@ -497,6 +498,9 @@ class SpectreClientManager:
                 email, source, real_client_ip, inbound_tag = res
                 return email, panel, source, real_client_ip, inbound_tag
                 
+        if strict_target_only:
+            return None
+
         # 2. Резервный поиск (Fallback): опрашиваем все остальные панели.
         for p in self.panels.values():
             if panel and p.name == panel.name:
@@ -507,6 +511,7 @@ class SpectreClientManager:
                 return email, p, source, real_client_ip, inbound_tag
                 
         return None
+
 
     async def disable_client_everywhere(self, email: str) -> List[Tuple[str, bool, str]]:
         """

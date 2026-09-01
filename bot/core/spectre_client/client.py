@@ -136,3 +136,11 @@ class SpectrePanelInstance:
         if search:
             params["search"] = search
         return await self.request("GET", "/api/security/audit-logs", params=params)
+
+    async def get_outbounds(self) -> list:
+        """Запрашивает список настроенных outbounds с панели."""
+        success, res = await self.request("GET", "/api/routing/outbounds")
+        if success and isinstance(res, dict) and res.get("success"):
+            return res.get("obj", [])
+        return []
+
