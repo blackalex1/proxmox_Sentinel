@@ -256,3 +256,87 @@ async def test_admin_telegram_unban_recovery_e2e(live_spectre_attack_panel):
         assert client is not None
         assert client.enable == 1
         assert client.block_reason is None
+
+
+@pytest.mark.asyncio
+async def test_simulate_cascaded_tunnel_investigation_live(live_spectre_attack_panel, monkeypatch):
+    """
+    Сценарий 5: Комплексная симуляция каскадной атаки через 2 панели (LXC + VPS):
+    Цепочка: phone (LXC) -> user_8324 (VPS tunnel) -> Port 22 attack.
+    Проверяет:
+    1. Идентификацию реального нарушителя 'phone' на домашнем LXC
+    2. Блокировку 'phone' на LXC (enable = 0)
+    3. Сохранение работоспособности транзитного канала 'user_8324' на VPS (enable = 1)
+    4. Отправку алерта расследования без прерывания туннеля для других клиентов
+    """
+    from backend.database import db_session
+    from backend.models import ClientStats, Inbound
+
+    # Добавляем клиентов phone (LXC) и user_8324 (VPS)
+    with db_session() as session:
+        ib = session.query(Inbound).first()
+        c_phone = ClientStats(email="phone", client_uuid_or_pwd="uuid-phone", enable=1, inbound_id=ib.id)
+        c_tunnel = ClientStats(email="user_8324", client_uuid_or_pwd="uuid-tunnel", enable=1, inbound_id=ib.id)
+        session.add_all([c_phone, c_tunnel])
+        session.commit()
+
+    lxc_panel = SpectrePanelInstance(
+        name="LXC-104-TestPanel",
+        url=live_spectre_attack_panel["url"],
+        token=live_spectre_attack_panel["token"],
+        secret_path=live_spectre_attack_panel["secret"],
+        source_type="lxc",
+        identifier="104"
+    )
+    vps_panel = SpectrePanelInstance(
+        name="VPS-194.87.29.14",
+        url=live_spectre_attack_panel["url"],
+        token=live_spectre_attack_panel["token"],
+        secret_path=live_spectre_attack_panel["secret"],
+        source_type="vps",
+        identifier="194.87.29.14"
+    )
+    spectre_manager.panels = {
+        "lxc_104": lxc_panel,
+        "vps_194.87.29.14": vps_panel
+    }
+
+    # Мокаем поиск соединения по IP/портам в логах ядра
+    async def mock_get_client_by_connection(client_ip, dst_ip, port, source_type, source_id):
+        if source_type == 'vps':
+            return "user_8324", vps_panel, "singbox", "194.87.29.14", "Singbox-VLESS-Tunnel"
+        elif source_type == 'lxc':
+            return "phone", lxc_panel, "xray", "192.168.1.1", "Xray-Phone-Inbound"
+        return None
+    monkeypatch.setattr(spectre_manager, "get_client_by_connection", mock_get_client_by_connection)
+
+    telegram_alerts = []
+    monkeypatch.setattr("modules.proxmox.monitor.remote.traffic.send_alert_to_admins", AsyncMock(side_effect=lambda text, **kw: telegram_alerts.append(text)))
+    monkeypatch.setattr("modules.proxmox.monitor.remote.traffic.get_and_kill_remote_process", AsyncMock(return_value=("xray", "WHITELISTED")))
+
+    line = "Sep 01 14:22:20 vps kernel: [816311.123] REMOTE_CONN_OUT: IN= OUT=eth0 SRC=194.87.29.14 DST=8.8.8.8 LEN=60 PROTO=TCP SPT=34446 DPT=22"
+    server_vps = {'ip': '194.87.29.14', 'user': 'root', 'key': 'key_path'}
+
+    await handle_remote_traffic_line(line, server=server_vps)
+    await asyncio.sleep(0.05)
+
+    # 1. Проверяем отправку алерта расследования
+    assert len(telegram_alerts) == 1
+    alert_text = telegram_alerts[0]
+    assert "Нарушитель найден" in alert_text
+    assert "phone" in alert_text
+    assert "user_8324" in alert_text
+    assert "Транзитный канал" in alert_text
+
+    # 2. Проверяем состояние в БД панели
+    with db_session() as session:
+        phone_client = session.query(ClientStats).filter_by(email="phone").first()
+        tunnel_client = session.query(ClientStats).filter_by(email="user_8324").first()
+
+        assert phone_client is not None
+        assert phone_client.enable == 0, "Реальный нарушитель (phone) должен быть заблокирован"
+        assert phone_client.block_reason == "IPS Auto-blocked"
+
+        assert tunnel_client is not None
+        assert tunnel_client.enable == 1, "Транзитный канал (user_8324) ДОЛЖЕН оставаться активным"
+

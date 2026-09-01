@@ -64,57 +64,63 @@ async def get_and_kill_remote_process(server, spt):
         logging.error("remote_ips_error_searching_and_killing_process", server['ip'], e)
     return None, None
 
-async def investigate_and_resolve_remote_attack(server, dst_ip, dpt, tunnel_email, proto, src_ip, spt):
+async def investigate_and_resolve_remote_attack(server, dst_ip, dpt, tunnel_email, proto, src_ip, spt, source="tunnel"):
     """
-    Асинхронная задача расследования атаки:
-    1. Ждет 2 секунды, чтобы логи Xray на локальных LXC записались.
-    2. Опрашивает все панели в поисках Xray-клиента по IP/порту назначения.
-    3. Если виновник найден: перманентно банит его везде, разбанивает туннель, шлет отчет.
-    4. Если виновник не найден: оставляет туннель заблокированным, собирает логи и шлет кнопку ручного разбана.
+    Асинхронная задача универсального расследования каскадной атаки:
+    1. Ждет 1.5 секунды, чтобы логи прокси на upstream-панелях (LXC) записались.
+    2. Опрашивает все локальные LXC панели в поисках реального клиента по IP/порту назначения.
+    3. Если виновник найден (например, phone на LXC 104):
+       - Перманентно банит виновника на его домашней панели LXC.
+       - Гарантирует, что транзитный туннель на VPS (tunnel_email) разблокирован и активен.
+       - Отправляет админам отчет о завершении расследования.
+    4. Если виновник не найден на upstream-панелях (прямой клиент VPS):
+       - Если это был временный бан туннеля Hysteria, оставляет в бане и шлет отчет с кнопкой.
+       - Если это клиент Xray/Sing-box на VPS, блокирует его на панели VPS.
     """
     from core.spectre_client import spectre_manager
     
     # 1. Ждем запись логов
-    await asyncio.sleep(2.0)
+    await asyncio.sleep(1.5)
     
-    xray_client = None
+    culprit_client = None
     target_panel = None
-    
-    # 2. Ищем виновника в Xray на всех панелях напрямую в их логах
     inbound_tag = None
+    
+    # 2. Ищем виновника на upstream LXC панелях напрямую в их логах
     lxc_panels = [p for p in spectre_manager.panels.values() if p.source_type == 'lxc']
-    other_panels = [p for p in spectre_manager.panels.values() if p.source_type != 'lxc']
-    for p in (lxc_panels + other_panels):
-        res_conn = await spectre_manager.get_client_by_connection(
-            client_ip=None,
-            dst_ip=dst_ip,
-            port=dpt,
-            source_type=p.source_type,
-            source_id=str(p.identifier)
-        )
-        if res_conn:
-            email, panel, source, real_client_ip, tag = res_conn
-            if source == "xray":
-                xray_client = email
-                target_panel = panel
-                inbound_tag = tag
-                break
+    for p in lxc_panels:
+        try:
+            res_conn = await spectre_manager.get_client_by_connection(
+                client_ip=None,
+                dst_ip=dst_ip,
+                port=dpt,
+                source_type=p.source_type,
+                source_id=str(p.identifier)
+            )
+            if res_conn:
+                email, panel, u_source, real_client_ip, tag = res_conn
+                if email and email != tunnel_email:
+                    culprit_client = email
+                    target_panel = panel
+                    inbound_tag = tag
+                    break
+        except Exception as e:
+            logging.debug(f"Investigation error on LXC panel {p.name}: {e}")
             
     timestamp = datetime.datetime.now().strftime("%H:%M:%S")
     
-    if xray_client:
-        # Фаза 2: Нарушитель найден!
-        # Точечный бан нарушителя на найденной панели
+    if culprit_client:
+        # Фаза 2: Нарушитель найден на upstream LXC!
         if target_panel:
-            success, res = await target_panel.request("POST", "/api/security/disable-client", data={"email": xray_client})
+            success, res = await target_panel.request("POST", "/api/security/disable-client", data={"email": culprit_client})
             block_res = [(target_panel.name, success and res.get("success", False), res.get("msg", "OK"))]
         else:
-            block_res = await spectre_manager.disable_client_everywhere(xray_client)
+            block_res = await spectre_manager.disable_client_everywhere(culprit_client)
             
         _, block_details = spectre_manager.parse_action_results(block_res, action="ban")
         block_details_str = "\n".join(block_details)
         
-        # Точечный разбан туннеля Hysteria на панели этого VPS
+        # Гарантируем разбан транзитного туннеля на панели этого VPS
         vps_panel = spectre_manager.get_panel_by_vps_ip(server['ip'])
         if vps_panel:
             success, res = await vps_panel.request("POST", "/api/security/enable-client", data={"email": tunnel_email})
@@ -126,89 +132,103 @@ async def investigate_and_resolve_remote_attack(server, dst_ip, dpt, tunnel_emai
         unblock_details_str = "\n".join(unblock_details)
         
         msg = get_ips_investigation_success_alert(
-            xray_client, tunnel_email, target_panel.name if target_panel else 'LXC',
+            culprit_client, tunnel_email, target_panel.name if target_panel else 'LXC',
             server['ip'], dst_ip, dpt, block_details_str, unblock_details_str, timestamp,
             inbound_tag=inbound_tag
         )
         await send_alert_to_admins(msg, parse_mode="markdown")
         
+        from core.db import log_ips_incident
+        await log_ips_incident(attacker_ip=src_ip, tunnel_name=f"Cascaded-{target_panel.name if target_panel else 'LXC'}", attacker_email=culprit_client, reaction_time="< 2.0s")
+        
         # Отчёт мастер-панели (если этот бот — слейв, иначе no-op)
         await spectre_manager.report_investigation_to_master(
             action="investigation_result",
-            culprit_email=xray_client,
+            culprit_email=culprit_client,
             tunnel_email=tunnel_email,
-            details=f"dst={dst_ip}:{dpt}, vps={server['ip']}, route={target_panel.name if target_panel else 'unknown'}->hysteria->vps"
+            details=f"dst={dst_ip}:{dpt}, vps={server['ip']}, route={target_panel.name if target_panel else 'unknown'}->tunnel->vps"
         )
     else:
-        # Фаза 2: Виновник не найден
-        xray_logs_summary = ""
-        hysteria_logs_summary = ""
-        
-        # Сбор логов Xray с LXC контейнеров
-        for p in spectre_manager.panels.values():
-            if p.source_type == 'lxc':
-                try:
-                    # Попробуем прочесть лог Xray по всем возможным путям
-                    xray_paths = ["/var/log/xray/access.log", "/var/log/xray/error.log"]
-                    if p.env_path:
-                        base_dir = p.env_path.replace("/config/.env", "")
-                        xray_paths.append(f"{base_dir}/bin/xray.log")
-                    
-                    lines = None
-                    for path in xray_paths:
-                        lines = await spectre_manager._read_log_lines(p, path)
+        # Фаза 2: Виновник на LXC не найден (прямой клиент VPS или атака непосредственно туннеля)
+        if source == "hysteria":
+            xray_logs_summary = ""
+            hysteria_logs_summary = ""
+            
+            # Сбор логов с LXC контейнеров
+            for p in spectre_manager.panels.values():
+                if p.source_type == 'lxc':
+                    try:
+                        xray_paths = ["/var/log/xray/access.log", "/var/log/xray/error.log", "/app/bin/singbox.log"]
+                        if p.env_path:
+                            base_dir = p.env_path.replace("/config/.env", "")
+                            xray_paths.append(f"{base_dir}/bin/xray.log")
+                            xray_paths.append(f"{base_dir}/bin/singbox.log")
+                        
+                        lines = None
+                        for path in xray_paths:
+                            lines = await spectre_manager._read_log_lines(p, path)
+                            if lines:
+                                break
+                        if lines:
+                            last_lines = lines[-5:]
+                            xray_logs_summary += f"\n<b>Логи ({p.name}):</b>\n<code>" + "\n".join(last_lines) + "</code>\n"
+                    except Exception as e:
+                        logging.error(f"Failed to gather LXC logs: {e}")
+                        
+            # Сбор логов Hysteria с VPS
+            try:
+                vps_panel = spectre_manager.get_panel_by_vps_ip(server['ip'])
+                lines = None
+                if vps_panel:
+                    hysteria_paths = ["/var/log/hysteria.log"]
+                    if vps_panel.env_path:
+                        base_dir = vps_panel.env_path.replace("/config/.env", "")
+                        hysteria_paths.append(f"{base_dir}/bin/hysteria.log")
+                    for path in hysteria_paths:
+                        lines = await spectre_manager._read_log_lines(vps_panel, path)
                         if lines:
                             break
-                    if lines:
-                        last_lines = lines[-5:]
-                        xray_logs_summary += f"\n<b>Логи Xray ({p.name}):</b>\n<code>" + "\n".join(last_lines) + "</code>\n"
-                except Exception as e:
-                    logging.error(f"Failed to gather LXC logs: {e}")
-                    
-        # Сбор логов Hysteria с VPS
-        try:
+                if not lines:
+                    success_ssh, stdout_ssh, _ = await run_remote_ssh_cmd(server, ["tail", "-n", "10", "/var/log/hysteria.log"])
+                    if success_ssh and stdout_ssh:
+                        lines = stdout_ssh.splitlines()
+                if lines:
+                    clean_lines = [re.sub(r'\x1b\[[0-9;]*[a-zA-Z]', '', line) for line in lines[-5:]]
+                    hysteria_logs_summary += f"\n<b>Логи Hysteria (VPS {server['ip']}):</b>\n<code>" + "\n".join(clean_lines) + "</code>\n"
+            except Exception as e:
+                logging.error(f"Failed to gather VPS logs: {e}")
+                
+            logs_text = xray_logs_summary + hysteria_logs_summary
+            if not logs_text.strip():
+                logs_text = "<i>(Не удалось собрать фрагменты логов)</i>"
+                
+            keyboard = InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="🔓 Разблокировать туннель", callback_data=f"unban_tunnel:{tunnel_email}")]
+            ])
+            
+            msg = get_ips_investigation_failed_alert(
+                tunnel_email, dst_ip, dpt, logs_text, timestamp
+            )
+            await send_alert_to_admins(msg, parse_mode="markdown", reply_markup=keyboard)
+        else:
+            # Прямой клиент Xray/Singbox на самом VPS — перманентно баним его на панели VPS
             vps_panel = spectre_manager.get_panel_by_vps_ip(server['ip'])
-            lines = None
             if vps_panel:
-                hysteria_paths = ["/var/log/hysteria.log"]
-                if vps_panel.env_path:
-                    base_dir = vps_panel.env_path.replace("/config/.env", "")
-                    hysteria_paths.append(f"{base_dir}/bin/hysteria.log")
-                for path in hysteria_paths:
-                    lines = await spectre_manager._read_log_lines(vps_panel, path)
-                    if lines:
-                        break
-            if not lines:
-                success_ssh, stdout_ssh, _ = await run_remote_ssh_cmd(server, ["tail", "-n", "10", "/var/log/hysteria.log"])
-                if success_ssh and stdout_ssh:
-                    lines = stdout_ssh.splitlines()
-            if lines:
-                clean_lines = [re.sub(r'\x1b\[[0-9;]*[a-zA-Z]', '', line) for line in lines[-5:]]
-                hysteria_logs_summary += f"\n<b>Логи Hysteria (VPS {server['ip']}):</b>\n<code>" + "\n".join(clean_lines) + "</code>\n"
-        except Exception as e:
-            logging.error(f"Failed to gather VPS logs: {e}")
+                success_req, res_req = await vps_panel.request("POST", "/api/security/disable-client", data={"email": tunnel_email})
+                block_res = [(vps_panel.name, success_req and res_req.get("success", False), res_req.get("msg", "OK"))]
+            else:
+                block_res = await spectre_manager.disable_client_everywhere(tunnel_email)
+                
+            _, block_details = spectre_manager.parse_action_results(block_res, action="ban")
+            block_details_str = "\n".join(block_details)
             
-        logs_text = xray_logs_summary + hysteria_logs_summary
-        if not logs_text.strip():
-            logs_text = "<i>(Не удалось собрать фрагменты логов)</i>"
-            
-        # Формируем клавиатуру с callback_data
-        keyboard = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="🔓 Разблокировать туннель", callback_data=f"unban_tunnel:{tunnel_email}")]
-        ])
-        
-        msg = get_ips_investigation_failed_alert(
-            tunnel_email, dst_ip, dpt, logs_text, timestamp
-        )
-        await send_alert_to_admins(msg, parse_mode="markdown", reply_markup=keyboard)
-        
-        # Отчёт мастер-панели (если этот бот — слейв, иначе no-op)
-        await spectre_manager.report_investigation_to_master(
-            action="investigation_failed",
-            culprit_email="",
-            tunnel_email=tunnel_email,
-            details=f"dst={dst_ip}:{dpt}, vps={server['ip']}"
-        )
+            proc_name, killed_pid = await get_and_kill_remote_process(server, spt)
+            proc_info = f" (Процесс: <code>{proc_name}</code>, PID: <code>{killed_pid}</code>)" if proc_name and killed_pid else ""
+            msg = get_ips_xray_attack_alert(
+                server['ip'], tunnel_email, proto, src_ip, spt, dst_ip, dpt, block_details_str, proc_info, timestamp
+            )
+            await send_alert_to_admins(msg, parse_mode="markdown")
+
 
 async def handle_remote_traffic_line(line, server=None):
     """Парсинг сетевых алертов iptables удаленного VPS."""
@@ -264,10 +284,37 @@ async def handle_remote_traffic_line(line, server=None):
                 return
             recent_remote_traffic_alerts[throttle_key] = now
             
-            # Попытка найти email клиента на панели этого VPS
+            timestamp = datetime.datetime.now().strftime("%H:%M:%S")
+            from core.spectre_client import spectre_manager
+
+            # 1. Сначала проверяем, не пришел ли этот трафик через каскад с домашней LXC-панели
+            culprit_client = None
+            target_panel = None
+            upstream_inbound_tag = None
+            
+            lxc_panels = [p for p in spectre_manager.panels.values() if p.source_type == 'lxc']
+            for p in lxc_panels:
+                try:
+                    res_upstream = await spectre_manager.get_client_by_connection(
+                        client_ip=None,
+                        dst_ip=dst,
+                        port=dpt,
+                        source_type=p.source_type,
+                        source_id=str(p.identifier)
+                    )
+                    if res_upstream:
+                        u_email, u_panel, u_source, u_real_ip, u_tag = res_upstream
+                        if u_email:
+                            culprit_client = u_email
+                            target_panel = u_panel
+                            upstream_inbound_tag = u_tag
+                            break
+                except Exception as e:
+                    logging.debug(f"Error checking upstream LXC panel {p.name}: {e}")
+
+            # 2. Ищем учетную запись на самом удаленном VPS
             res_connection = None
             try:
-                from core.spectre_client import spectre_manager
                 res_connection = await spectre_manager.get_client_by_connection(
                     client_ip=None,
                     dst_ip=dst,
@@ -276,77 +323,74 @@ async def handle_remote_traffic_line(line, server=None):
                     source_id=server['ip']
                 )
             except Exception as e:
-                logging.error(f"Error resolving remote traffic client: {e}")
+                logging.error(f"Error resolving remote traffic client on VPS: {e}")
 
-            timestamp = datetime.datetime.now().strftime("%H:%M:%S")
+            # СЦЕНАРИЙ 1: Найден реальный нарушитель на домашней LXC-панели!
+            if culprit_client:
+                # Блокируем ТОЛЬКО нарушителя на его домашней панели LXC
+                success_req, res_req = await target_panel.request("POST", "/api/security/disable-client", data={"email": culprit_client})
+                block_res = [(target_panel.name, success_req and res_req.get("success", False), res_req.get("msg", "OK"))]
+                _, block_details = spectre_manager.parse_action_results(block_res, action="ban")
+                block_details_str = "\n".join(block_details)
+                
+                vps_tunnel_name = res_connection[0] if res_connection else "Transit Tunnel"
+                
+                # Гарантируем, что транзитный аккаунт на VPS НЕ заблокирован (сохраняем туннель для всех)
+                if res_connection:
+                    vps_panel = spectre_manager.get_panel_by_vps_ip(server['ip'])
+                    if vps_panel:
+                        await vps_panel.request("POST", "/api/security/enable-client", data={"email": vps_tunnel_name})
+                        
+                unblock_details_str = f"• {server['ip']}: 🟢 Транзитный канал ({vps_tunnel_name}) активен для всех остальных клиентов"
+                
+                from core.db import log_ips_incident
+                await log_ips_incident(attacker_ip=src, tunnel_name=f"Cascaded-{target_panel.name}", attacker_email=culprit_client, reaction_time="< 0.5s")
+                
+                msg = get_ips_investigation_success_alert(
+                    culprit_client, vps_tunnel_name, target_panel.name,
+                    server['ip'], dst, dpt, block_details_str, unblock_details_str, timestamp,
+                    inbound_tag=upstream_inbound_tag
+                )
+                await send_alert_to_admins(msg, parse_mode="markdown")
+                return
 
+            # СЦЕНАРИЙ 2: На LXC виновник сразу не найден, но на VPS зафиксировано соединение
             if res_connection:
                 email, panel, source, real_client_ip, inbound_tag = res_connection
                 src_display = f"{src} ({real_client_ip})" if real_client_ip else src
                 
-                # Если атака идет из Hysteria-туннеля:
-                if source == "hysteria":
-                    # Фаза 1: Мгновенно блокируем Hysteria-туннель точечно на VPS-панели
-                    from core.spectre_client import spectre_manager
-                    start_time = asyncio.get_event_loop().time()
-                    if panel:
-                        success_req, res_req = await panel.request("POST", "/api/security/disable-client", data={"email": email})
-                        if success_req and "already blocked" in res_req.get("msg", "").lower():
-                            logging.info("Tunnel client %s is already blocked, skipping duplicate alert", email)
-                            return
-                        block_res = [(panel.name, success_req and res_req.get("success", False), res_req.get("msg", "OK"))]
-                    else:
-                        block_res = await spectre_manager.disable_client_everywhere(email)
-                        all_already_blocked = len(block_res) > 0 and all("already blocked" in item[2].lower() or "not found" in item[2].lower() for item in block_res)
-                        if all_already_blocked:
-                            logging.info("Tunnel client %s is already blocked everywhere, skipping duplicate alert", email)
-                            return
+                # Если у нас есть подключенные LXC панели, запускаем расследование с задержкой 1.5с
+                if lxc_panels:
+                    if source == "hysteria":
+                        if panel:
+                            await panel.request("POST", "/api/security/disable-client", data={"email": email})
+                        msg = get_ips_hysteria_attack_alert(
+                            server['ip'], email, proto, src_display, spt, dst, dpt, f"• {panel.name if panel else server['ip']}: Временная заморозка туннеля", timestamp
+                        )
+                        await send_alert_to_admins(msg, parse_mode="markdown")
                         
-                    reaction_time = f"{asyncio.get_event_loop().time() - start_time:.3f}s"
-                    
-                    from core.db import log_ips_incident
-                    await log_ips_incident(attacker_ip=src, tunnel_name="Hysteria2", attacker_email=email, reaction_time=reaction_time)
-                    
-                    _, block_details = spectre_manager.parse_action_results(block_res, action="ban")
-                    block_details_str = "\n".join(block_details)
-                    
-                    # Пишем админам о временном бане и начале расследования
-                    msg = get_ips_hysteria_attack_alert(
-                        server['ip'], email, proto, src_display, spt, dst, dpt, block_details_str, timestamp
-                    )
-                    await send_alert_to_admins(msg, parse_mode="markdown")
-                    
-                    # Запускаем расследование в фоновом таске
-                    asyncio.create_task(investigate_and_resolve_remote_attack(server, dst, dpt, email, proto, src, spt))
+                    asyncio.create_task(investigate_and_resolve_remote_attack(server, dst, dpt, email, proto, src, spt, source=source))
                     return
                 else:
-                    # Если атака идет напрямую от Xray клиента (source == "xray")
-                    # Сразу баним его точечно на панели, где зафиксировано соединение
-                    from core.spectre_client import spectre_manager
+                    # Это автономный VPS без каскадных LXC панелей — баним прямого клиента VPS
                     start_time = asyncio.get_event_loop().time()
                     if panel:
                         success_req, res_req = await panel.request("POST", "/api/security/disable-client", data={"email": email})
                         if success_req and "already blocked" in res_req.get("msg", "").lower():
-                            logging.info("Xray client %s is already blocked, skipping duplicate alert", email)
+                            logging.info("Client %s is already blocked, skipping duplicate alert", email)
                             return
                         block_res = [(panel.name, success_req and res_req.get("success", False), res_req.get("msg", "OK"))]
                     else:
                         block_res = await spectre_manager.disable_client_everywhere(email)
-                        all_already_blocked = len(block_res) > 0 and all("already blocked" in item[2].lower() or "not found" in item[2].lower() for item in block_res)
-                        if all_already_blocked:
-                            logging.info("Xray client %s is already blocked everywhere, skipping duplicate alert", email)
-                            return
                         
                     reaction_time = f"{asyncio.get_event_loop().time() - start_time:.3f}s"
-                    
                     from core.db import log_ips_incident
-                    await log_ips_incident(attacker_ip=src, tunnel_name="Xray", attacker_email=email, reaction_time=reaction_time)
+                    await log_ips_incident(attacker_ip=src, tunnel_name="Direct-VPS", attacker_email=email, reaction_time=reaction_time)
                     
                     _, block_details = spectre_manager.parse_action_results(block_res, action="ban")
                     block_details_str = "\n".join(block_details)
                     
                     proc_name, killed_pid = await get_and_kill_remote_process(server, spt)
-                    
                     proc_info = f" (Процесс: <code>{proc_name}</code>, PID: <code>{killed_pid}</code>)" if proc_name and killed_pid else ""
                     msg = get_ips_xray_attack_alert(
                         server['ip'], email, proto, src_display, spt, dst, dpt, block_details_str, proc_info, timestamp, inbound_tag=inbound_tag
@@ -378,3 +422,4 @@ async def handle_remote_traffic_line(line, server=None):
             await send_alert_to_admins(msg, parse_mode="markdown")
     except Exception as e:
         logging.error("error_traffic_logs_handler_remote_server", server['ip'], e)
+

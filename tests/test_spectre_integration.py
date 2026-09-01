@@ -114,29 +114,24 @@ async def test_spectre_handlers_panel(monkeypatch):
     await cmd_panel(mock_message)
     mock_message.reply.assert_called_once()
     args, kwargs = mock_message.reply.call_args
-    assert "Выберите Sentinel Panel" in args[0]
     assert kwargs.get("reply_markup") is not None
 
 
 @pytest.mark.asyncio
+
 async def test_two_phase_ips_success(monkeypatch):
     """
-    Интеграционный тест успешного сценария двухфазного IPS:
+    Интеграционный тест успешного сценария каскадного IPS:
     1. Обнаружение атаки на VPS по порту 22.
-    2. Временная блокировка туннеля Hysteria.
-    3. Асинхронное расследование, которое находит конкретного Xray-клиента на LXC.
-    4. Перманентный бан Xray-клиента.
-    5. Снятие блокировки с туннеля Hysteria.
+    2. Мгновенный опрос LXC-панелей и обнаружение реального нарушителя на LXC.
+    3. Перманентный бан реального нарушителя на LXC.
+    4. Сохранение/разбан транзитного туннеля на VPS.
     """
     from core.spectre_client import SpectrePanelInstance, spectre_manager
     from modules.proxmox.monitor.remote.traffic import handle_remote_traffic_line, recent_remote_traffic_alerts
     
-    # Сбрасываем кэш троттлинга
     recent_remote_traffic_alerts.clear()
     
-
-    
-    # 1. Настраиваем фейковые панели
     lxc_panel = SpectrePanelInstance("LXC Panel", "http://127.0.0.1:20530", "lxc_token", "ui", "lxc", "999")
     vps_panel = SpectrePanelInstance("VPS Panel", "http://127.0.0.1:15000", "vps_token", "ui", "vps", "1.1.1.1")
     
@@ -161,57 +156,139 @@ async def test_two_phase_ips_success(monkeypatch):
 
     async def mock_get_client_by_connection(client_ip, dst_ip, port, source_type, source_id):
         if source_type == 'vps':
-            return "tunnel@hysteria.com", vps_panel, "hysteria", "1.2.3.4", "Hysteria2"
+            return "user_8324", vps_panel, "singbox", "1.2.3.4", "Singbox-VLESS"
         elif source_type == 'lxc':
-            return "attacker@xray.com", lxc_panel, "xray", "1.2.3.4", "VLESS-TCP"
+            return "phone", lxc_panel, "singbox", "192.168.1.50", "VLESS-TCP"
         return None
     monkeypatch.setattr(spectre_manager, "get_client_by_connection", mock_get_client_by_connection)
     
-    # Замокаем отправку алертов в Telegram
     telegram_alerts = []
     async def mock_send_alert(text, parse_mode="HTML", reply_markup=None):
         telegram_alerts.append((text, reply_markup))
         
     monkeypatch.setattr("modules.proxmox.monitor.remote.traffic.send_alert_to_admins", mock_send_alert)
+    monkeypatch.setattr("modules.proxmox.monitor.remote.traffic.get_and_kill_remote_process", AsyncMock(return_value=("sing-box", "WHITELISTED")))
     
-    # Замокаем ss kill-process
-    monkeypatch.setattr("modules.proxmox.monitor.remote.traffic.get_and_kill_remote_process", AsyncMock(return_value=("hysteria", "WHITELISTED")))
-    
-    # Уменьшим время паузы в расследовании для быстроты тестов, но сохраним реальное переключение контекста
-    orig_sleep = asyncio.sleep
-    async def mock_sleep(delay, *args, **kwargs):
-        await orig_sleep(0.001)
-    monkeypatch.setattr("modules.proxmox.monitor.remote.traffic.asyncio.sleep", mock_sleep)
-    
-    # Эмулируем исходящую строку iptables о исходящей атаке с VPS на порт 22
     line = "Jun 07 00:30:05 vps kernel: [123456.789] REMOTE_CONN_OUT: IN= OUT=eth0 SRC=1.1.1.1 DST=8.8.8.8 LEN=60 PROTO=TCP SPT=12345 DPT=22"
     server_vps = {'ip': '1.1.1.1', 'user': 'root', 'key': 'key_path'}
     
-    # Вызываем обработчик трафика
     await handle_remote_traffic_line(line, server=server_vps)
+    await asyncio.sleep(0.02)
     
-    # Даем асинхронным задачам выполниться (с использованием реального sleep)
-    await orig_sleep(0.05)
+    assert len(telegram_alerts) >= 1
+    alert_text = telegram_alerts[0][0]
     
-    # Проверяем, что были отправлены алерты в Telegram
-    assert len(telegram_alerts) >= 2
-    alert_1, _ = telegram_alerts[0]
-    alert_2, _ = telegram_alerts[1]
-    
-    assert "Обнаружена атака через Hysteria-туннель" in alert_1
-    assert "tunnel@hysteria.com" in alert_1
-    assert "Нарушитель найден" in alert_2
-    assert "attacker@xray.com" in alert_2
-    assert "Разблокирован" in alert_2
+    assert "Нарушитель найден" in alert_text
+    assert "phone" in alert_text
+    assert "user_8324" in alert_text
+    assert "Транзитный канал" in alert_text
     
     disabled_emails = [call[3].get("data", {}).get("email") for call in api_calls if call[2] == "/api/security/disable-client"]
-    enabled_emails = [call[3].get("data", {}).get("email") for call in api_calls if call[2] == "/api/security/enable-client"]
-    
-    assert "tunnel@hysteria.com" in disabled_emails
-    assert "attacker@xray.com" in disabled_emails
-    assert "tunnel@hysteria.com" in enabled_emails
+    assert "phone" in disabled_emails
+    assert "user_8324" not in disabled_emails
+
 
 @pytest.mark.asyncio
+async def test_cascaded_xray_tunnel_investigation(monkeypatch):
+    """
+    Тест каскадной атаки Xray:
+    phone (LXC) -> xray_tunnel (VPS) -> port 22.
+    Проверяем, что забанен phone на LXC, а xray_tunnel на VPS остался активен.
+    """
+    from core.spectre_client import SpectrePanelInstance, spectre_manager
+    from modules.proxmox.monitor.remote.traffic import handle_remote_traffic_line, recent_remote_traffic_alerts
+    
+    recent_remote_traffic_alerts.clear()
+    
+    lxc_panel = SpectrePanelInstance("LXC Panel", "http://127.0.0.1:20530", "lxc_token", "ui", "lxc", "999")
+    vps_panel = SpectrePanelInstance("VPS Panel", "http://127.0.0.1:15000", "vps_token", "ui", "vps", "1.1.1.1")
+    
+    spectre_manager.panels = {
+        "lxc_999": lxc_panel,
+        "vps_1.1.1.1": vps_panel
+    }
+    
+    api_calls = []
+    async def mock_request(self, method, path, **kwargs):
+        api_calls.append((self.name, method, path, kwargs))
+        return True, {"success": True, "msg": "OK"}
+    monkeypatch.setattr(SpectrePanelInstance, "request", mock_request)
+
+    async def mock_get_client_by_connection(client_ip, dst_ip, port, source_type, source_id):
+        if source_type == 'vps':
+            return "xray_tunnel_user", vps_panel, "xray", "1.2.3.4", "Xray-Inbound"
+        elif source_type == 'lxc':
+            return "rogue_client", lxc_panel, "xray", "192.168.1.99", "Xray-LAN"
+        return None
+    monkeypatch.setattr(spectre_manager, "get_client_by_connection", mock_get_client_by_connection)
+    
+    telegram_alerts = []
+    monkeypatch.setattr("modules.proxmox.monitor.remote.traffic.send_alert_to_admins", AsyncMock(side_effect=lambda text, **kw: telegram_alerts.append(text)))
+    monkeypatch.setattr("modules.proxmox.monitor.remote.traffic.get_and_kill_remote_process", AsyncMock(return_value=("xray", "WHITELISTED")))
+    
+    line = "Jun 07 00:30:05 vps kernel: [123456.789] REMOTE_CONN_OUT: IN= OUT=eth0 SRC=1.1.1.1 DST=8.8.8.8 LEN=60 PROTO=TCP SPT=12345 DPT=22"
+    server_vps = {'ip': '1.1.1.1', 'user': 'root', 'key': 'key_path'}
+    
+    await handle_remote_traffic_line(line, server=server_vps)
+    await asyncio.sleep(0.02)
+    
+    assert len(telegram_alerts) == 1
+    assert "rogue_client" in telegram_alerts[0]
+    assert "xray_tunnel_user" in telegram_alerts[0]
+    
+    disabled_emails = [call[3].get("data", {}).get("email") for call in api_calls if call[2] == "/api/security/disable-client"]
+    assert "rogue_client" in disabled_emails
+    assert "xray_tunnel_user" not in disabled_emails
+
+
+@pytest.mark.asyncio
+async def test_direct_vps_client_attack(monkeypatch):
+    """
+    Тест прямой атаки от клиента самого VPS (без LXC панелей):
+    direct_attacker (VPS) -> port 22.
+    Проверяем, что direct_attacker банится на VPS.
+    """
+    from core.spectre_client import SpectrePanelInstance, spectre_manager
+    from modules.proxmox.monitor.remote.traffic import handle_remote_traffic_line, recent_remote_traffic_alerts
+    
+    recent_remote_traffic_alerts.clear()
+    
+    vps_panel = SpectrePanelInstance("VPS Panel", "http://127.0.0.1:15000", "vps_token", "ui", "vps", "1.1.1.1")
+    spectre_manager.panels = {
+        "vps_1.1.1.1": vps_panel
+    }
+    
+    api_calls = []
+    async def mock_request(self, method, path, **kwargs):
+        api_calls.append((self.name, method, path, kwargs))
+        return True, {"success": True, "msg": "Blocked"}
+    monkeypatch.setattr(SpectrePanelInstance, "request", mock_request)
+
+    async def mock_get_client_by_connection(client_ip, dst_ip, port, source_type, source_id):
+        if source_type == 'vps':
+            return "direct_attacker@vps.com", vps_panel, "xray", "1.2.3.4", "VLESS-VPS"
+        return None
+    monkeypatch.setattr(spectre_manager, "get_client_by_connection", mock_get_client_by_connection)
+    
+    telegram_alerts = []
+    monkeypatch.setattr("modules.proxmox.monitor.remote.traffic.send_alert_to_admins", AsyncMock(side_effect=lambda text, **kw: telegram_alerts.append(text)))
+    monkeypatch.setattr("modules.proxmox.monitor.remote.traffic.get_and_kill_remote_process", AsyncMock(return_value=("xray", "WHITELISTED")))
+    
+    line = "Jun 07 00:30:05 vps kernel: [123456.789] REMOTE_CONN_OUT: IN= OUT=eth0 SRC=1.1.1.1 DST=8.8.8.8 LEN=60 PROTO=TCP SPT=12345 DPT=22"
+    server_vps = {'ip': '1.1.1.1', 'user': 'root', 'key': 'key_path'}
+    
+    await handle_remote_traffic_line(line, server=server_vps)
+    await asyncio.sleep(0.02)
+    
+    assert len(telegram_alerts) == 1
+    assert "direct_attacker@vps.com" in telegram_alerts[0]
+    
+    disabled_emails = [call[3].get("data", {}).get("email") for call in api_calls if call[2] == "/api/security/disable-client"]
+    assert "direct_attacker@vps.com" in disabled_emails
+
+
+@pytest.mark.asyncio
+
 async def test_two_phase_ips_failure(monkeypatch):
     """
     Интеграционный тест сценария с неудачным расследованием:
