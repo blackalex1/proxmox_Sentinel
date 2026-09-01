@@ -5,8 +5,8 @@ translation = {
         "### ✅ [IPS: Расследование завершено] Нарушитель найден!\n\n"
         "| Параметр | Значение |\n"
         "| :--- | :--- |\n"
-        "| **👤 Нарушитель (Xray)** | `{xray_client}` (Заблокирован) |\n"
-        "| **🔓 Hysteria туннель** | `{tunnel_email}` (Разблокирован) |\n"
+        "| **👤 Нарушитель** | `{xray_client}` (Заблокирован) |\n"
+        "| **🔓 Транзитный туннель** | `{tunnel_email}` (Активен) |\n"
         "| **🌐 Маршрут атаки** | `{target_panel_name}` → `{tunnel_email}` → `{server_ip}` → `{dst_ip}:{dpt}` |\n\n"
         "✨ *Все остальные пользователи туннеля снова в сети!*\n\n"
         "<details>\n"
@@ -14,11 +14,12 @@ translation = {
         "  <pre><code>{block_details_str}</code></pre>\n"
         "</details>\n\n"
         "<details>\n"
-        "  <summary>📋 <b>Показать детали разблокировки туннеля Hysteria</b></summary>\n"
+        "  <summary>📋 <b>Показать статус транзитного туннеля</b></summary>\n"
         "  <pre><code>{unblock_details_str}</code></pre>\n"
         "</details>\n\n"
         "*Sentinel Security Guard • Время: {timestamp}*"
     ),
+
     "ips_investigation_failed_alert": (
         "# ⚠️ IPS Investigation Failed\n"
         "---\n\n"
