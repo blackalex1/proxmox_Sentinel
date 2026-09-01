@@ -1,8 +1,17 @@
 import pytest
 import asyncio
-from unittest.mock import AsyncMock, patch, MagicMock
+from unittest.mock import AsyncMock, patch, MagicMock, mock_open
 from core.spectre_client import parse_env_content, SpectrePanelInstance, SpectreClientManager, spectre_manager
 from core.handlers.spectre import cmd_panel, cmd_backup, cmd_status_spectre, cmd_my_spectre, cmd_ban_client, cmd_unban_client
+from core.config import settings
+
+
+@pytest.fixture(autouse=True)
+def set_russian_locale():
+    orig = getattr(settings, "bot_language", "ru")
+    settings.bot_language = "ru"
+    yield
+    settings.bot_language = orig
 
 
 def test_parse_env_content():
@@ -596,15 +605,13 @@ async def test_spectre_handlers_setup_slave(monkeypatch):
     mock_session.__aenter__ = AsyncMock(return_value=mock_session)
     mock_session.__aexit__ = AsyncMock(return_value=None)
     
-    # Mock file writing
-    patch("builtins.open", MagicMock()).start()
-    
     mock_status_msg = AsyncMock()
     mock_message = AsyncMock()
     mock_message.text = "/setup_slave https://master-server.com/secret JOIN-12345"
     mock_message.reply = AsyncMock(return_value=mock_status_msg)
-    
-    with patch("aiohttp.ClientSession", return_value=mock_session), \
+
+    with patch("builtins.open", mock_open()), \
+         patch("aiohttp.ClientSession", return_value=mock_session), \
          patch("os.path.exists", return_value=True), \
          patch("os.chmod", return_value=True):
          
@@ -614,8 +621,6 @@ async def test_spectre_handlers_setup_slave(monkeypatch):
         mock_status_msg.edit_text.assert_called_once()
         assert "Сервер успешно настроен" in mock_status_msg.edit_text.call_args[0][0]
         assert "node-mock-123" in mock_status_msg.edit_text.call_args[0][0]
-        
-    patch.stopall()
 
 
 

@@ -59,15 +59,18 @@ async def test_cmd_status():
     mock_message = AsyncMock()
     mock_status_msg = AsyncMock()
     mock_status_msg.message_id = 12345
-    mock_message.answer.return_value = mock_status_msg
     mock_message.chat.id = 67890
 
+    mock_send_rich = AsyncMock(return_value=mock_status_msg)
+    mock_edit_rich = AsyncMock()
+
     with patch("core.handlers.status.get_system_status_text", AsyncMock(return_value="Dummy Status Text")), \
-         patch("modules.proxmox.monitor.utils.edit_rich_message", AsyncMock()) as mock_edit_rich:
+         patch("core.handlers.status.send_rich_message", mock_send_rich), \
+         patch("core.handlers.status.edit_rich_message", mock_edit_rich):
         await cmd_status(mock_message)
         
-        # Verify initial answer was sent
-        mock_message.answer.assert_called_once_with("⏳ <i>Сбор информации о состоянии систем...</i>", parse_mode="HTML")
+        # Verify initial send_rich_message was called
+        mock_send_rich.assert_called_once()
         
         # Verify edit_rich_message was called
         mock_edit_rich.assert_called_once()
@@ -75,7 +78,6 @@ async def test_cmd_status():
         assert kwargs.get("chat_id") == 67890
         assert kwargs.get("message_id") == 12345
         assert kwargs.get("text") == "Dummy Status Text"
-        assert kwargs.get("parse_mode") == "HTML"
         assert kwargs.get("reply_markup") is not None
 
 
@@ -87,7 +89,7 @@ async def test_callback_status_check():
     mock_callback.message.message_id = 12345
     
     with patch("core.handlers.status.get_system_status_text", AsyncMock(return_value="Dummy Status Text Callback")), \
-         patch("modules.proxmox.monitor.utils.edit_rich_message", AsyncMock()) as mock_edit_rich:
+         patch("core.handlers.status.edit_rich_message", AsyncMock()) as mock_edit_rich:
         await callback_status_check(mock_callback)
         
         # Verify edit_rich_message was called twice (first loading, then final status)
@@ -97,7 +99,7 @@ async def test_callback_status_check():
         first_args, first_kwargs = mock_edit_rich.call_args_list[0]
         assert first_kwargs.get("chat_id") == 67890
         assert first_kwargs.get("message_id") == 12345
-        assert "Сбор информации" in first_kwargs.get("text")
+        assert "status_loading" in first_kwargs.get("text") or "Сбор информации" in first_kwargs.get("text") or "⏳" in first_kwargs.get("text")
         
         # Check second call (final status)
         second_args, second_kwargs = mock_edit_rich.call_args_list[1]

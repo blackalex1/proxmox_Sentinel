@@ -6,9 +6,15 @@ from unittest.mock import AsyncMock, patch
 # Add bot to sys.path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'bot')))
 
-from core.messages.i18n import set_current_locale, _
+from core.messages.i18n import set_current_locale, get_current_locale, _
 import core.messages as msgs
 from core.sender import send_rich_message, edit_rich_message, send_rich_message_draft, send_alert_to_admins
+
+@pytest.fixture(autouse=True)
+def restore_locale():
+    orig = get_current_locale()
+    yield
+    set_current_locale(orig)
 
 def test_all_templates_russian_locale():
     set_current_locale("ru")

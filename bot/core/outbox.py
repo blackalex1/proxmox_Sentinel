@@ -5,6 +5,7 @@ import logging
 import time
 import re
 import aiohttp
+from typing import Optional, List, Dict, Any, Tuple
 from aiogram import Bot
 from aiogram.exceptions import TelegramNetworkError, TelegramAPIError, TelegramRetryAfter
 from aiohttp.client_exceptions import ClientError, ClientOSError
