@@ -45,6 +45,45 @@ translation = {
     ),
     "btn_unblock_ip_router": "🟢 Разблокировать IP на роутере",
     "btn_block_ip_router": "🛑 Заблокировать IP на роутере",
+    "btn_ban_all_full": "🛑 Заблокировать полностью",
+    "btn_unban_all_full": "🟢 Разблокировать полностью",
+    "btn_ban_port_menu": "🔒 Заблокировать порт/сервис",
+    "btn_manage_bans": "🔎 Управление блокировками ({count})",
+    "btn_back_to_clients": "🔙 Назад к списку клиентов",
+    "btn_web_service": "🌐 Web-браузер (80, 443)",
+    "btn_ssh_service": "💻 SSH консоль (22)",
+    "btn_dns_service": "👥 DNS запросы (53)",
+    "btn_custom_port": "✏️ Ввести порт вручную...",
+    "btn_unban_port_action": "❌ Снять блок {port}/{proto}",
+    "btn_unban_all_action": "🟢 Снять полную блокировку",
+    
+    "dur_1_hour": "1 час",
+    "dur_1_day": "1 день",
+    "dur_1_week": "1 неделя",
+    "dur_forever": "Навсегда",
+    
+    "prompt_ban_all_duration": "⌛️ <b>Выберите длительность полной блокировки для устройства {ip}:</b>",
+    "prompt_ban_port_service": "🔒 <b>Выберите порт или сервис для блокировки устройства {ip}:</b>",
+    "prompt_ban_port_duration": "⌛️ <b>Выберите длительность блокировки портов {port}/{proto} для устройства {ip}:</b>",
+    "prompt_custom_port_input": (
+        "✏️ <b>Блокировка порта для устройства {ip}</b>\n\n"
+        "Введите номер порта или порт/протокол (например: <code>80</code>, <code>53/udp</code>, <code>8080/tcp</code>):"
+    ),
+    "active_bans_header": "🔎 <b>Активные блокировки для устройства {ip}:</b>\n\n",
+    "active_ban_ip_item": " • <b>Полная блокировка IP</b> (Истекает: {expire})\n",
+    "active_ban_port_item": " • <b>Порт {port}/{proto}</b> (Истекает: {expire})\n",
+    "active_bans_empty": "Нет активных блокировок для этого устройства.",
+    
+    "err_session_lost": "❌ Ошибка: сессия утеряна. Начните заново с команды /router",
+    "err_invalid_proto": "❌ Неверный протокол. Укажите tcp или udp (например, 80/tcp или 53/udp)",
+    "err_invalid_port": "❌ Порт должен быть числом от 1 до 65535.",
+    "action_applying_ssh": "Выполняю блокировку по SSH...",
+    "action_unbanning_ssh": "Снимаю блокировку по SSH...",
+    "action_unbanning_port_ssh": "Снимаю блокировку порта {port}/{proto} по SSH...",
+    "action_banning_port_ssh": "Добавляю правила блокировки порта по SSH...",
+    "port_blocked_success": "Порт {port}/{proto} успешно заблокирован!",
+    "port_unblocked_success": "Блокировка порта {port}/{proto} снята!",
+    
     "ip_blocked_successfully": "🛑 IP {ip} успешно заблокирован на роутере!",
     "ip_block_failed": "❌ Ошибка блокировки: {desc}",
     "ip_block_error": "Ошибка при блокировке: {e}",
@@ -70,4 +109,3 @@ translation = {
     "ban_status_none": "🟢 Доступ разрешен",
     "client_active_rules_footer": "🔒 Всего активных правил блокировки: <b>{count}</b>",
 }
-

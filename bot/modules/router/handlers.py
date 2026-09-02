@@ -15,7 +15,16 @@ from .router import (
 )
 from core.db import execute_read_all, execute_read_one
 from core.messages.i18n import _
-from core.messages import get_router_clients_list_text, get_router_client_details_card
+from core.messages import (
+    get_router_clients_list_text,
+    get_router_client_details_card,
+    get_router_ban_all_menu_text,
+    get_router_ban_port_menu_text,
+    get_router_ban_port_duration_text,
+    get_router_custom_port_prompt_text,
+    get_router_active_bans_text
+)
+from core.sender import edit_rich_message, send_rich_message
 
 router = Router()
 
@@ -71,24 +80,24 @@ async def render_client_details(ip: str):
     
     if not full_ban:
         kb_buttons.append([
-            InlineKeyboardButton(text=_("router", "btn_block_ip_router", "🛑 Заблокировать полностью"), callback_data=f"r_ban_all_menu:{ip}")
+            InlineKeyboardButton(text=_("router", "btn_ban_all_full", "🛑 Заблокировать полностью"), callback_data=f"r_ban_all_menu:{ip}")
         ])
     else:
         kb_buttons.append([
-            InlineKeyboardButton(text=_("router", "btn_unblock_ip_router", "🟢 Разблокировать полностью"), callback_data=f"r_unban_all:{ip}")
+            InlineKeyboardButton(text=_("router", "btn_unban_all_full", "🟢 Разблокировать полностью"), callback_data=f"r_unban_all:{ip}")
         ])
         
     kb_buttons.append([
-        InlineKeyboardButton(text="🔒 Заблокировать порт/сервис", callback_data=f"r_ban_port_menu:{ip}")
+        InlineKeyboardButton(text=_("router", "btn_ban_port_menu", "🔒 Заблокировать порт/сервис"), callback_data=f"r_ban_port_menu:{ip}")
     ])
     
     if bans_count > 0:
         kb_buttons.append([
-            InlineKeyboardButton(text=f"🔎 Управление блокировками ({bans_count})", callback_data=f"r_bans:{ip}")
+            InlineKeyboardButton(text=_("router", "btn_manage_bans", "🔎 Управление блокировками ({count})", count=bans_count), callback_data=f"r_bans:{ip}")
         ])
         
     kb_buttons.append([
-        InlineKeyboardButton(text="🔙 Назад к списку клиентов", callback_data="r_list")
+        InlineKeyboardButton(text=_("router", "btn_back_to_clients", "🔙 Назад к списку клиентов"), callback_data="r_list")
     ])
     
     return text, InlineKeyboardMarkup(inline_keyboard=kb_buttons)
@@ -101,7 +110,7 @@ async def cmd_router_clients(message: types.Message, state: FSMContext):
     """Выводит интерактивный список клиентов роутера."""
     await state.clear()
     text, kb = await render_clients_list()
-    await message.answer(text, reply_markup=kb, parse_mode="HTML")
+    await send_rich_message(chat_id=message.chat.id, text=text, reply_markup=kb, parse_mode="HTML")
 
 
 @router.callback_query(F.data == "r_list")
@@ -109,7 +118,7 @@ async def cb_router_list(callback: CallbackQuery, state: FSMContext):
     """Обновляет или открывает список клиентов."""
     await state.clear()
     text, kb = await render_clients_list()
-    await callback.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
+    await edit_rich_message(chat_id=callback.message.chat.id, message_id=callback.message.message_id, text=text, reply_markup=kb, parse_mode="HTML")
     await callback.answer()
 
 
@@ -119,7 +128,7 @@ async def cb_router_client_details(callback: CallbackQuery, state: FSMContext):
     await state.clear()
     ip = callback.data.split(":")[1]
     text, kb = await render_client_details(ip)
-    await callback.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
+    await edit_rich_message(chat_id=callback.message.chat.id, message_id=callback.message.message_id, text=text, reply_markup=kb, parse_mode="HTML")
     await callback.answer()
 
 
@@ -128,15 +137,15 @@ async def cb_router_client_details(callback: CallbackQuery, state: FSMContext):
 @router.callback_query(F.data.startswith("r_ban_all_menu:"))
 async def cb_router_ban_all_menu(callback: CallbackQuery):
     ip = callback.data.split(":")[1]
-    text = f"⌛️ <b>Выберите длительность полной блокировки для устройства {ip}:</b>"
+    text = get_router_ban_all_menu_text(ip)
     kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="1 час", callback_data=f"r_ban_all:{ip}:3600")],
-        [InlineKeyboardButton(text="1 день", callback_data=f"r_ban_all:{ip}:86400")],
-        [InlineKeyboardButton(text="1 неделя", callback_data=f"r_ban_all:{ip}:604800")],
-        [InlineKeyboardButton(text="Навсегда", callback_data=f"r_ban_all:{ip}:315360000")],
-        [InlineKeyboardButton(text="🔙 Назад", callback_data=f"r_cl:{ip}")]
+        [InlineKeyboardButton(text=_("router", "dur_1_hour", "1 час"), callback_data=f"r_ban_all:{ip}:3600")],
+        [InlineKeyboardButton(text=_("router", "dur_1_day", "1 день"), callback_data=f"r_ban_all:{ip}:86400")],
+        [InlineKeyboardButton(text=_("router", "dur_1_week", "1 неделя"), callback_data=f"r_ban_all:{ip}:604800")],
+        [InlineKeyboardButton(text=_("router", "dur_forever", "Навсегда"), callback_data=f"r_ban_all:{ip}:315360000")],
+        [InlineKeyboardButton(text=_("keyboards", "btn_back", "🔙 Назад"), callback_data=f"r_cl:{ip}")]
     ])
-    await callback.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
+    await edit_rich_message(chat_id=callback.message.chat.id, message_id=callback.message.message_id, text=text, reply_markup=kb, parse_mode="HTML")
     await callback.answer()
 
 
@@ -146,15 +155,15 @@ async def cb_router_ban_all_action(callback: CallbackQuery):
     ip = parts[1]
     seconds = int(parts[2])
     
-    await callback.answer("Выполняю блокировку по SSH...", show_alert=False)
+    await callback.answer(_("router", "action_applying_ssh", "Выполняю блокировку по SSH..."), show_alert=False)
     success, desc = await ban_router_ip(ip, delay=seconds, reason="Вручную из TG")
     if success:
-        await callback.answer(f"Устройство {ip} полностью заблокировано!", show_alert=True)
+        await callback.answer(_("router", "ip_blocked_successfully", ip=ip), show_alert=True)
     else:
-        await callback.answer(f"Ошибка блокировки: {desc}", show_alert=True)
+        await callback.answer(_("router", "ip_block_failed", desc=desc), show_alert=True)
         
     text, kb = await render_client_details(ip)
-    await callback.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
+    await edit_rich_message(chat_id=callback.message.chat.id, message_id=callback.message.message_id, text=text, reply_markup=kb, parse_mode="HTML")
 
 
 # --- Управление точечными блокировками портов ---
@@ -162,25 +171,25 @@ async def cb_router_ban_all_action(callback: CallbackQuery):
 @router.callback_query(F.data.startswith("r_ban_port_menu:"))
 async def cb_router_ban_port_menu(callback: CallbackQuery):
     ip = callback.data.split(":")[1]
-    text = f"🔒 <b>Выберите порт или сервис для блокировки устройства {ip}:</b>"
+    text = get_router_ban_port_menu_text(ip)
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [
-            InlineKeyboardButton(text="🌐 Web-браузер (80, 443)", callback_data=f"r_ban_port_dur:{ip}:80_443:tcp"),
+            InlineKeyboardButton(text=_("router", "btn_web_service", "🌐 Web-браузер (80, 443)"), callback_data=f"r_ban_port_dur:{ip}:80_443:tcp"),
         ],
         [
-            InlineKeyboardButton(text="💻 SSH консоль (22)", callback_data=f"r_ban_port_dur:{ip}:22:tcp"),
+            InlineKeyboardButton(text=_("router", "btn_ssh_service", "💻 SSH консоль (22)"), callback_data=f"r_ban_port_dur:{ip}:22:tcp"),
         ],
         [
-            InlineKeyboardButton(text="👥 DNS запросы (53)", callback_data=f"r_ban_port_dur:{ip}:53:udp"),
+            InlineKeyboardButton(text=_("router", "btn_dns_service", "👥 DNS запросы (53)"), callback_data=f"r_ban_port_dur:{ip}:53:udp"),
         ],
         [
-            InlineKeyboardButton(text="✏️ Ввести порт вручную...", callback_data=f"r_custom_port:{ip}")
+            InlineKeyboardButton(text=_("router", "btn_custom_port", "✏️ Ввести порт вручную..."), callback_data=f"r_custom_port:{ip}")
         ],
         [
-            InlineKeyboardButton(text="🔙 Назад", callback_data=f"r_cl:{ip}")
+            InlineKeyboardButton(text=_("keyboards", "btn_back", "🔙 Назад"), callback_data=f"r_cl:{ip}")
         ]
     ])
-    await callback.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
+    await edit_rich_message(chat_id=callback.message.chat.id, message_id=callback.message.message_id, text=text, reply_markup=kb, parse_mode="HTML")
     await callback.answer()
 
 
@@ -192,15 +201,15 @@ async def cb_router_ban_port_duration_menu(callback: CallbackQuery):
     proto = parts[3]
     
     port_label = port.replace("_", ", ")
-    text = f"⌛️ <b>Выберите длительность блокировки портов {port_label}/{proto} для устройства {ip}:</b>"
+    text = get_router_ban_port_duration_text(ip, port_label, proto)
     kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="1 час", callback_data=f"r_ban_port:{ip}:{port}:{proto}:3600")],
-        [InlineKeyboardButton(text="1 день", callback_data=f"r_ban_port:{ip}:{port}:{proto}:86400")],
-        [InlineKeyboardButton(text="1 неделя", callback_data=f"r_ban_port:{ip}:{port}:{proto}:604800")],
-        [InlineKeyboardButton(text="Навсегда", callback_data=f"r_ban_port:{ip}:{port}:{proto}:315360000")],
-        [InlineKeyboardButton(text="🔙 Назад", callback_data=f"r_ban_port_menu:{ip}")]
+        [InlineKeyboardButton(text=_("router", "dur_1_hour", "1 час"), callback_data=f"r_ban_port:{ip}:{port}:{proto}:3600")],
+        [InlineKeyboardButton(text=_("router", "dur_1_day", "1 день"), callback_data=f"r_ban_port:{ip}:{port}:{proto}:86400")],
+        [InlineKeyboardButton(text=_("router", "dur_1_week", "1 неделя"), callback_data=f"r_ban_port:{ip}:{port}:{proto}:604800")],
+        [InlineKeyboardButton(text=_("router", "dur_forever", "Навсегда"), callback_data=f"r_ban_port:{ip}:{port}:{proto}:315360000")],
+        [InlineKeyboardButton(text=_("keyboards", "btn_back", "🔙 Назад"), callback_data=f"r_ban_port_menu:{ip}")]
     ])
-    await callback.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
+    await edit_rich_message(chat_id=callback.message.chat.id, message_id=callback.message.message_id, text=text, reply_markup=kb, parse_mode="HTML")
     await callback.answer()
 
 
@@ -212,7 +221,7 @@ async def cb_router_ban_port_action(callback: CallbackQuery):
     proto = parts[3]
     seconds = int(parts[4])
     
-    await callback.answer("Добавляю правила блокировки порта по SSH...", show_alert=False)
+    await callback.answer(_("router", "action_banning_port_ssh", "Добавляю правила блокировки порта по SSH..."), show_alert=False)
     
     ports = port_raw.split("_")
     success_all = True
@@ -224,15 +233,15 @@ async def cb_router_ban_port_action(callback: CallbackQuery):
             success_all = False
             errors.append(desc)
             
+    port_label = port_raw.replace("_", ", ")
     if success_all:
-        port_label = port_raw.replace("_", ", ")
-        await callback.answer(f"Порт {port_label}/{proto} успешно заблокирован!", show_alert=True)
+        await callback.answer(_("router", "port_blocked_success", port=port_label, proto=proto), show_alert=True)
     else:
         err_msg = ", ".join(errors)
-        await callback.answer(f"Ошибка при блокировке: {err_msg}", show_alert=True)
+        await callback.answer(_("router", "ip_block_failed", desc=err_msg), show_alert=True)
         
     text, kb = await render_client_details(ip)
-    await callback.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
+    await edit_rich_message(chat_id=callback.message.chat.id, message_id=callback.message.message_id, text=text, reply_markup=kb, parse_mode="HTML")
 
 
 # --- Ввод пользовательского порта вручную (FSM) ---
@@ -243,14 +252,11 @@ async def cb_router_custom_port_prompt(callback: CallbackQuery, state: FSMContex
     await state.update_data(ip=ip)
     await state.set_state(RouterPortControlState.waiting_for_custom_port)
     
-    text = (
-        f"✏️ <b>Блокировка порта для устройства {ip}</b>\n\n"
-        f"Введите номер порта или порт/протокол (например: <code>80</code>, <code>53/udp</code>, <code>8080/tcp</code>):"
-    )
+    text = get_router_custom_port_prompt_text(ip)
     kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="❌ Отмена", callback_data=f"r_ban_port_menu:{ip}")]
+        [InlineKeyboardButton(text=_("keyboards", "btn_cancel", "❌ Отмена"), callback_data=f"r_ban_port_menu:{ip}")]
     ])
-    await callback.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
+    await edit_rich_message(chat_id=callback.message.chat.id, message_id=callback.message.message_id, text=text, reply_markup=kb, parse_mode="HTML")
     await callback.answer()
 
 
@@ -259,7 +265,7 @@ async def process_custom_port_input(message: types.Message, state: FSMContext):
     data = await state.get_data()
     ip = data.get("ip")
     if not ip:
-        await message.answer("❌ Ошибка: сессия утеряна. Начните заново с команды /router")
+        await send_rich_message(chat_id=message.chat.id, text=_("router", "err_session_lost"))
         await state.clear()
         return
         
@@ -273,33 +279,31 @@ async def process_custom_port_input(message: types.Message, state: FSMContext):
         proto = parts[1].strip()
         
     if proto not in ('tcp', 'udp'):
-        await message.reply("❌ Неверный протокол. Укажите tcp или udp (например, 80/tcp или 53/udp)")
+        await send_rich_message(chat_id=message.chat.id, text=_("router", "err_invalid_proto"))
         return
         
     if not port_str.isdigit():
-        await message.reply("❌ Порт должен быть числом от 1 до 65535.")
+        await send_rich_message(chat_id=message.chat.id, text=_("router", "err_invalid_port"))
         return
         
     port = int(port_str)
     if not (1 <= port <= 65535):
-        await message.reply("❌ Порт должен быть в диапазоне от 1 до 65535.")
+        await send_rich_message(chat_id=message.chat.id, text=_("router", "err_invalid_port"))
         return
         
     await state.clear()
     
-    text = (
-        f"⌛️ <b>Выберите длительность блокировки порта {port}/{proto} для устройства {ip}:</b>"
-    )
+    text = get_router_ban_port_duration_text(ip, str(port), proto)
     
     kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="1 час", callback_data=f"r_ban_port:{ip}:{port}:{proto}:3600")],
-        [InlineKeyboardButton(text="1 день", callback_data=f"r_ban_port:{ip}:{port}:{proto}:86400")],
-        [InlineKeyboardButton(text="1 неделя", callback_data=f"r_ban_port:{ip}:{port}:{proto}:604800")],
-        [InlineKeyboardButton(text="Навсегда", callback_data=f"r_ban_port:{ip}:{port}:{proto}:315360000")],
-        [InlineKeyboardButton(text="🔙 Отмена", callback_data=f"r_cl:{ip}")]
+        [InlineKeyboardButton(text=_("router", "dur_1_hour", "1 час"), callback_data=f"r_ban_port:{ip}:{port}:{proto}:3600")],
+        [InlineKeyboardButton(text=_("router", "dur_1_day", "1 день"), callback_data=f"r_ban_port:{ip}:{port}:{proto}:86400")],
+        [InlineKeyboardButton(text=_("router", "dur_1_week", "1 неделя"), callback_data=f"r_ban_port:{ip}:{port}:{proto}:604800")],
+        [InlineKeyboardButton(text=_("router", "dur_forever", "Навсегда"), callback_data=f"r_ban_port:{ip}:{port}:{proto}:315360000")],
+        [InlineKeyboardButton(text=_("keyboards", "btn_cancel", "🔙 Отмена"), callback_data=f"r_cl:{ip}")]
     ])
     
-    await message.answer(text, reply_markup=kb, parse_mode="HTML")
+    await send_rich_message(chat_id=message.chat.id, text=text, reply_markup=kb, parse_mode="HTML")
 
 
 # --- Управление активными блокировками устройства ---
@@ -311,35 +315,26 @@ async def cb_router_active_bans_list(callback: CallbackQuery):
     full_ban = await execute_read_one("SELECT * FROM temp_bans WHERE server_ip = 'router' AND dst_ip = ?", (ip,))
     port_bans = await execute_read_all("SELECT * FROM temp_port_bans WHERE server_ip = 'router' AND client_ip = ?", (ip,))
     
-    text = f"🔎 <b>Активные блокировки для устройства {ip}:</b>\n\n"
+    text = get_router_active_bans_text(ip, full_ban, port_bans)
     
     kb_buttons = []
     if full_ban:
-        expire = full_ban.get('expire_time')
-        expire_label = expire.split(".")[0].replace("T", " ") if expire else "never"
-        text += f" • <b>Полная блокировка IP</b> (Истекает: {expire_label})\n"
         kb_buttons.append([
-            InlineKeyboardButton(text="🟢 Снять полную блокировку", callback_data=f"r_unban_all:{ip}")
+            InlineKeyboardButton(text=_("router", "btn_unban_all_action", "🟢 Снять полную блокировку"), callback_data=f"r_unban_all:{ip}")
         ])
         
     for pb in port_bans:
         p = pb['port']
         proto = pb['protocol']
-        expire = pb['expire_time']
-        expire_label = expire.split(".")[0].replace("T", " ") if expire and expire != "never" else "Навсегда"
-        text += f" • <b>Порт {p}/{proto}</b> (Истекает: {expire_label})\n"
         kb_buttons.append([
-            InlineKeyboardButton(text=f"❌ Снять блок {p}/{proto}", callback_data=f"r_unban_port:{ip}:{p}:{proto}")
+            InlineKeyboardButton(text=_("router", "btn_unban_port_action", f"❌ Снять блок {p}/{proto}", port=p, proto=proto), callback_data=f"r_unban_port:{ip}:{p}:{proto}")
         ])
         
-    if not full_ban and not port_bans:
-        text += "Нет активных блокировок для этого устройства."
-        
     kb_buttons.append([
-        InlineKeyboardButton(text="🔙 Назад", callback_data=f"r_cl:{ip}")
+        InlineKeyboardButton(text=_("keyboards", "btn_back", "🔙 Назад"), callback_data=f"r_cl:{ip}")
     ])
     
-    await callback.message.edit_text(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=kb_buttons), parse_mode="HTML")
+    await edit_rich_message(chat_id=callback.message.chat.id, message_id=callback.message.message_id, text=text, reply_markup=InlineKeyboardMarkup(inline_keyboard=kb_buttons), parse_mode="HTML")
     await callback.answer()
 
 
@@ -347,15 +342,15 @@ async def cb_router_active_bans_list(callback: CallbackQuery):
 async def cb_router_unban_all_action(callback: CallbackQuery):
     ip = callback.data.split(":")[1]
     
-    await callback.answer("Снимаю блокировку по SSH...", show_alert=False)
+    await callback.answer(_("router", "action_unbanning_ssh", "Снимаю блокировку по SSH..."), show_alert=False)
     success, desc = await unban_router_ip(ip)
     if success:
-        await callback.answer(f"Полная блокировка с IP {ip} успешно снята!", show_alert=True)
+        await callback.answer(_("router", "ip_unblocked_successfully", ip=ip), show_alert=True)
     else:
-        await callback.answer(f"Ошибка при разблокировке: {desc}", show_alert=True)
+        await callback.answer(_("router", "ip_unblock_failed", desc=desc), show_alert=True)
         
     text, kb = await render_client_details(ip)
-    await callback.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
+    await edit_rich_message(chat_id=callback.message.chat.id, message_id=callback.message.message_id, text=text, reply_markup=kb, parse_mode="HTML")
 
 
 @router.callback_query(F.data.startswith("r_unban_port:"))
@@ -365,12 +360,12 @@ async def cb_router_unban_port_action(callback: CallbackQuery):
     port = int(parts[2])
     proto = parts[3]
     
-    await callback.answer(f"Снимаю блокировку порта {port}/{proto} по SSH...", show_alert=False)
+    await callback.answer(_("router", "action_unbanning_port_ssh", f"Снимаю блокировку порта {port}/{proto} по SSH...", port=port, proto=proto), show_alert=False)
     success, desc = await unban_router_port(ip, port, proto)
     if success:
-        await callback.answer(f"Блокировка порта {port}/{proto} снята!", show_alert=True)
+        await callback.answer(_("router", "port_unblocked_success", port=port, proto=proto), show_alert=True)
     else:
-        await callback.answer(f"Ошибка при снятии блокировки: {desc}", show_alert=True)
+        await callback.answer(_("router", "ip_unblock_failed", desc=desc), show_alert=True)
         
     full_ban = await execute_read_one("SELECT * FROM temp_bans WHERE server_ip = 'router' AND dst_ip = ?", (ip,))
     port_bans = await execute_read_all("SELECT * FROM temp_port_bans WHERE server_ip = 'router' AND client_ip = ?", (ip,))
@@ -379,7 +374,7 @@ async def cb_router_unban_port_action(callback: CallbackQuery):
         await cb_router_active_bans_list(callback)
     else:
         text, kb = await render_client_details(ip)
-        await callback.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
+        await edit_rich_message(chat_id=callback.message.chat.id, message_id=callback.message.message_id, text=text, reply_markup=kb, parse_mode="HTML")
 
 
 # --- Сохраняем обратную совместимость для системных алертов ---
@@ -404,7 +399,7 @@ async def handle_router_block_ip(callback: CallbackQuery):
                 if "🛑 УСТРОЙСТВО " not in text and "🛑 DEVICE " not in text:
                     new_text = text + _("router", "device_blocked_text", ip=ip)
                     try:
-                        await callback.message.edit_text(new_text, reply_markup=kb, parse_mode="HTML")
+                        await edit_rich_message(chat_id=callback.message.chat.id, message_id=callback.message.message_id, text=new_text, reply_markup=kb, parse_mode="HTML")
                     except Exception as e:
                         logging.error("failed_to_edit_message_on_ban", e)
             else:
@@ -437,9 +432,9 @@ async def handle_router_unblock_ip(callback: CallbackQuery):
             text = callback.message.text
             if text:
                 new_text = text.replace(f"\n\n🛑 <b>УСТРОЙСТВО {ip} ЗАБЛОКИРОВАНО НА РОУТЕРЕ!</b>", "")
-                new_text = new_text.replace(f"\n\n🛑 <b>DEVICE {ip} BLOCKED ON ROUTER!</b>", "")
+                new_id = new_text.replace(f"\n\n🛑 <b>DEVICE {ip} BLOCKED ON ROUTER!</b>", "")
                 try:
-                    await callback.message.edit_text(new_text, reply_markup=kb, parse_mode="HTML")
+                    await edit_rich_message(chat_id=callback.message.chat.id, message_id=callback.message.message_id, text=new_id, reply_markup=kb, parse_mode="HTML")
                 except Exception as e:
                     logging.error("failed_to_edit_message_on_unban", e)
             else:

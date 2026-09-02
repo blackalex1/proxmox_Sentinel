@@ -436,9 +436,9 @@ class SpectreClientManager:
         for path in hysteria_paths:
             lines = await self._read_log_lines(panel, path)
             if lines:
-                email = find_email_in_hysteria_log(lines, dst_ip, port)
+                email = find_email_in_hysteria_log(lines, dst_ip, port, max_age_sec=45)
                 if email:
-                    real_client_ip = find_client_ip_for_email_in_hysteria_log(lines, email)
+                    real_client_ip = find_client_ip_for_email_in_hysteria_log(lines, email, max_age_sec=45)
                     return email, "hysteria", real_client_ip, "Hysteria2"
                     
         # 2. Xray / Singbox logs search
@@ -453,7 +453,7 @@ class SpectreClientManager:
         for path in xray_paths:
             lines = await self._read_log_lines(panel, path)
             if lines:
-                res = find_email_and_ip_in_xray_log(lines, client_ip, dst_ip, port)
+                res = find_email_and_ip_in_xray_log(lines, client_ip, dst_ip, port, max_age_sec=45)
                 if res:
                     email, ip, inbound_tag = res
                     return email, "xray", ip, inbound_tag
