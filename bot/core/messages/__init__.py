@@ -48,6 +48,11 @@ from .router import (
     get_router_port_alert,
     get_router_clients_list_text,
     get_router_client_details_card,
+    get_router_ban_all_menu_text,
+    get_router_ban_port_menu_text,
+    get_router_ban_port_duration_text,
+    get_router_custom_port_prompt_text,
+    get_router_active_bans_text,
 )
 from .spectre import (
     get_new_ip_alert,
