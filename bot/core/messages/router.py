@@ -56,7 +56,6 @@ def get_router_client_details_card(
         ban_status = _("router", "ban_status_none")
         
     bans_count = (1 if full_ban else 0) + len(port_bans_list)
-
     
     rows = []
     rows.append('<table bordered striped compact>')
@@ -88,3 +87,33 @@ def get_router_client_details_card(
     rows.append(_("router", "client_active_rules_footer", count=bans_count))
     return "\n".join(rows)
 
+def get_router_ban_all_menu_text(ip: str) -> str:
+    return _("router", "prompt_ban_all_duration", ip=ip)
+
+def get_router_ban_port_menu_text(ip: str) -> str:
+    return _("router", "prompt_ban_port_service", ip=ip)
+
+def get_router_ban_port_duration_text(ip: str, port_label: str, proto: str) -> str:
+    return _("router", "prompt_ban_port_duration", ip=ip, port=port_label, proto=proto)
+
+def get_router_custom_port_prompt_text(ip: str) -> str:
+    return _("router", "prompt_custom_port_input", ip=ip)
+
+def get_router_active_bans_text(ip: str, full_ban: Optional[Dict[str, Any]], port_bans: List[Dict[str, Any]]) -> str:
+    text = _("router", "active_bans_header", ip=ip)
+    if full_ban:
+        expire = full_ban.get('expire_time')
+        expire_label = expire.split(".")[0].replace("T", " ") if expire else _("router", "dur_forever")
+        text += _("router", "active_ban_ip_item", expire=expire_label)
+        
+    for pb in port_bans:
+        p = pb.get('port')
+        proto = pb.get('protocol')
+        expire = pb.get('expire_time')
+        expire_label = expire.split(".")[0].replace("T", " ") if expire and expire != "never" else _("router", "dur_forever")
+        text += _("router", "active_ban_port_item", port=p, proto=proto, expire=expire_label)
+        
+    if not full_ban and not port_bans:
+        text += _("router", "active_bans_empty")
+        
+    return text

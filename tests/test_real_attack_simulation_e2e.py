@@ -289,22 +289,22 @@ async def test_simulate_cascaded_tunnel_investigation_live(live_spectre_attack_p
         identifier="104"
     )
     vps_panel = SpectrePanelInstance(
-        name="VPS-194.87.29.14",
+        name="VPS-198.51.100.14",
         url=live_spectre_attack_panel["url"],
         token=live_spectre_attack_panel["token"],
         secret_path=live_spectre_attack_panel["secret"],
         source_type="vps",
-        identifier="194.87.29.14"
+        identifier="198.51.100.14"
     )
     spectre_manager.panels = {
         "lxc_104": lxc_panel,
-        "vps_194.87.29.14": vps_panel
+        "vps_198.51.100.14": vps_panel
     }
 
     # Мокаем поиск соединения по IP/портам в логах ядра
-    async def mock_get_client_by_connection(client_ip, dst_ip, port, source_type, source_id):
+    async def mock_get_client_by_connection(client_ip, dst_ip, port, source_type, source_id, strict_target_only=True):
         if source_type == 'vps':
-            return "user_8324", vps_panel, "singbox", "194.87.29.14", "Singbox-VLESS-Tunnel"
+            return "user_8324", vps_panel, "singbox", "198.51.100.14", "Singbox-VLESS-Tunnel"
         elif source_type == 'lxc':
             return "phone", lxc_panel, "xray", "192.168.1.1", "Xray-Phone-Inbound"
         return None
@@ -314,8 +314,8 @@ async def test_simulate_cascaded_tunnel_investigation_live(live_spectre_attack_p
     monkeypatch.setattr("modules.proxmox.monitor.remote.traffic.send_alert_to_admins", AsyncMock(side_effect=lambda text, **kw: telegram_alerts.append(text)))
     monkeypatch.setattr("modules.proxmox.monitor.remote.traffic.get_and_kill_remote_process", AsyncMock(return_value=("xray", "WHITELISTED")))
 
-    line = "Sep 01 14:22:20 vps kernel: [816311.123] REMOTE_CONN_OUT: IN= OUT=eth0 SRC=194.87.29.14 DST=8.8.8.8 LEN=60 PROTO=TCP SPT=34446 DPT=22"
-    server_vps = {'ip': '194.87.29.14', 'user': 'root', 'key': 'key_path'}
+    line = "Sep 01 14:22:20 vps kernel: [816311.123] REMOTE_CONN_OUT: IN= OUT=eth0 SRC=198.51.100.14 DST=8.8.8.8 LEN=60 PROTO=TCP SPT=34446 DPT=22"
+    server_vps = {'ip': '198.51.100.14', 'user': 'root', 'key': 'key_path'}
 
     await handle_remote_traffic_line(line, server=server_vps)
     await asyncio.sleep(0.05)
