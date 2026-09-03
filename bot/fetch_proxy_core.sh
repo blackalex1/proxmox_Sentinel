@@ -241,11 +241,44 @@ fetch_xray() {
     return 1
 }
 
+fetch_geodata() {
+    if [ ! -f "$BIN_DIR/geoip.dat" ] || [ ! -f "$BIN_DIR/geosite.dat" ]; then
+        local GEOIP_URLS=(
+            "https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geoip.dat"
+            "https://gh-proxy.com/https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geoip.dat"
+            "https://ghfast.top/https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geoip.dat"
+        )
+        local GEOSITE_URLS=(
+            "https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geosite.dat"
+            "https://gh-proxy.com/https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geosite.dat"
+            "https://ghfast.top/https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geosite.dat"
+        )
+        if [ ! -f "$BIN_DIR/geoip.dat" ]; then
+            for u in "${GEOIP_URLS[@]}"; do
+                if curl "${CURL_OPTS[@]}" -o "$BIN_DIR/geoip.dat" "$u" 2>/dev/null && [ -s "$BIN_DIR/geoip.dat" ]; then
+                    break
+                fi
+            done
+        fi
+        if [ ! -f "$BIN_DIR/geosite.dat" ]; then
+            for u in "${GEOSITE_URLS[@]}"; do
+                if curl "${CURL_OPTS[@]}" -o "$BIN_DIR/geosite.dat" "$u" 2>/dev/null && [ -s "$BIN_DIR/geosite.dat" ]; then
+                    break
+                fi
+            done
+        fi
+    fi
+}
+
 if [ "$AUTO_MODE" -eq 1 ]; then
-    # In auto mode, ensure at least Sing-box is installed
+    # In auto mode, ensure Sing-box and Xray are installed as needed
     if [ "$SB_INSTALLED" = "Не установлено" ]; then
         fetch_singbox || true
     fi
+    if [ "$XRAY_INSTALLED" = "Не установлено" ]; then
+        fetch_xray || true
+    fi
+    fetch_geodata || true
 else
     # Interactive menu
     DEFAULT_PROXY_CHOICE="1"
@@ -271,11 +304,13 @@ else
 
     case "$PROXY_CHOICE" in
         1) fetch_singbox ;;
-        2) fetch_xray ;;
-        3) fetch_singbox; fetch_xray ;;
+        2) fetch_xray; fetch_geodata ;;
+        3) fetch_singbox; fetch_xray; fetch_geodata ;;
         4) echo -e "${GREEN}[+] Обновление прокси-движков пропущено.${NC}" ;;
         *) [ "$DEFAULT_PROXY_CHOICE" = "4" ] && echo -e "${GREEN}[+] Обновление прокси-движков пропущено.${NC}" || fetch_singbox ;;
     esac
 fi
+
+chmod +x "$BIN_DIR"/* 2>/dev/null || true
 
 exit 0

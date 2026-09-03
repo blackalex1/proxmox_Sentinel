@@ -640,5 +640,4 @@ except Exception as e:
         else
             print_lang "\n${YELLOW}⚠️ Интерактивная настройка пропущена. Отредактируйте .env вручную.${NC}" "\n${YELLOW}⚠️ Interactive configuration skipped. Edit .env manually.${NC}"
         fi
-    fi
 }

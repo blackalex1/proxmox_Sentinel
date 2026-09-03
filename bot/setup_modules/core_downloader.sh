@@ -3,14 +3,20 @@
 # Sentinel-Core Engine Setup Module
 fetch_sentinel_core() {
     print_lang "\n${YELLOW}[3.5/5] Проверка и загрузка ядра безопасности sentinel-core...${NC}" "\n${YELLOW}[3.5/5] Checking and downloading sentinel-core security engine...${NC}"
-    
+
+    local CORE_OPTS=()
+    if [ -n "${INSTALL_PROXY}" ]; then
+        CORE_OPTS+=("--proxy" "${INSTALL_PROXY}")
+    fi
+
     local FETCH_SCRIPT="${SCRIPT_DIR}/fetch_core.sh"
     if [ -f "${FETCH_SCRIPT}" ]; then
         chmod +x "${FETCH_SCRIPT}"
-        if bash "${FETCH_SCRIPT}"; then
+        if bash "${FETCH_SCRIPT}" "${CORE_OPTS[@]}"; then
             print_lang "${GREEN}✓ Ядро sentinel-core готово к работе.${NC}" "${GREEN}✓ sentinel-core engine is ready.${NC}"
         else
             print_lang "${YELLOW}⚠️ Предупреждение: Не удалось загрузить последнюю версию sentinel-core. Будет использована локальная версия/fallback.${NC}" "${YELLOW}⚠️ Warning: Failed to download latest sentinel-core. Local/fallback engine will be used.${NC}"
+        fi
     else
         print_lang "${YELLOW}⚠️ Скрипт fetch_core.sh не найден по пути ${FETCH_SCRIPT}.${NC}" "${YELLOW}⚠️ fetch_core.sh script not found at ${FETCH_SCRIPT}.${NC}"
     fi
@@ -20,6 +26,6 @@ fetch_sentinel_core() {
     if [ -f "${FETCH_PROXY_SCRIPT}" ]; then
         chmod +x "${FETCH_PROXY_SCRIPT}"
         print_lang "\n${YELLOW}[3.6/5] Загрузка proxy-движков (Sing-box / Xray-core)...${NC}" "\n${YELLOW}[3.6/5] Downloading proxy engines (Sing-box / Xray-core)...${NC}"
-        bash "${FETCH_PROXY_SCRIPT}" --auto || true
+        bash "${FETCH_PROXY_SCRIPT}" --auto "${CORE_OPTS[@]}" || true
     fi
 }
