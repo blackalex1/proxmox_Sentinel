@@ -6,13 +6,15 @@ from core.config import settings
 
 class LogTailer:
     """Асинхронный watcher для tail-мониторинга файлов логов или вывода команд (например, journalctl)."""
-    def __init__(self, source, callback, *args, **kwargs):
+    def __init__(self, source, callback, *args, concurrent: bool = True, **kwargs):
         self.source = source  # Может быть строкой (путь к файлу) или списком аргументов команды (list)
         self.callback = callback
         self.args = args
         self.kwargs = kwargs
+        self.concurrent = concurrent
         self.running = False
         self.task = None
+        self._background_tasks = set()
 
     async def start(self):
         self.running = True
@@ -26,6 +28,13 @@ class LogTailer:
             try:
                 await self.task
             except asyncio.CancelledError:
+                pass
+        for t in list(self._background_tasks):
+            t.cancel()
+        if self._background_tasks:
+            try:
+                await asyncio.gather(*self._background_tasks, return_exceptions=True)
+            except Exception:
                 pass
         logging.info("tailer_stopped_for_source", self.source)
 
@@ -108,10 +117,24 @@ class LogTailer:
 
     async def _trigger_callback(self, line):
         try:
-            if asyncio.iscoroutinefunction(self.callback):
-                await self.callback(line, *self.args, **self.kwargs)
+            import inspect
+            if inspect.iscoroutinefunction(self.callback):
+                if self.concurrent:
+                    task = asyncio.create_task(self._safe_invoke_callback(line))
+                    self._background_tasks.add(task)
+                    task.add_done_callback(self._background_tasks.discard)
+                else:
+                    await self.callback(line, *self.args, **self.kwargs)
             else:
                 self.callback(line, *self.args, **self.kwargs)
+        except Exception as ex:
+            logging.error("error_executing_callback_in_tailer", ex)
+
+    async def _safe_invoke_callback(self, line):
+        try:
+            await self.callback(line, *self.args, **self.kwargs)
+        except asyncio.CancelledError:
+            pass
         except Exception as ex:
             logging.error("error_executing_callback_in_tailer", ex)
 

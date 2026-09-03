@@ -37,7 +37,7 @@ async def get_and_kill_remote_process(server, spt):
     Возвращает кортеж (proc_name, pid) в случае успеха, иначе (None, None).
     """
     try:
-        success, stdout, stderr = await run_remote_ssh_cmd(server, ["ss -atnup"])
+        success, stdout, stderr = await asyncio.wait_for(run_remote_ssh_cmd(server, ["ss -atnup"]), timeout=5.0)
         if not success:
             logging.error("remote_ips_failed_to_execute_ss_-atnup", server['ip'], stderr)
             return None, None
@@ -109,22 +109,33 @@ async def resolve_cascaded_tunnel_name(target_panel, server, vps_client_email: O
 
 async def _safe_get_client_by_connection(manager, client_ip, dst_ip, port, source_type, source_id, strict_target_only=True):
     try:
-        return await manager.get_client_by_connection(
-            client_ip=client_ip,
-            dst_ip=dst_ip,
-            port=port,
-            source_type=source_type,
-            source_id=source_id,
-            strict_target_only=strict_target_only
+        return await asyncio.wait_for(
+            manager.get_client_by_connection(
+                client_ip=client_ip,
+                dst_ip=dst_ip,
+                port=port,
+                source_type=source_type,
+                source_id=source_id,
+                strict_target_only=strict_target_only
+            ),
+            timeout=5.0
         )
-    except TypeError:
-        return await manager.get_client_by_connection(
-            client_ip=client_ip,
-            dst_ip=dst_ip,
-            port=port,
-            source_type=source_type,
-            source_id=source_id
-        )
+    except (TypeError, asyncio.TimeoutError):
+        try:
+            return await asyncio.wait_for(
+                manager.get_client_by_connection(
+                    client_ip=client_ip,
+                    dst_ip=dst_ip,
+                    port=port,
+                    source_type=source_type,
+                    source_id=source_id
+                ),
+                timeout=5.0
+            )
+        except Exception:
+            return None
+    except Exception:
+        return None
 
 
 async def investigate_and_resolve_remote_attack(server, dst_ip, dpt, tunnel_email, proto, src_ip, spt, source="tunnel"):
@@ -344,20 +355,20 @@ async def handle_remote_traffic_line(line, server=None):
         is_sensitive = dpt in [22, 3389, 3306, 5432, 27017, 8006]
         
         now = asyncio.get_event_loop().time()
-        throttle_key = f"remote_traffic_{server['ip']}_{src}_{dst}_{dpt}"
+        throttle_key = f"remote_traffic_{server['ip']}_{direction}_{src}_{dst}_{dpt}"
         
         if direction == 'IN' and is_sensitive:
             if src not in settings.trusted_admin_ips:
+                last_alert = recent_remote_traffic_alerts.get(throttle_key, 0)
+                if now - last_alert < 60:
+                    return
+                recent_remote_traffic_alerts[throttle_key] = now
+
                 node_name = f"vps_{server['ip']}"
                 from core.db import is_whitelisted
                 if await is_whitelisted(node_name, ip=src, port=dpt):
                     logging.info("remote_ips_incoming_connection_from_to_is", server['ip'], src, dpt)
                     return
-                    
-                last_alert = recent_remote_traffic_alerts.get(throttle_key, 0)
-                if now - last_alert < 30:
-                    return
-                recent_remote_traffic_alerts[throttle_key] = now
                 
                 timestamp = datetime.datetime.now().strftime("%H:%M:%S")
                 msg = get_ips_sensitive_access_alert(
@@ -365,16 +376,16 @@ async def handle_remote_traffic_line(line, server=None):
                 )
                 await send_alert_to_admins(msg, parse_mode="markdown")
         elif direction == 'OUT' and is_sensitive:
+            last_alert = recent_remote_traffic_alerts.get(throttle_key, 0)
+            if now - last_alert < 60:
+                return
+            recent_remote_traffic_alerts[throttle_key] = now
+
             node_name = f"vps_{server['ip']}"
             from core.db import is_whitelisted
             if await is_whitelisted(node_name, ip=dst, port=dpt):
                 logging.info("remote_ips_outgoing_connection_to_is_whitelisted", server['ip'], dst, dpt)
                 return
-                
-            last_alert = recent_remote_traffic_alerts.get(throttle_key, 0)
-            if now - last_alert < 5:
-                return
-            recent_remote_traffic_alerts[throttle_key] = now
             
             timestamp = datetime.datetime.now().strftime("%H:%M:%S")
             from core.spectre_client import spectre_manager
