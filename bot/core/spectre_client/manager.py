@@ -399,7 +399,7 @@ class SpectreClientManager:
                     if success and stdout:
                         lines = stdout.splitlines()
                     else:
-                        d_success, d_stdout, _ = await run_remote_ssh_cmd(server, [f"docker exec spectre-panel tail -n 5000 {log_path}"])
+                        d_success, d_stdout, _ = await run_remote_ssh_cmd(server, [f"docker exec sentinel-panel tail -n 5000 {log_path} 2>/dev/null || docker exec spectre-panel tail -n 5000 {log_path}"])
                         if d_success and d_stdout:
                             lines = d_stdout.splitlines()
                         else:
