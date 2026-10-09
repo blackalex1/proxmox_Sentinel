@@ -39,5 +39,7 @@ translation = {
     "reboot_start": "⏳ Rebooting hosts <b>{host_name}</b> via Ansible...",
     "reboot_success": "✅ Reboot command sent successfully to <b>{host_name}</b>!",
     "reboot_failed": "❌ Failed to reboot hosts <b>{host_name}</b>:\n<pre><code>{error_msg}</code></pre>",
+    "target_all_hosts": "on <b>all hosts</b>",
+    "target_host": "on host: <b>{host}</b>",
 }
 
