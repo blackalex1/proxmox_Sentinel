@@ -10,6 +10,7 @@ from core.messages import (
     get_ansible_run_start_text,
     get_ansible_run_success_text,
     get_ansible_run_failed_text,
+    get_ansible_target_text,
     get_ansible_reboot_start_text,
     get_ansible_reboot_success_text,
     get_ansible_reboot_failed_text,
@@ -44,7 +45,7 @@ async def execute_ansible_playbook(message_or_callback, state: FSMContext, limit
     if limit_host:
         cmd.extend(["--limit", limit_host])
 
-    target_text = f"на хосте: <b>{html.escape(limit_host)}</b>" if limit_host else "на <b>всех хостах</b>"
+    target_text = get_ansible_target_text(limit_host)
     start_text = get_ansible_run_start_text(real_filename or "", target_text)
     
     if isinstance(message_or_callback, types.Message):
@@ -140,7 +141,7 @@ async def execute_ansible_playbook(message_or_callback, state: FSMContext, limit
             logfile = FSInputFile(temp_log_path)
             await status_msg.delete()
             
-            caption = f"📝 Полный лог <b>{real_filename}</b> {target_text}.\nСтатус: {status}"
+            caption = f"📝 Полный лог <b>{html.escape(real_filename or '')}</b> {target_text}.\nСтатус: {status}"
             if reboot_hosts:
                 caption += f"\n\n⚠️ <b>Требуется перезагрузка для:</b>\n" + "\n".join([f"• {h}" for h in reboot_hosts])
             
@@ -160,7 +161,7 @@ async def execute_ansible_playbook(message_or_callback, state: FSMContext, limit
                 )
             os.remove(temp_log_path)
         else:
-            text = f"📝 Отчет по <b>{real_filename}</b> {target_text}\nСтатус: {status}\n<pre><code class='language-bash'>{full_log_escaped}</code></pre>"
+            text = f"📝 Отчет по <b>{html.escape(real_filename or '')}</b> {target_text}\nСтатус: {status}\n<pre><code class='language-bash'>{full_log_escaped}</code></pre>"
             if reboot_hosts:
                 text += f"\n\n⚠️ <b>Требуется перезагрузка для:</b>\n" + "\n".join([f"• {h}" for h in reboot_hosts])
                 

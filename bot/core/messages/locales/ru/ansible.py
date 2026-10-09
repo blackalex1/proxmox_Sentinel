@@ -39,5 +39,7 @@ translation = {
     "reboot_start": "⏳ Перезагружаю хосты <b>{host_name}</b> через Ansible...",
     "reboot_success": "✅ Хосты <b>{host_name}</b> успешно отправлены в перезагрузку!",
     "reboot_failed": "❌ Ошибка перезагрузки хостов <b>{host_name}</b>:\n<pre><code>{error_msg}</code></pre>",
+    "target_all_hosts": "на <b>всех хостах</b>",
+    "target_host": "на хосте: <b>{host}</b>",
 }
 

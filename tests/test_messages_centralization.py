@@ -62,6 +62,11 @@ def test_all_templates_russian_locale():
     # Ansible
     assert "Папка" in msgs.get_ansible_missing_dir_text("/etc/ansible")
     assert "Управление Ansible" in msgs.get_ansible_playbooks_menu_text()
+    assert msgs.get_ansible_target_text() == "на <b>всех хостах</b>"
+    assert msgs.get_ansible_target_text("node1") == "на хосте: <b>node1</b>"
+    run_start_ru = msgs.get_ansible_run_start_text("update_servers.yml", msgs.get_ansible_target_text())
+    assert run_start_ru == "⏳ Запускаю <b>update_servers.yml</b> на <b>всех хостах</b>...\nОжидайте результата."
+    assert "&lt;b&gt;" not in run_start_ru
     # System Status Table with Panels
     status_tbl = msgs.get_system_status_table(
         pve_nodes=[{"node": "pve", "status": "online", "cpu": 0.05, "mem": 4*1024**3, "maxmem": 16*1024**3}],
@@ -117,6 +122,11 @@ def test_all_templates_english_locale():
     assert "Ansible Control" in msgs.get_ansible_playbooks_menu_text()
     assert "Which hosts" in msgs.get_ansible_ask_host_text("test.yml")
     assert "Ansible Setup" in msgs.get_ansible_setup_loading_text()
+    assert msgs.get_ansible_target_text() == "on <b>all hosts</b>"
+    assert msgs.get_ansible_target_text("node1") == "on host: <b>node1</b>"
+    run_start_en = msgs.get_ansible_run_start_text("update_servers.yml", msgs.get_ansible_target_text())
+    assert run_start_en == "⏳ Running <b>update_servers.yml</b> on <b>all hosts</b>...\nPlease wait."
+    assert "&lt;b&gt;" not in run_start_en
 
     # System Status Table with Panels
     status_tbl = msgs.get_system_status_table(

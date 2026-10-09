@@ -47,16 +47,22 @@ def get_ansible_setup_failed_text(target_name: str, error_msg: str) -> str:
     return _("ansible", "setup_failed", target_name=html.escape(target_name), error_msg=html.escape(str(error_msg)))
 
 
+def get_ansible_target_text(limit_host: str = None) -> str:
+    if limit_host:
+        return _("ansible", "target_host", host=html.escape(limit_host))
+    return _("ansible", "target_all_hosts")
+
+
 def get_ansible_run_start_text(filename: str, target_text: str) -> str:
-    return _("ansible", "run_start", filename=html.escape(filename), target_text=html.escape(target_text))
+    return _("ansible", "run_start", filename=html.escape(filename), target_text=target_text)
 
 
 def get_ansible_run_success_text(filename: str, target_text: str) -> str:
-    return _("ansible", "run_success", filename=html.escape(filename), target_text=html.escape(target_text))
+    return _("ansible", "run_success", filename=html.escape(filename), target_text=target_text)
 
 
 def get_ansible_run_failed_text(filename: str, target_text: str, error_msg: str) -> str:
-    return _("ansible", "run_failed", filename=html.escape(filename), target_text=html.escape(target_text), error_msg=html.escape(str(error_msg)))
+    return _("ansible", "run_failed", filename=html.escape(filename), target_text=target_text, error_msg=html.escape(str(error_msg)))
 
 
 def get_ansible_reboot_start_text(host_name: str) -> str:
