@@ -349,8 +349,6 @@ class ResilientOutbox:
                     return
 
             self.queue.append(msg_data)
-            if len(self.queue) > 100:
-                self.queue = self.queue[-100:]
             self.save_to_disk()
             logger.info("outbox_message_added_deferred_queue_total", chat_id, len(self.queue))
 
@@ -376,8 +374,6 @@ class ResilientOutbox:
                 self.queue[existing_idx] = msg_data
             else:
                 self.queue.append(msg_data)
-            if len(self.queue) > 100:
-                self.queue = self.queue[-100:]
             self.save_to_disk()
             logger.info("outbox_edit_added_deferred_queue_total", chat_id, message_id, len(self.queue))
 
