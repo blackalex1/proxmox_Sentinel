@@ -107,3 +107,14 @@ async def test_alert_callbacks():
     cb_mock.answer.reset_mock()
     await cb_copy_ip(cb_mock)
     cb_mock.answer.assert_called_once_with("198.51.100.55", show_alert=True)
+
+
+def test_find_kernel_log_path():
+    from modules.proxmox.monitor.traffic.parser import find_kernel_log_path
+    from unittest.mock import patch
+
+    with patch("os.path.exists", side_effect=lambda p: p == "/var/log/syslog"):
+        assert find_kernel_log_path() == "/var/log/syslog"
+
+    with patch("os.path.exists", return_value=False):
+        assert find_kernel_log_path() is None
