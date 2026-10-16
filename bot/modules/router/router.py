@@ -403,3 +403,149 @@ async def unban_router_port(ip, port, proto='tcp'):
             logging.error(f"Error removing port block from DB: {db_err}")
             
     return success, desc
+
+
+async def allow_router_port(ip: str, port: int, proto: str = 'tcp', reason: str = "Вручную"):
+    """
+    Разрешает порт (или все порты при port=0) для указанного клиента на роутере.
+    Снимает существующие блокировки на данный порт и добавляет правило ACCEPT на роутере.
+    """
+    if not settings.router_monitor_enable:
+        from core.db import add_router_allowed_port
+        await add_router_allowed_port(ip, int(port), protocol=proto, reason=reason)
+        return True, "Разрешение добавлено в базу данных"
+
+    proto = proto.lower()
+    port = int(port)
+
+    # 1. Если был заблокирован этот порт (или все порты), снимаем блокировку
+    if port == 0:
+        await unban_router_ip(ip)
+    else:
+        await unban_router_port(ip, port, proto=proto)
+
+    success = False
+    desc = ""
+
+    if settings.router_type == 'openwrt':
+        if port == 0 or proto == 'all':
+            # Разрешаем весь трафик клиента
+            nft_cmd = (
+                f"nft insert rule inet fw4 forward ip saddr {ip} accept comment \"SENTINEL-PORT-ALLOW\" && "
+                f"nft insert rule inet fw4 input ip saddr {ip} accept comment \"SENTINEL-PORT-ALLOW\""
+            )
+            ok, stdout, stderr = await run_router_ssh_cmd(nft_cmd)
+            if ok:
+                success, desc = True, "Все порты разрешены (nftables)"
+            else:
+                ipt_cmd = (
+                    f"iptables -I FORWARD 1 -s {ip} -j ACCEPT -m comment --comment \"SENTINEL-PORT-ALLOW\" && "
+                    f"iptables -I INPUT 1 -s {ip} -j ACCEPT -m comment --comment \"SENTINEL-PORT-ALLOW\""
+                )
+                ok, stdout, stderr = await run_router_ssh_cmd(ipt_cmd)
+                if ok:
+                    success, desc = True, "Все порты разрешены (iptables с комментом)"
+                else:
+                    ipt_plain = f"iptables -I FORWARD 1 -s {ip} -j ACCEPT && iptables -I INPUT 1 -s {ip} -j ACCEPT"
+                    ok, stdout, stderr = await run_router_ssh_cmd(ipt_plain)
+                    success, desc = (True, "Все порты разрешены (iptables)") if ok else (False, stderr)
+        else:
+            # Разрешаем конкретный порт/протокол
+            nft_cmd = (
+                f"nft insert rule inet fw4 forward ip saddr {ip} {proto} dport {port} accept comment \"SENTINEL-PORT-ALLOW\" && "
+                f"nft insert rule inet fw4 input ip saddr {ip} {proto} dport {port} accept comment \"SENTINEL-PORT-ALLOW\""
+            )
+            ok, stdout, stderr = await run_router_ssh_cmd(nft_cmd)
+            if ok:
+                success, desc = True, f"Порт {port}/{proto} разрешен (nftables)"
+            else:
+                ipt_cmd = (
+                    f"iptables -I FORWARD 1 -s {ip} -p {proto} --dport {port} -j ACCEPT -m comment --comment \"SENTINEL-PORT-ALLOW\" && "
+                    f"iptables -I INPUT 1 -s {ip} -p {proto} --dport {port} -j ACCEPT -m comment --comment \"SENTINEL-PORT-ALLOW\""
+                )
+                ok, stdout, stderr = await run_router_ssh_cmd(ipt_cmd)
+                if ok:
+                    success, desc = True, f"Порт {port}/{proto} разрешен (iptables с комментом)"
+                else:
+                    ipt_plain = (
+                        f"iptables -I FORWARD 1 -s {ip} -p {proto} --dport {port} -j ACCEPT && "
+                        f"iptables -I INPUT 1 -s {ip} -p {proto} --dport {port} -j ACCEPT"
+                    )
+                    ok, stdout, stderr = await run_router_ssh_cmd(ipt_plain)
+                    success, desc = (True, f"Порт {port}/{proto} разрешен (iptables)") if ok else (False, stderr)
+
+    else: # keenetic / generic
+        if port == 0 or proto == 'all':
+            ipt_cmd = f"iptables -I FORWARD 1 -s {ip} -j ACCEPT && iptables -I INPUT 1 -s {ip} -j ACCEPT"
+            ok, stdout, stderr = await run_router_ssh_cmd(ipt_cmd)
+            success, desc = (True, "Все порты разрешены") if ok else (False, stderr)
+        else:
+            ipt_cmd = f"iptables -I FORWARD 1 -s {ip} -p {proto} --dport {port} -j ACCEPT && iptables -I INPUT 1 -s {ip} -p {proto} --dport {port} -j ACCEPT"
+            ok, stdout, stderr = await run_router_ssh_cmd(ipt_cmd)
+            success, desc = (True, f"Порт {port}/{proto} разрешен") if ok else (False, stderr)
+
+    if success:
+        from core.db import add_router_allowed_port
+        await add_router_allowed_port(ip, port, protocol=proto, reason=reason)
+        logging.info(f"Port {port}/{proto} for router client {ip} successfully allowed and saved to DB")
+
+    return success, desc
+
+
+async def disallow_router_port(ip: str, port: int, proto: str = 'tcp'):
+    """
+    Отзывает разрешение порта для указанного клиента на роутере.
+    Удаляет ACCEPT-правила и удаляет запись из базы данных и кэша.
+    """
+    if not settings.router_monitor_enable:
+        from core.db import remove_router_allowed_port
+        await remove_router_allowed_port(ip, int(port), protocol=proto)
+        return True, "Разрешение удалено из базы данных"
+
+    proto = proto.lower()
+    port = int(port)
+    success = False
+    desc = ""
+
+    if settings.router_type == 'openwrt':
+        if port == 0 or proto == 'all':
+            combined_cmd = (
+                f"iptables -D FORWARD -s {ip} -j ACCEPT -m comment --comment \"SENTINEL-PORT-ALLOW\" 2>/dev/null; "
+                f"iptables -D INPUT -s {ip} -j ACCEPT -m comment --comment \"SENTINEL-PORT-ALLOW\" 2>/dev/null; "
+                f"iptables -D FORWARD -s {ip} -j ACCEPT 2>/dev/null; "
+                f"iptables -D INPUT -s {ip} -j ACCEPT 2>/dev/null; "
+                f"nft delete rule inet fw4 forward ip saddr {ip} accept 2>/dev/null; "
+                f"nft delete rule inet fw4 input ip saddr {ip} accept 2>/dev/null; "
+                "true"
+            )
+        else:
+            combined_cmd = (
+                f"iptables -D FORWARD -s {ip} -p {proto} --dport {port} -j ACCEPT -m comment --comment \"SENTINEL-PORT-ALLOW\" 2>/dev/null; "
+                f"iptables -D INPUT -s {ip} -p {proto} --dport {port} -j ACCEPT -m comment --comment \"SENTINEL-PORT-ALLOW\" 2>/dev/null; "
+                f"iptables -D FORWARD -s {ip} -p {proto} --dport {port} -j ACCEPT 2>/dev/null; "
+                f"iptables -D INPUT -s {ip} -p {proto} --dport {port} -j ACCEPT 2>/dev/null; "
+                f"nft delete rule inet fw4 forward ip saddr {ip} {proto} dport {port} accept 2>/dev/null; "
+                f"nft delete rule inet fw4 input ip saddr {ip} {proto} dport {port} accept 2>/dev/null; "
+                "true"
+            )
+        await run_router_ssh_cmd(combined_cmd)
+        success, desc = True, "Разрешение порта успешно снято"
+    else:
+        while True:
+            if port == 0 or proto == 'all':
+                success_f, _, _ = await run_router_ssh_cmd(f"iptables -D FORWARD -s {ip} -j ACCEPT")
+                success_i, _, _ = await run_router_ssh_cmd(f"iptables -D INPUT -s {ip} -j ACCEPT")
+            else:
+                success_f, _, _ = await run_router_ssh_cmd(f"iptables -D FORWARD -s {ip} -p {proto} --dport {port} -j ACCEPT")
+                success_i, _, _ = await run_router_ssh_cmd(f"iptables -D INPUT -s {ip} -p {proto} --dport {port} -j ACCEPT")
+            if not success_f and not success_i:
+                break
+        success, desc = True, "Разрешение порта успешно снято"
+
+    if success:
+        from core.db import remove_router_allowed_port
+        await remove_router_allowed_port(ip, port, protocol=proto)
+        logging.info(f"Port {port}/{proto} for router client {ip} successfully disallowed and removed from DB")
+
+    return success, desc
+

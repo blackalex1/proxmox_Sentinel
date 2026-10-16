@@ -26,6 +26,15 @@ async def _process_router_event(event_type: str, event: dict):
     if not is_threat:
         return
 
+    # Проверяем, разрешен ли данный порт клиенту роутера в таблице разрешений или в белом списке
+    from core.db import is_router_port_allowed, is_whitelisted
+    if await is_router_port_allowed(src_ip, dst_port, proto):
+        logging.info("[Router IPS] Port %s/%s is explicitly allowed for client %s, ignoring event.", dst_port, proto, src_ip)
+        return
+    if await is_whitelisted("router", ip=src_ip, port=dst_port) or await is_whitelisted("router", ip=dst_host, port=dst_port):
+        logging.info("[Router IPS] Connection %s -> %s:%s is whitelisted on router/global node, ignoring.", src_ip, dst_host, dst_port)
+        return
+
     # Проверяем, заблокирован ли уже этот IP полностью или точечно для этого порта на роутере
     from core.db import execute_read_one
     full_ban = await execute_read_one("SELECT 1 FROM temp_bans WHERE server_ip = 'router' AND dst_ip = ?", (src_ip,))
@@ -68,7 +77,14 @@ async def _process_router_event(event_type: str, event: dict):
     from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
     buttons = []
     if settings.router_monitor_enable:
-        buttons.append([InlineKeyboardButton(text=_("router", "btn_block_ip_router"), callback_data=f"router_block:{src_ip}")])
+        buttons.append([
+            InlineKeyboardButton(text=_("router", "btn_block_ip_router", "🛑 Заблокировать IP"), callback_data=f"router_block:{src_ip}"),
+            InlineKeyboardButton(text=_("router", "btn_allow_port_alert", f"🟢 Разрешить {dst_port}", port=dst_port), callback_data=f"r_al_alert:{src_ip}:{dst_port}:{proto.lower()}")
+        ])
+        buttons.append([
+            InlineKeyboardButton(text=_("router", "btn_allow_all_alert", "🌐 Разрешить все порты"), callback_data=f"r_al_alert:{src_ip}:0:all"),
+            InlineKeyboardButton(text="📋 Скопировать IP", callback_data=f"copy:ip:{src_ip}")
+        ])
 
     kb = InlineKeyboardMarkup(inline_keyboard=buttons) if buttons else None
     timestamp = datetime.datetime.now().strftime("%H:%M:%S")

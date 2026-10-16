@@ -45,16 +45,24 @@ translation = {
     ),
     "btn_unblock_ip_router": "🟢 Unblock IP on router",
     "btn_block_ip_router": "🛑 Block IP on router",
+    "btn_allow_port_alert": "🟢 Allow {port}",
+    "btn_allow_all_alert": "🌐 Allow All Ports",
     "btn_ban_all_full": "🛑 Block Completely",
     "btn_unban_all_full": "🟢 Unblock Completely",
     "btn_ban_port_menu": "🔒 Block Port/Service",
+    "btn_allow_port_menu": "🟢 Allow Port/Service",
+    "btn_allow_all_ports": "🌐 Allow All Ports (Trusted)",
     "btn_manage_bans": "🔎 Manage Restrictions ({count})",
+    "btn_manage_rules": "🔎 Manage Rules ({count})",
     "btn_back_to_clients": "🔙 Back to Clients List",
     "btn_web_service": "🌐 Web Browser (80, 443)",
     "btn_ssh_service": "💻 SSH Console (22)",
     "btn_dns_service": "👥 DNS Queries (53)",
+    "btn_db_service": "🗄 Databases (3306, 5432)",
+    "btn_proxmox_rdp_service": "🖥 Proxmox / RDP (8006, 3389)",
     "btn_custom_port": "✏️ Enter Port Manually...",
     "btn_unban_port_action": "❌ Remove block {port}/{proto}",
+    "btn_disallow_port_action": "❌ Revoke {port}/{proto}",
     "btn_unban_all_action": "🟢 Remove full block",
     
     "dur_1_hour": "1 hour",
@@ -69,20 +77,32 @@ translation = {
         "✏️ <b>Port restriction for device {ip}</b>\n\n"
         "Enter port number or port/protocol (e.g. <code>80</code>, <code>53/udp</code>, <code>8080/tcp</code>):"
     ),
-    "active_bans_header": "🔎 <b>Active restrictions for device {ip}:</b>\n\n",
+    "prompt_allow_port_service": (
+        "🟢 <b>Allow Ports for Device {ip}</b>\n\n"
+        "Select a service or port to permanently whitelist (traffic will not be blocked or trigger alerts):"
+    ),
+    "prompt_custom_allow_port_input": (
+        "🟢 <b>Allow Port for Device {ip}</b>\n\n"
+        "Enter port number (1-65535) or port/proto (e.g. <code>8080</code>, <code>8080/tcp</code>, <code>53/udp</code> or <code>0</code> for all ports):"
+    ),
+    "active_bans_header": "🔎 <b>Active rules for device {ip}:</b>\n\n",
     "active_ban_ip_item": " • <b>Full IP Block</b> (Expires: {expire})\n",
     "active_ban_port_item": " • <b>Port {port}/{proto}</b> (Expires: {expire})\n",
-    "active_bans_empty": "No active restrictions for this device.",
+    "active_bans_empty": "No active rules for this device.",
     
     "err_session_lost": "❌ Error: session lost. Please restart with /router",
     "err_invalid_proto": "❌ Invalid protocol. Specify tcp or udp (e.g. 80/tcp or 53/udp)",
-    "err_invalid_port": "❌ Port must be a number between 1 and 65535.",
+    "err_invalid_port": "❌ Port must be a number between 1 and 65535 (or 0 for all ports).",
     "action_applying_ssh": "Applying block via SSH...",
     "action_unbanning_ssh": "Removing block via SSH...",
     "action_unbanning_port_ssh": "Removing port {port}/{proto} block via SSH...",
     "action_banning_port_ssh": "Adding port block rules via SSH...",
+    "action_allowing_port_ssh": "Adding port allow rules via SSH...",
+    "action_disallowing_port_ssh": "Removing port allow rules via SSH...",
     "port_blocked_success": "Port {port}/{proto} successfully blocked!",
     "port_unblocked_success": "Port {port}/{proto} block removed!",
+    "port_allowed_success": "🟢 Port {port}/{proto} allowed for {ip}!",
+    "port_disallowed_success": "Permission for port {port}/{proto} revoked!",
     
     "ip_blocked_successfully": "🛑 IP {ip} successfully blocked on router!",
     "ip_block_failed": "❌ Block error: {desc}",
@@ -95,17 +115,20 @@ translation = {
     
     # UI and Client Details
     "clients_list_empty": "⚠️ No devices found or router monitoring is disabled in configuration.",
-    "clients_list_header": "🖥 <b>Router connected devices:</b>\nSelect a device below to manage network restrictions.\n",
+    "clients_list_header": "🖥 <b>Router connected devices:</b>\nSelect a device below to manage network restrictions and allowed ports.\n",
     "client_details_title": "🖥 Router Client Management",
     "col_device_name": "Device Name",
     "col_ip": "IP Address",
     "col_mac": "MAC Address",
     "col_net_status": "Network Status",
     "col_ban_status": "Restriction Status",
+    "col_allowed_ports": "Allowed Ports",
+    "allowed_ports_all": "🌐 All Ports (Trusted)",
+    "allowed_ports_none": "Default",
     "status_active": "🟢 Active",
     "status_offline": "⚪ Offline",
     "ban_status_full": "🛑 Fully Blocked",
     "ban_status_ports": "🔒 Port Restrictions Active",
     "ban_status_none": "🟢 Access Allowed",
-    "client_active_rules_footer": "🔒 Active restriction rules count: <b>{count}</b>",
+    "client_active_rules_footer": "🔒 Active rules count: <b>{count}</b>",
 }

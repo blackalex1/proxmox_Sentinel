@@ -553,3 +553,128 @@ async def test_process_router_event_threat_and_autoban():
         mock_ban.assert_called_once_with("192.168.1.88", reason="Массовое сканирование сети (3 целевых IP на порт 22)")
         mock_alert.assert_called_once()
 
+
+@pytest.mark.asyncio
+async def test_allow_disallow_router_port():
+    from modules.router.router import allow_router_port, disallow_router_port
+    from core.config import settings
+    from core.db import get_router_allowed_ports, is_router_port_allowed
+
+    original_ssh = settings.router_monitor_enable
+    original_type = settings.router_type
+
+    settings.router_monitor_enable = True
+    settings.router_type = "openwrt"
+
+    try:
+        with patch("modules.router.router.run_router_ssh_cmd", AsyncMock(return_value=(True, "OK", ""))):
+            # 1. Разрешаем конкретный порт (22/tcp) для 192.168.1.50
+            success, desc = await allow_router_port("192.168.1.50", 22, proto="tcp", reason="SSH Dev")
+            assert success is True
+            assert await is_router_port_allowed("192.168.1.50", 22, "tcp") is True
+            assert await is_router_port_allowed("192.168.1.50", 80, "tcp") is False
+            assert await is_router_port_allowed("192.168.1.51", 22, "tcp") is False
+
+            # Проверяем записи в БД
+            client_rules = await get_router_allowed_ports("192.168.1.50")
+            assert len(client_rules) == 1
+            assert client_rules[0]['port'] == 22
+            assert client_rules[0]['protocol'] == "tcp"
+
+            # 2. Разрешаем ВСЕ порты для 192.168.1.60 (port=0)
+            success_all, _ = await allow_router_port("192.168.1.60", 0, proto="all", reason="Trusted Device")
+            assert success_all is True
+            assert await is_router_port_allowed("192.168.1.60", 22, "tcp") is True
+            assert await is_router_port_allowed("192.168.1.60", 8006, "tcp") is True
+            assert await is_router_port_allowed("192.168.1.60", 53, "udp") is True
+
+            # 3. Отзываем разрешение для 192.168.1.50
+            success_del, _ = await disallow_router_port("192.168.1.50", 22, proto="tcp")
+            assert success_del is True
+            assert await is_router_port_allowed("192.168.1.50", 22, "tcp") is False
+            assert len(await get_router_allowed_ports("192.168.1.50")) == 0
+
+            # Очищаем 192.168.1.60
+            await disallow_router_port("192.168.1.60", 0, proto="all")
+            assert await is_router_port_allowed("192.168.1.60", 22, "tcp") is False
+    finally:
+        settings.router_monitor_enable = original_ssh
+        settings.router_type = original_type
+
+
+@pytest.mark.asyncio
+async def test_process_router_event_allowed_port_skipped():
+    from modules.router.monitor.router_handlers import _process_router_event
+    from modules.router.router import allow_router_port, disallow_router_port
+    from core.config import settings
+
+    original_ssh = settings.router_monitor_enable
+    settings.router_monitor_enable = True
+
+    try:
+        with patch("modules.router.router.run_router_ssh_cmd", AsyncMock(return_value=(True, "OK", ""))):
+            # Добавляем 22 в разрешенные порты для 192.168.1.77
+            await allow_router_port("192.168.1.77", 22, proto="tcp", reason="Dev PC")
+
+            event = {
+                "src_ip": "192.168.1.77",
+                "src_port": 54321,
+                "dst_host": "192.0.2.30",
+                "dst_port": 22,
+                "proto": "TCP",
+                "is_threat": True,
+                "should_autoban": True,
+            }
+
+            with patch("modules.router.monitor.router_handlers.ban_router_ip", AsyncMock()) as mock_ban, \
+                 patch("modules.router.monitor.router_handlers.send_alert_to_admins", AsyncMock()) as mock_alert:
+                await _process_router_event("Conntrack", event)
+                # Событие должно быть проигнорировано (никаких алертов и банов)
+                mock_ban.assert_not_called()
+                mock_alert.assert_not_called()
+
+            # Очистка
+            await disallow_router_port("192.168.1.77", 22, proto="tcp")
+    finally:
+        settings.router_monitor_enable = original_ssh
+
+
+@pytest.mark.asyncio
+async def test_router_allow_callbacks():
+    from modules.router.handlers import (
+        cb_router_allow_port_action,
+        cb_router_allow_alert_action,
+        cb_router_disallow_port_action,
+        process_custom_allow_port_input
+    )
+    from core.db import is_router_port_allowed
+
+    cb_mock = AsyncMock()
+    cb_mock.message = AsyncMock()
+    cb_mock.message.chat.id = 12345
+    cb_mock.message.message_id = 99
+    cb_mock.message.text = "Router Alert Text"
+
+    with patch("modules.router.router.run_router_ssh_cmd", AsyncMock(return_value=(True, "OK", ""))):
+        # 1. Быстрое разрешение из алерта: r_al_alert:192.168.1.99:8006:tcp
+        cb_mock.data = "r_al_alert:192.168.1.99:8006:tcp"
+        await cb_router_allow_alert_action(cb_mock)
+        assert await is_router_port_allowed("192.168.1.99", 8006, "tcp") is True
+
+        # 2. Отзыв разрешения: r_disallow_port:192.168.1.99:8006:tcp
+        cb_mock.data = "r_disallow_port:192.168.1.99:8006:tcp"
+        await cb_router_disallow_port_action(cb_mock)
+        assert await is_router_port_allowed("192.168.1.99", 8006, "tcp") is False
+
+        # 3. Разрешение сервиса через меню: r_allow_act:192.168.1.99:80_443:tcp
+        cb_mock.data = "r_allow_act:192.168.1.99:80_443:tcp"
+        with patch("modules.router.handlers.render_client_details", AsyncMock(return_value=("text", None))):
+            await cb_router_allow_port_action(cb_mock)
+        assert await is_router_port_allowed("192.168.1.99", 80, "tcp") is True
+        assert await is_router_port_allowed("192.168.1.99", 443, "tcp") is True
+
+        # Очистка
+        from modules.router.router import disallow_router_port
+        await disallow_router_port("192.168.1.99", 80, "tcp")
+        await disallow_router_port("192.168.1.99", 443, "tcp")
+

@@ -44,10 +44,13 @@ def get_router_client_details_card(
     mac: str,
     active: bool,
     full_ban: Optional[Dict[str, Any]],
-    port_bans: List[Dict[str, Any]]
+    port_bans: List[Dict[str, Any]],
+    allowed_ports: Optional[List[Dict[str, Any]]] = None
 ) -> str:
     status_emoji = _("router", "status_active") if active else _("router", "status_offline")
     port_bans_list = port_bans if isinstance(port_bans, list) else []
+    allowed_ports_list = allowed_ports if isinstance(allowed_ports, list) else []
+    
     if full_ban:
         ban_status = _("router", "ban_status_full")
     elif port_bans_list:
@@ -56,6 +59,14 @@ def get_router_client_details_card(
         ban_status = _("router", "ban_status_none")
         
     bans_count = (1 if full_ban else 0) + len(port_bans_list)
+    total_rules = bans_count + len(allowed_ports_list)
+    
+    if any(p.get('port') == 0 or p.get('protocol') == 'all' for p in allowed_ports_list):
+        allowed_str = _("router", "allowed_ports_all", "🌐 Все порты (Доверенный)")
+    elif allowed_ports_list:
+        allowed_str = ", ".join(f"<code>{p.get('port')}/{p.get('protocol')}</code>" for p in allowed_ports_list)
+    else:
+        allowed_str = _("router", "allowed_ports_none", "По умолчанию")
     
     rows = []
     rows.append('<table bordered striped compact>')
@@ -82,9 +93,13 @@ def get_router_client_details_card(
     rows.append(f'    <td align="left"><b>{_("router", "col_ban_status")}</b></td>')
     rows.append(f'    <td align="left">{ban_status}</td>')
     rows.append('  </tr>')
+    rows.append('  <tr>')
+    rows.append(f'    <td align="left"><b>{_("router", "col_allowed_ports", "Разрешенные порты")}</b></td>')
+    rows.append(f'    <td align="left">{allowed_str}</td>')
+    rows.append('  </tr>')
     rows.append('</table>\n')
     
-    rows.append(_("router", "client_active_rules_footer", count=bans_count))
+    rows.append(_("router", "client_active_rules_footer", count=total_rules))
     return "\n".join(rows)
 
 def get_router_ban_all_menu_text(ip: str) -> str:
@@ -99,7 +114,18 @@ def get_router_ban_port_duration_text(ip: str, port_label: str, proto: str) -> s
 def get_router_custom_port_prompt_text(ip: str) -> str:
     return _("router", "prompt_custom_port_input", ip=ip)
 
-def get_router_active_bans_text(ip: str, full_ban: Optional[Dict[str, Any]], port_bans: List[Dict[str, Any]]) -> str:
+def get_router_allow_port_menu_text(ip: str) -> str:
+    return _("router", "prompt_allow_port_service", ip=ip)
+
+def get_router_custom_allow_port_prompt_text(ip: str) -> str:
+    return _("router", "prompt_custom_allow_port_input", ip=ip)
+
+def get_router_active_bans_text(
+    ip: str,
+    full_ban: Optional[Dict[str, Any]],
+    port_bans: List[Dict[str, Any]],
+    allowed_ports: Optional[List[Dict[str, Any]]] = None
+) -> str:
     text = _("router", "active_bans_header", ip=ip)
     if full_ban:
         expire = full_ban.get('expire_time')
@@ -113,7 +139,19 @@ def get_router_active_bans_text(ip: str, full_ban: Optional[Dict[str, Any]], por
         expire_label = expire.split(".")[0].replace("T", " ") if expire and expire != "never" else _("router", "dur_forever")
         text += _("router", "active_ban_port_item", port=p, proto=proto, expire=expire_label)
         
-    if not full_ban and not port_bans:
+    allowed_ports_list = allowed_ports if isinstance(allowed_ports, list) else []
+    if allowed_ports_list:
+        text += f"\n\n🟢 <b>{_('router', 'col_allowed_ports', 'Разрешенные порты')}:</b>\n"
+        for ap in allowed_ports_list:
+            p = ap.get('port')
+            proto = ap.get('protocol')
+            reason = ap.get('reason', 'Вручную')
+            if p == 0 or proto == 'all':
+                text += f"  • 🌐 <b>{_('router', 'allowed_ports_all', 'Все порты (Доверенный)')}</b> ({reason})\n"
+            else:
+                text += f"  • <code>{p}/{proto}</code> ({reason})\n"
+
+    if not full_ban and not port_bans and not allowed_ports_list:
         text += _("router", "active_bans_empty")
         
     return text

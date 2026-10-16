@@ -45,16 +45,24 @@ translation = {
     ),
     "btn_unblock_ip_router": "🟢 Разблокировать IP на роутере",
     "btn_block_ip_router": "🛑 Заблокировать IP на роутере",
+    "btn_allow_port_alert": "🟢 Разрешить {port}",
+    "btn_allow_all_alert": "🌐 Разрешить все порты",
     "btn_ban_all_full": "🛑 Заблокировать полностью",
     "btn_unban_all_full": "🟢 Разблокировать полностью",
     "btn_ban_port_menu": "🔒 Заблокировать порт/сервис",
+    "btn_allow_port_menu": "🟢 Разрешить порт/сервис",
+    "btn_allow_all_ports": "🌐 Разрешить все порты (Доверенный)",
     "btn_manage_bans": "🔎 Управление блокировками ({count})",
+    "btn_manage_rules": "🔎 Управление правилами ({count})",
     "btn_back_to_clients": "🔙 Назад к списку клиентов",
     "btn_web_service": "🌐 Web-браузер (80, 443)",
     "btn_ssh_service": "💻 SSH консоль (22)",
     "btn_dns_service": "👥 DNS запросы (53)",
+    "btn_db_service": "🗄 Базы данных (3306, 5432)",
+    "btn_proxmox_rdp_service": "🖥 Proxmox / RDP (8006, 3389)",
     "btn_custom_port": "✏️ Ввести порт вручную...",
     "btn_unban_port_action": "❌ Снять блок {port}/{proto}",
+    "btn_disallow_port_action": "❌ Запретить {port}/{proto}",
     "btn_unban_all_action": "🟢 Снять полную блокировку",
     
     "dur_1_hour": "1 час",
@@ -69,20 +77,32 @@ translation = {
         "✏️ <b>Блокировка порта для устройства {ip}</b>\n\n"
         "Введите номер порта или порт/протокол (например: <code>80</code>, <code>53/udp</code>, <code>8080/tcp</code>):"
     ),
-    "active_bans_header": "🔎 <b>Активные блокировки для устройства {ip}:</b>\n\n",
+    "prompt_allow_port_service": (
+        "🟢 <b>Разрешение портов для устройства {ip}</b>\n\n"
+        "Выберите сервис или порт для постоянного разрешения (трафик не будет блокироваться и вызывать алерты):"
+    ),
+    "prompt_custom_allow_port_input": (
+        "🟢 <b>Разрешение порта для устройства {ip}</b>\n\n"
+        "Введите номер порта (1-65535) или порт/протокол (например: <code>8080</code>, <code>8080/tcp</code>, <code>53/udp</code> или <code>0</code> для всех портов):"
+    ),
+    "active_bans_header": "🔎 <b>Активные правила для устройства {ip}:</b>\n\n",
     "active_ban_ip_item": " • <b>Полная блокировка IP</b> (Истекает: {expire})\n",
     "active_ban_port_item": " • <b>Порт {port}/{proto}</b> (Истекает: {expire})\n",
-    "active_bans_empty": "Нет активных блокировок для этого устройства.",
+    "active_bans_empty": "Нет активных правил для этого устройства.",
     
     "err_session_lost": "❌ Ошибка: сессия утеряна. Начните заново с команды /router",
     "err_invalid_proto": "❌ Неверный протокол. Укажите tcp или udp (например, 80/tcp или 53/udp)",
-    "err_invalid_port": "❌ Порт должен быть числом от 1 до 65535.",
+    "err_invalid_port": "❌ Порт должен быть числом от 1 до 65535 (или 0 для всех портов).",
     "action_applying_ssh": "Выполняю блокировку по SSH...",
     "action_unbanning_ssh": "Снимаю блокировку по SSH...",
     "action_unbanning_port_ssh": "Снимаю блокировку порта {port}/{proto} по SSH...",
     "action_banning_port_ssh": "Добавляю правила блокировки порта по SSH...",
+    "action_allowing_port_ssh": "Добавляю правила разрешения порта по SSH...",
+    "action_disallowing_port_ssh": "Удаляю правила разрешения порта по SSH...",
     "port_blocked_success": "Порт {port}/{proto} успешно заблокирован!",
     "port_unblocked_success": "Блокировка порта {port}/{proto} снята!",
+    "port_allowed_success": "🟢 Порт {port}/{proto} успешно разрешен для {ip}!",
+    "port_disallowed_success": "Разрешение для порта {port}/{proto} снято!",
     
     "ip_blocked_successfully": "🛑 IP {ip} успешно заблокирован на роутере!",
     "ip_block_failed": "❌ Ошибка блокировки: {desc}",
@@ -95,17 +115,20 @@ translation = {
     
     # UI and Client Details
     "clients_list_empty": "⚠️ Устройства не найдены или мониторинг роутера отключен в конфигурации.",
-    "clients_list_header": "🖥 <b>Клиенты вашего роутера:</b>\nВыберите устройство из списка ниже для управления блокировками.\n",
+    "clients_list_header": "🖥 <b>Клиенты вашего роутера:</b>\nВыберите устройство из списка ниже для управления блокировками и разрешениями портов.\n",
     "client_details_title": "🖥 Управление клиентом роутера",
     "col_device_name": "Имя устройства",
     "col_ip": "IP-адрес",
     "col_mac": "MAC-адрес",
     "col_net_status": "Статус сети",
     "col_ban_status": "Статус блокировки",
+    "col_allowed_ports": "Разрешенные порты",
+    "allowed_ports_all": "🌐 Все порты (Доверенный)",
+    "allowed_ports_none": "По умолчанию",
     "status_active": "🟢 Активен",
     "status_offline": "⚪ Офлайн",
     "ban_status_full": "🛑 Заблокирован полностью",
     "ban_status_ports": "🔒 Есть блокировки портов",
     "ban_status_none": "🟢 Доступ разрешен",
-    "client_active_rules_footer": "🔒 Всего активных правил блокировки: <b>{count}</b>",
+    "client_active_rules_footer": "🔒 Всего активных правил: <b>{count}</b>",
 }

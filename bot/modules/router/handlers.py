@@ -11,9 +11,11 @@ from .router import (
     unban_router_ip,
     get_router_clients,
     ban_router_port,
-    unban_router_port
+    unban_router_port,
+    allow_router_port,
+    disallow_router_port
 )
-from core.db import execute_read_all, execute_read_one
+from core.db import execute_read_all, execute_read_one, get_router_allowed_ports
 from core.messages.i18n import _
 from core.messages import (
     get_router_clients_list_text,
@@ -22,6 +24,8 @@ from core.messages import (
     get_router_ban_port_menu_text,
     get_router_ban_port_duration_text,
     get_router_custom_port_prompt_text,
+    get_router_allow_port_menu_text,
+    get_router_custom_allow_port_prompt_text,
     get_router_active_bans_text
 )
 from core.sender import edit_rich_message, send_rich_message
@@ -30,6 +34,7 @@ router = Router()
 
 class RouterPortControlState(StatesGroup):
     waiting_for_custom_port = State()
+    waiting_for_custom_allow_port = State()
 
 # --- Вспомогательные функции рендеринга интерфейса ---
 
@@ -72,9 +77,11 @@ async def render_client_details(ip: str):
     full_ban = await execute_read_one("SELECT * FROM temp_bans WHERE server_ip = 'router' AND dst_ip = ?", (ip,))
     # Проверяем наличие блокировок портов
     port_bans = await execute_read_all("SELECT * FROM temp_port_bans WHERE server_ip = 'router' AND client_ip = ?", (ip,))
+    # Проверяем разрешенные порты
+    allowed_ports = await get_router_allowed_ports(ip)
     
-    bans_count = (1 if full_ban else 0) + len(port_bans)
-    text = get_router_client_details_card(hostname, ip, mac, active, full_ban, port_bans)
+    rules_count = (1 if full_ban else 0) + len(port_bans) + len(allowed_ports)
+    text = get_router_client_details_card(hostname, ip, mac, active, full_ban, port_bans, allowed_ports)
     
     kb_buttons = []
     
@@ -88,12 +95,13 @@ async def render_client_details(ip: str):
         ])
         
     kb_buttons.append([
+        InlineKeyboardButton(text=_("router", "btn_allow_port_menu", "🟢 Разрешить порт/сервис"), callback_data=f"r_allow_port_menu:{ip}"),
         InlineKeyboardButton(text=_("router", "btn_ban_port_menu", "🔒 Заблокировать порт/сервис"), callback_data=f"r_ban_port_menu:{ip}")
     ])
     
-    if bans_count > 0:
+    if rules_count > 0:
         kb_buttons.append([
-            InlineKeyboardButton(text=_("router", "btn_manage_bans", "🔎 Управление блокировками ({count})", count=bans_count), callback_data=f"r_bans:{ip}")
+            InlineKeyboardButton(text=_("router", "btn_manage_rules", "🔎 Управление правилами ({count})", count=rules_count), callback_data=f"r_bans:{ip}")
         ])
         
     kb_buttons.append([
@@ -306,7 +314,157 @@ async def process_custom_port_input(message: types.Message, state: FSMContext):
     await send_rich_message(chat_id=message.chat.id, text=text, reply_markup=kb, parse_mode="HTML")
 
 
-# --- Управление активными блокировками устройства ---
+# --- Управление точечными разрешениями портов ---
+
+@router.callback_query(F.data.startswith("r_allow_port_menu:"))
+async def cb_router_allow_port_menu(callback: CallbackQuery):
+    ip = callback.data.split(":")[1]
+    text = get_router_allow_port_menu_text(ip)
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text=_("router", "btn_allow_all_ports", "🌐 Разрешить все порты (Доверенный)"), callback_data=f"r_allow_act:{ip}:0:all")
+        ],
+        [
+            InlineKeyboardButton(text=_("router", "btn_ssh_service", "💻 SSH консоль (22)"), callback_data=f"r_allow_act:{ip}:22:tcp")
+        ],
+        [
+            InlineKeyboardButton(text=_("router", "btn_web_service", "🌐 Web-трафик (80, 443)"), callback_data=f"r_allow_act:{ip}:80_443:tcp")
+        ],
+        [
+            InlineKeyboardButton(text=_("router", "btn_dns_service", "👥 DNS запросы (53)"), callback_data=f"r_allow_act:{ip}:53:udp")
+        ],
+        [
+            InlineKeyboardButton(text=_("router", "btn_db_service", "🗄 Базы данных (3306, 5432)"), callback_data=f"r_allow_act:{ip}:3306_5432:tcp")
+        ],
+        [
+            InlineKeyboardButton(text=_("router", "btn_proxmox_rdp_service", "🖥 Proxmox / RDP (8006, 3389)"), callback_data=f"r_allow_act:{ip}:8006_3389:tcp")
+        ],
+        [
+            InlineKeyboardButton(text=_("router", "btn_custom_port", "✏️ Ввести порт вручную..."), callback_data=f"r_custom_allow_port:{ip}")
+        ],
+        [
+            InlineKeyboardButton(text=_("keyboards", "btn_back", "🔙 Назад"), callback_data=f"r_cl:{ip}")
+        ]
+    ])
+    await edit_rich_message(chat_id=callback.message.chat.id, message_id=callback.message.message_id, text=text, reply_markup=kb, parse_mode="HTML")
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("r_allow_act:"))
+async def cb_router_allow_port_action(callback: CallbackQuery):
+    parts = callback.data.split(":")
+    ip = parts[1]
+    port_raw = parts[2]
+    proto = parts[3]
+    
+    await callback.answer(_("router", "action_allowing_port_ssh", "Добавляю правила разрешения порта по SSH..."), show_alert=False)
+    
+    ports = port_raw.split("_")
+    success_all = True
+    errors = []
+    
+    for p in ports:
+        port_num = int(p)
+        success, desc = await allow_router_port(ip, port_num, proto=proto, reason="Вручную из TG")
+        if not success:
+            success_all = False
+            errors.append(desc)
+            
+    port_label = "Все порты" if port_raw == "0" else port_raw.replace("_", ", ")
+    if success_all:
+        await callback.answer(_("router", "port_allowed_success", port=port_label, proto=proto, ip=ip), show_alert=True)
+    else:
+        err_msg = ", ".join(errors)
+        await callback.answer(_("router", "ip_block_failed", desc=err_msg), show_alert=True)
+        
+    text, kb = await render_client_details(ip)
+    await edit_rich_message(chat_id=callback.message.chat.id, message_id=callback.message.message_id, text=text, reply_markup=kb, parse_mode="HTML")
+
+
+@router.callback_query(F.data.startswith("r_custom_allow_port:"))
+async def cb_router_custom_allow_port_prompt(callback: CallbackQuery, state: FSMContext):
+    ip = callback.data.split(":")[1]
+    await state.update_data(ip=ip)
+    await state.set_state(RouterPortControlState.waiting_for_custom_allow_port)
+    
+    text = get_router_custom_allow_port_prompt_text(ip)
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=_("keyboards", "btn_cancel", "❌ Отмена"), callback_data=f"r_allow_port_menu:{ip}")]
+    ])
+    await edit_rich_message(chat_id=callback.message.chat.id, message_id=callback.message.message_id, text=text, reply_markup=kb, parse_mode="HTML")
+    await callback.answer()
+
+
+@router.message(RouterPortControlState.waiting_for_custom_allow_port)
+async def process_custom_allow_port_input(message: types.Message, state: FSMContext):
+    data = await state.get_data()
+    ip = data.get("ip")
+    if not ip:
+        await send_rich_message(chat_id=message.chat.id, text=_("router", "err_session_lost"))
+        await state.clear()
+        return
+        
+    text_input = message.text.strip().lower()
+    proto = 'tcp'
+    port_str = text_input
+    
+    if '/' in text_input:
+        parts = text_input.split('/')
+        port_str = parts[0].strip()
+        proto = parts[1].strip()
+        
+    if proto not in ('tcp', 'udp', 'all'):
+        await send_rich_message(chat_id=message.chat.id, text=_("router", "err_invalid_proto"))
+        return
+        
+    if not port_str.isdigit():
+        await send_rich_message(chat_id=message.chat.id, text=_("router", "err_invalid_port"))
+        return
+        
+    port = int(port_str)
+    if not (0 <= port <= 65535):
+        await send_rich_message(chat_id=message.chat.id, text=_("router", "err_invalid_port"))
+        return
+        
+    await state.clear()
+    
+    success, desc = await allow_router_port(ip, port, proto=proto, reason="Вручную из TG")
+    p_label = "Все порты" if port == 0 else str(port)
+    if success:
+        await send_rich_message(chat_id=message.chat.id, text=_("router", "port_allowed_success", port=p_label, proto=proto, ip=ip))
+    else:
+        await send_rich_message(chat_id=message.chat.id, text=_("router", "ip_block_failed", desc=desc))
+        
+    text, kb = await render_client_details(ip)
+    await send_rich_message(chat_id=message.chat.id, text=text, reply_markup=kb, parse_mode="HTML")
+
+
+# --- Быстрое разрешение из алертов безопасности роутера ---
+
+@router.callback_query(F.data.startswith("r_al_alert:"))
+async def cb_router_allow_alert_action(callback: CallbackQuery):
+    parts = callback.data.split(":")
+    ip = parts[1]
+    port = int(parts[2])
+    proto = parts[3]
+    
+    success, desc = await allow_router_port(ip, port, proto=proto, reason="Из алерта TG")
+    p_label = "Все порты" if port == 0 else str(port)
+    if success:
+        await callback.answer(_("router", "port_allowed_success", port=p_label, proto=proto, ip=ip), show_alert=True)
+        # Обновляем клавиатуру или текст сообщения, подтверждая разрешение
+        text = callback.message.text
+        if text:
+            new_text = text + f"\n\n🟢 <b>Порт {p_label}/{proto} разрешен для клиента {ip}!</b>"
+            try:
+                await callback.message.edit_text(new_text, parse_mode="HTML")
+            except Exception:
+                pass
+    else:
+        await callback.answer(_("router", "ip_block_failed", desc=desc), show_alert=True)
+
+
+# --- Управление активными правилами устройства ---
 
 @router.callback_query(F.data.startswith("r_bans:"))
 async def cb_router_active_bans_list(callback: CallbackQuery):
@@ -314,8 +472,9 @@ async def cb_router_active_bans_list(callback: CallbackQuery):
     
     full_ban = await execute_read_one("SELECT * FROM temp_bans WHERE server_ip = 'router' AND dst_ip = ?", (ip,))
     port_bans = await execute_read_all("SELECT * FROM temp_port_bans WHERE server_ip = 'router' AND client_ip = ?", (ip,))
+    allowed_ports = await get_router_allowed_ports(ip)
     
-    text = get_router_active_bans_text(ip, full_ban, port_bans)
+    text = get_router_active_bans_text(ip, full_ban, port_bans, allowed_ports)
     
     kb_buttons = []
     if full_ban:
@@ -328,6 +487,14 @@ async def cb_router_active_bans_list(callback: CallbackQuery):
         proto = pb['protocol']
         kb_buttons.append([
             InlineKeyboardButton(text=_("router", "btn_unban_port_action", f"❌ Снять блок {p}/{proto}", port=p, proto=proto), callback_data=f"r_unban_port:{ip}:{p}:{proto}")
+        ])
+        
+    for ap in allowed_ports:
+        p = ap['port']
+        proto = ap['protocol']
+        p_label = "Все" if p == 0 else str(p)
+        kb_buttons.append([
+            InlineKeyboardButton(text=_("router", "btn_disallow_port_action", f"❌ Запретить {p_label}/{proto}", port=p_label, proto=proto), callback_data=f"r_disallow_port:{ip}:{p}:{proto}")
         ])
         
     kb_buttons.append([
@@ -369,8 +536,35 @@ async def cb_router_unban_port_action(callback: CallbackQuery):
         
     full_ban = await execute_read_one("SELECT * FROM temp_bans WHERE server_ip = 'router' AND dst_ip = ?", (ip,))
     port_bans = await execute_read_all("SELECT * FROM temp_port_bans WHERE server_ip = 'router' AND client_ip = ?", (ip,))
+    allowed_ports = await get_router_allowed_ports(ip)
     
-    if full_ban or port_bans:
+    if full_ban or port_bans or allowed_ports:
+        await cb_router_active_bans_list(callback)
+    else:
+        text, kb = await render_client_details(ip)
+        await edit_rich_message(chat_id=callback.message.chat.id, message_id=callback.message.message_id, text=text, reply_markup=kb, parse_mode="HTML")
+
+
+@router.callback_query(F.data.startswith("r_disallow_port:"))
+async def cb_router_disallow_port_action(callback: CallbackQuery):
+    parts = callback.data.split(":")
+    ip = parts[1]
+    port = int(parts[2])
+    proto = parts[3]
+    
+    await callback.answer(_("router", "action_disallowing_port_ssh", "Удаляю правила разрешения порта по SSH..."), show_alert=False)
+    success, desc = await disallow_router_port(ip, port, proto)
+    p_label = "Все порты" if port == 0 else str(port)
+    if success:
+        await callback.answer(_("router", "port_disallowed_success", port=p_label, proto=proto), show_alert=True)
+    else:
+        await callback.answer(_("router", "ip_block_failed", desc=desc), show_alert=True)
+        
+    full_ban = await execute_read_one("SELECT * FROM temp_bans WHERE server_ip = 'router' AND dst_ip = ?", (ip,))
+    port_bans = await execute_read_all("SELECT * FROM temp_port_bans WHERE server_ip = 'router' AND client_ip = ?", (ip,))
+    allowed_ports = await get_router_allowed_ports(ip)
+    
+    if full_ban or port_bans or allowed_ports:
         await cb_router_active_bans_list(callback)
     else:
         text, kb = await render_client_details(ip)
