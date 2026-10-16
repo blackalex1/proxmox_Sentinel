@@ -383,3 +383,22 @@ def test_clean_html_for_telegram_tg_thinking():
     raw = "<b>Отчет</b>\n<tg-thinking>Поиск подозрительных IP адресов...</tg-thinking>"
     cleaned = clean_html_for_telegram(raw)
     assert "⏳ <i>Поиск подозрительных IP адресов...</i>" in cleaned
+
+
+@pytest.mark.asyncio
+async def test_outbox_clear_queue(clean_outbox):
+    outbox = clean_outbox
+    outbox.queue.append({"chat_id": 111, "text": "Msg 1", "kwargs": {}})
+    outbox.queue.append({"chat_id": 222, "text": "Msg 2", "kwargs": {}})
+    outbox.save_to_disk()
+    assert len(outbox.queue) == 2
+    assert os.path.exists(OUTBOX_FILE)
+
+    outbox.clear_queue()
+    assert len(outbox.queue) == 0
+    assert outbox._drop_requested is True
+
+    # Проверяем, что на диске тоже пусто
+    with open(OUTBOX_FILE, 'r', encoding='utf-8') as f:
+        data = json.load(f)
+    assert len(data) == 0

@@ -62,6 +62,13 @@ async def cmd_help(message: types.Message):
     text = get_help_text()
     await send_rich_message(message.chat.id, text)
 
+@router.message(Command("clear_outbox"))
+async def cmd_clear_outbox(message: types.Message):
+    from core.outbox import outbox
+    dropped_count = len(outbox.queue)
+    outbox.clear_queue()
+    await message.answer(f"🗑 <b>Очередь отложенных сообщений успешно сброшена!</b>\nУдалено сообщений из очереди: {dropped_count}", parse_mode="HTML")
+
 @router.callback_query(F.data == "help_info")
 async def callback_help_info(callback: CallbackQuery):
     kb = InlineKeyboardMarkup(inline_keyboard=[
