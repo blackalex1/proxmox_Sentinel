@@ -144,7 +144,7 @@ async def unban_router_ip(ip):
         
     else: # keenetic / generic
         # Удаляем все правила блокировки для данного IP из цепочек FORWARD и INPUT
-        while True:
+        for _ in range(10):
             success_f, _, _ = await run_router_ssh_cmd(f"iptables -D FORWARD -s {ip} -j DROP")
             success_i, _, _ = await run_router_ssh_cmd(f"iptables -D INPUT -s {ip} -j DROP")
             if not success_f and not success_i:
@@ -384,7 +384,7 @@ async def unban_router_port(ip, port, proto='tcp'):
         await run_router_ssh_cmd(combined_cmd)
         success, desc = True, "Блокировка порта успешно снята"
     else:
-        while True:
+        for _ in range(10):
             success_f, _, _ = await run_router_ssh_cmd(f"iptables -D FORWARD -s {ip} -p {proto} --dport {port} -j DROP")
             success_i, _, _ = await run_router_ssh_cmd(f"iptables -D INPUT -s {ip} -p {proto} --dport {port} -j DROP")
             if not success_f and not success_i:
@@ -531,7 +531,7 @@ async def disallow_router_port(ip: str, port: int, proto: str = 'tcp'):
         await run_router_ssh_cmd(combined_cmd)
         success, desc = True, "Разрешение порта успешно снято"
     else:
-        while True:
+        for _ in range(10):
             if port == 0 or proto == 'all':
                 success_f, _, _ = await run_router_ssh_cmd(f"iptables -D FORWARD -s {ip} -j ACCEPT")
                 success_i, _, _ = await run_router_ssh_cmd(f"iptables -D INPUT -s {ip} -j ACCEPT")

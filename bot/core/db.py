@@ -401,7 +401,7 @@ async def remove_router_allowed_port(client_ip: str, port: int, protocol: str = 
     """Удаляет разрешенный порт клиенту роутера из БД и кэша."""
     proto = protocol.lower()
     ok = await execute_write(
-        "DELETE FROM router_allowed_ports WHERE server_ip = 'router' AND client_ip = ? AND port = ? AND protocol = ?",
+        "DELETE FROM router_allowed_ports WHERE server_ip = ? AND client_ip = ? AND port = ? AND protocol = ?",
         ("router", client_ip, int(port), proto)
     )
     if ok:

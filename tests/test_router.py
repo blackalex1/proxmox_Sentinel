@@ -655,7 +655,10 @@ async def test_router_allow_callbacks():
     cb_mock.message.message_id = 99
     cb_mock.message.text = "Router Alert Text"
 
-    with patch("modules.router.router.run_router_ssh_cmd", AsyncMock(return_value=(True, "OK", ""))):
+    with patch("modules.router.router.run_router_ssh_cmd", AsyncMock(return_value=(True, "OK", ""))), \
+         patch("modules.router.handlers.render_client_details", AsyncMock(return_value=("text", None))), \
+         patch("modules.router.handlers.edit_rich_message", AsyncMock()), \
+         patch("modules.router.handlers.send_rich_message", AsyncMock()):
         # 1. Быстрое разрешение из алерта: r_al_alert:192.168.1.99:8006:tcp
         cb_mock.data = "r_al_alert:192.168.1.99:8006:tcp"
         await cb_router_allow_alert_action(cb_mock)
@@ -668,8 +671,7 @@ async def test_router_allow_callbacks():
 
         # 3. Разрешение сервиса через меню: r_allow_act:192.168.1.99:80_443:tcp
         cb_mock.data = "r_allow_act:192.168.1.99:80_443:tcp"
-        with patch("modules.router.handlers.render_client_details", AsyncMock(return_value=("text", None))):
-            await cb_router_allow_port_action(cb_mock)
+        await cb_router_allow_port_action(cb_mock)
         assert await is_router_port_allowed("192.168.1.99", 80, "tcp") is True
         assert await is_router_port_allowed("192.168.1.99", 443, "tcp") is True
 
