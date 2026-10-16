@@ -3,7 +3,7 @@ import sqlite3
 import json
 import logging
 import asyncio
-from typing import Dict, List, Tuple, Optional
+from typing import Dict, List, Tuple, Optional, Set, Any
 
 # Находим корневой каталог проекта
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -111,6 +111,18 @@ def init_db():
                     port INTEGER,
                     protocol TEXT DEFAULT 'tcp',
                     expire_time TEXT,
+                    reason TEXT DEFAULT 'Вручную',
+                    PRIMARY KEY (server_ip, client_ip, port, protocol)
+                );
+            """)
+            
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS router_allowed_ports (
+                    server_ip TEXT DEFAULT 'router',
+                    client_ip TEXT,
+                    port INTEGER,
+                    protocol TEXT DEFAULT 'tcp',
+                    created_at TEXT,
                     reason TEXT DEFAULT 'Вручную',
                     PRIMARY KEY (server_ip, client_ip, port, protocol)
                 );
@@ -319,16 +331,103 @@ async def is_whitelisted(node: str, ip: Optional[str] = None, port: Optional[int
                 entry = entry.strip()
                 if ":" in entry:
                     entry_ip, entry_port = entry.rsplit(":", 1)
-                    if entry_ip == ip:
+                    if entry_ip == ip or entry_ip == "*":
                         if entry_port == "*" or (port is not None and str(entry_port) == str(port)):
                             logging.info("whitelist_check_connection_matched_rule_on_node", ip, port, entry, n)
                             return True
                 else:
-                    if entry == ip:
+                    if entry == ip or entry == "*":
                         logging.info("whitelist_check_ip_matched_rule_on_node", ip, entry, n)
                         return True
                         
     return False
+
+
+# --- Разрешенные порты клиентов роутера (in-memory кэш + SQLite) ---
+
+_router_allowed_ports_cache: Set[Tuple[str, int, str]] = set()
+_router_allowed_cache_initialized: bool = False
+
+def get_router_allowed_ports_cache() -> Set[Tuple[str, int, str]]:
+    """Возвращает быстрый in-memory кэш разрешенных портов клиентов роутера (client_ip, port, proto)."""
+    global _router_allowed_ports_cache, _router_allowed_cache_initialized
+    if not _router_allowed_cache_initialized:
+        try:
+            conn = get_db_connection()
+            try:
+                cursor = conn.execute("SELECT client_ip, port, protocol FROM router_allowed_ports WHERE server_ip = 'router'")
+                for row in cursor.fetchall():
+                    _router_allowed_ports_cache.add((row['client_ip'], int(row['port']), row['protocol'].lower()))
+                _router_allowed_cache_initialized = True
+            finally:
+                conn.close()
+        except Exception as e:
+            logging.debug("Failed to sync load router allowed ports cache: %s", e)
+    return _router_allowed_ports_cache
+
+async def init_router_allowed_ports_cache():
+    """Асинхронная инициализация кэша разрешенных портов роутера."""
+    global _router_allowed_ports_cache, _router_allowed_cache_initialized
+    try:
+        rows = await execute_read_all("SELECT client_ip, port, protocol FROM router_allowed_ports WHERE server_ip = 'router'")
+        _router_allowed_ports_cache = {(r['client_ip'], int(r['port']), r['protocol'].lower()) for r in rows}
+        _router_allowed_cache_initialized = True
+    except Exception as e:
+        logging.error("Error initializing router allowed ports cache: %s", e)
+
+async def get_router_allowed_ports(client_ip: Optional[str] = None) -> List[Dict[str, Any]]:
+    """Возвращает список разрешенных портов клиентов роутера."""
+    if client_ip:
+        return await execute_read_all(
+            "SELECT * FROM router_allowed_ports WHERE server_ip = 'router' AND client_ip = ? ORDER BY port ASC",
+            (client_ip,)
+        )
+    return await execute_read_all("SELECT * FROM router_allowed_ports WHERE server_ip = 'router' ORDER BY client_ip, port ASC")
+
+async def add_router_allowed_port(client_ip: str, port: int, protocol: str = 'tcp', reason: str = 'Вручную') -> bool:
+    """Добавляет разрешенный порт клиенту роутера в БД и кэш."""
+    import datetime
+    created_at = datetime.datetime.now().isoformat()
+    proto = protocol.lower()
+    ok = await execute_write(
+        "INSERT OR REPLACE INTO router_allowed_ports (server_ip, client_ip, port, protocol, created_at, reason) VALUES (?, ?, ?, ?, ?, ?)",
+        ("router", client_ip, int(port), proto, created_at, reason)
+    )
+    if ok:
+        get_router_allowed_ports_cache().add((client_ip, int(port), proto))
+    return ok
+
+async def remove_router_allowed_port(client_ip: str, port: int, protocol: str = 'tcp') -> bool:
+    """Удаляет разрешенный порт клиенту роутера из БД и кэша."""
+    proto = protocol.lower()
+    ok = await execute_write(
+        "DELETE FROM router_allowed_ports WHERE server_ip = 'router' AND client_ip = ? AND port = ? AND protocol = ?",
+        ("router", client_ip, int(port), proto)
+    )
+    if ok:
+        get_router_allowed_ports_cache().discard((client_ip, int(port), proto))
+    return ok
+
+async def is_router_port_allowed(client_ip: str, port: int, protocol: str = 'tcp') -> bool:
+    """
+    Проверяет, разрешен ли конкретный порт или все порты для клиента роутера.
+    """
+    proto = protocol.lower()
+    cache = get_router_allowed_ports_cache()
+    # 1. Точное совпадение (client, port, proto)
+    if (client_ip, int(port), proto) in cache:
+        return True
+    # 2. Любой протокол на этот порт
+    if (client_ip, int(port), 'all') in cache:
+        return True
+    # 3. Все порты разрешены для данного клиента (port=0)
+    if (client_ip, 0, 'all') in cache or (client_ip, 0, proto) in cache:
+        return True
+    # 4. Wildcard для всех клиентов (*, port, proto) или (*, 0, all)
+    if ("*", int(port), proto) in cache or ("*", int(port), "all") in cache or ("*", 0, "all") in cache:
+        return True
+    return False
+
 
 
 import ipaddress

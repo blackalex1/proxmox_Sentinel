@@ -52,6 +52,8 @@ from .router import (
     get_router_ban_port_menu_text,
     get_router_ban_port_duration_text,
     get_router_custom_port_prompt_text,
+    get_router_allow_port_menu_text,
+    get_router_custom_allow_port_prompt_text,
     get_router_active_bans_text,
 )
 from .spectre import (
