@@ -168,6 +168,13 @@ async def main():
     from modules.router.handlers import router as router_handlers_router
     dp.include_router(router_handlers_router)
     
+    # Инициализация кэша доверенных VPN/транзитных контейнеров
+    try:
+        from modules.proxmox.monitor.traffic.parser import init_trusted_vpn_vmids_cache
+        await init_trusted_vpn_vmids_cache()
+    except Exception as e:
+        logging.error("failed_to_init_trusted_vpn_vmids_cache", e)
+
     # Запускаем фоновые задачи (Proxmox Alert System)
     if settings.admin_ids:
         asyncio.create_task(proxmox_monitor(), name="monitor_nodes")

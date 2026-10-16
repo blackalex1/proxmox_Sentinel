@@ -254,6 +254,45 @@ async def save_node_whitelists(whitelists: dict) -> bool:
     """Сохраняет все белые списки нод."""
     return await set_state("ips_node_whitelists", whitelists)
 
+async def get_trusted_vpn_vmids() -> List[int]:
+    """Возвращает список VMID доверенных контейнеров (VPN / транзитных узлов)."""
+    val = await get_state("trusted_vpn_vmids", [])
+    if isinstance(val, list):
+        return [int(x) for x in val if str(x).isdigit()]
+    return []
+
+async def add_trusted_vpn_vmid(vmid: int) -> bool:
+    """Добавляет VMID в список доверенных контейнеров."""
+    vmids = await get_trusted_vpn_vmids()
+    if vmid not in vmids:
+        vmids.append(vmid)
+        return await set_state("trusted_vpn_vmids", vmids)
+    return True
+
+async def remove_trusted_vpn_vmid(vmid: int) -> bool:
+    """Удаляет VMID из списка доверенных контейнеров."""
+    vmids = await get_trusted_vpn_vmids()
+    if vmid in vmids:
+        vmids.remove(vmid)
+        return await set_state("trusted_vpn_vmids", vmids)
+    return True
+
+def get_trusted_vpn_vmids_sync_from_db() -> List[int]:
+    """Синхронное чтение доверенных контейнеров из SQLite при первом старте/инициализации."""
+    conn = get_db_connection()
+    try:
+        cursor = conn.execute("SELECT value FROM bot_state WHERE key = 'trusted_vpn_vmids'")
+        row = cursor.fetchone()
+        if row and row['value']:
+            val = json.loads(row['value'])
+            if isinstance(val, list):
+                return [int(x) for x in val if str(x).isdigit()]
+    except Exception:
+        pass
+    finally:
+        conn.close()
+    return []
+
 async def is_whitelisted(node: str, ip: Optional[str] = None, port: Optional[int] = None, process: Optional[str] = None) -> bool:
     """
     Проверяет, находится ли IP:Порт или Процесс в белом списке для данной ноды или глобально.

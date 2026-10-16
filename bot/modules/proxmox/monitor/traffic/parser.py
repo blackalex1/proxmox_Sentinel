@@ -1,7 +1,49 @@
-import os
-from typing import Optional, Dict, Any, Tuple
+import logging
+from typing import Optional, Dict, Any, Tuple, Set, List
 from core.config import settings
 from core import sentinel_core_bridge
+
+logger = logging.getLogger(__name__)
+
+# Кэш доверенных VPN/транзитных VMID в памяти
+_trusted_vpn_vmids_cache: Set[int] = set()
+_cache_initialized: bool = False
+
+def get_trusted_vpn_vmids_cache() -> Set[int]:
+    global _trusted_vpn_vmids_cache, _cache_initialized
+    if not _cache_initialized:
+        try:
+            from core.db import get_trusted_vpn_vmids_sync_from_db
+            db_vmids = get_trusted_vpn_vmids_sync_from_db()
+            _trusted_vpn_vmids_cache.update(db_vmids)
+            _cache_initialized = True
+        except Exception as e:
+            logger.debug("Failed to sync load trusted vpn vmids: %s", e)
+    return _trusted_vpn_vmids_cache
+
+async def init_trusted_vpn_vmids_cache():
+    global _trusted_vpn_vmids_cache, _cache_initialized
+    try:
+        from core.db import get_trusted_vpn_vmids
+        db_vmids = await get_trusted_vpn_vmids()
+        _trusted_vpn_vmids_cache = set(db_vmids)
+        _cache_initialized = True
+    except Exception as e:
+        logger.error("Error initializing trusted vpn vmids cache: %s", e)
+
+async def update_trusted_vpn_vmids_cache():
+    await init_trusted_vpn_vmids_cache()
+
+def get_trusted_vpn_vmids_sync() -> List[int]:
+    cached = set(get_trusted_vpn_vmids_cache())
+    try:
+        from core.spectre_client import spectre_manager
+        for p in spectre_manager.panels.values():
+            if p.source_type == "lxc" and p.identifier and str(p.identifier).isdigit():
+                cached.add(int(p.identifier))
+    except Exception:
+        pass
+    return sorted(list(cached))
 
 def find_kernel_log_path() -> Optional[str]:
     """Поиск файла системного лога, куда ядро пишет сообщения от iptables."""
@@ -12,8 +54,8 @@ def find_kernel_log_path() -> Optional[str]:
     return None
 
 def is_vpn_vmid(vmid: int) -> bool:
-    """Проверка, является ли VMID VPN-контейнером."""
-    if vmid == settings.vpn_vmid:
+    """Проверка, является ли VMID доверенным VPN/транзитным контейнером."""
+    if vmid in get_trusted_vpn_vmids_cache():
         return True
     try:
         from core.spectre_client import spectre_manager
@@ -25,21 +67,14 @@ def is_vpn_vmid(vmid: int) -> bool:
 
 def _build_classifier_policy(event_vmid: Optional[int] = None) -> Dict[str, Any]:
     """Формирует актуальную конфигурацию политики для Go ядра sentinel_core."""
-    vpn_vmids = [settings.vpn_vmid] if settings.vpn_vmid else []
+    vpn_vmids = get_trusted_vpn_vmids_sync()
     if event_vmid is not None and is_vpn_vmid(event_vmid) and event_vmid not in vpn_vmids:
         vpn_vmids.append(event_vmid)
-    try:
-        from core.spectre_client import spectre_manager
-        for p in spectre_manager.panels.values():
-            if p.source_type == "lxc" and p.identifier and str(p.identifier).isdigit():
-                v_id = int(p.identifier)
-                if v_id not in vpn_vmids:
-                    vpn_vmids.append(v_id)
-    except Exception:
-        pass
+
+    primary_vmid = vpn_vmids[0] if vpn_vmids else 0
 
     return {
-        "vpn_vmid": settings.vpn_vmid or 100,
+        "vpn_vmid": primary_vmid,
         "vpn_vmids": vpn_vmids,
         "trusted_admin_ips": settings.trusted_admin_ips or [],
         "proxmox_host": settings.proxmox_host or "",
@@ -62,5 +97,6 @@ def classify_connection(event: Dict[str, Any]) -> Tuple[str, str, str]:
 
 def parse_iptables_line(line: str) -> Optional[Dict[str, Any]]:
     """Парсинг лог-линии iptables ядра через Go-ядро sentinel_core."""
-    vpn_vmid = settings.vpn_vmid or 100
-    return sentinel_core_bridge.parse_iptables_line(line, vpn_vmid=vpn_vmid)
+    vpn_vmids = get_trusted_vpn_vmids_sync()
+    primary_vmid = vpn_vmids[0] if vpn_vmids else 0
+    return sentinel_core_bridge.parse_iptables_line(line, vpn_vmid=primary_vmid)
