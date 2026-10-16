@@ -11,7 +11,6 @@ def test_pydantic_settings():
     
     # Проверяем значения по умолчанию
     assert settings.monitor_lxc_cpu == 90
-    assert settings.vpn_vmid == 101
     
     # Проверяем списки портов по умолчанию
     assert settings.monitor_lxc_ports_sensitive == [22, 3389, 3306, 5432, 27017, 8006]

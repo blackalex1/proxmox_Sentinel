@@ -85,7 +85,6 @@ class Settings(BaseSettings):
     monitor_lxc_ports_sensitive: List[int] | str = Field(default_factory=list, validation_alias='MONITOR_LXC_PORTS_SENSITIVE')
 
     # VPN настройки
-    vpn_vmid: int = Field(default=101, validation_alias='VPN_VMID')
     monitor_lxc_vpn_ports: List[int] | str = Field(default_factory=list, validation_alias='MONITOR_LXC_VPN_PORTS')
 
     # Дополнительные настройки уведомлений VPN

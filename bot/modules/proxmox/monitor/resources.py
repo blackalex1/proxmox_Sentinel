@@ -54,8 +54,9 @@ async def monitor_lxc_resources():
                         
                         await send_alert_to_admins(msg, parse_mode="markdown")
                         
-                        # Если это запуск VPN-контейнера, заново инициализируем внутренние правила
-                        if vmid == settings.vpn_vmid and state == "running":
+                        # Если это запуск доверенного VPN-контейнера, заново инициализируем внутренние правила
+                        from .traffic.parser import is_vpn_vmid
+                        if is_vpn_vmid(vmid) and state == "running":
                             setup_vpn_container_rules()
                     elif prev_state is None:
                         # Первичная инициализация кэша

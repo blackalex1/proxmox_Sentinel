@@ -4,70 +4,73 @@ import subprocess
 import logging
 
 from core.config import settings
-VPN_VMID = settings.vpn_vmid
-
 def setup_vpn_container_rules():
-    """Установка logging-правил iptables внутри VPN-контейнера для контроля локальных процессов."""
+    """Установка logging-правил iptables внутри доверенных VPN-контейнеров для контроля локальных процессов."""
     if platform.system() != 'Linux' or os.geteuid() != 0:
         return False
-    if not VPN_VMID:
+    from modules.proxmox.monitor.traffic.parser import get_trusted_vpn_vmids_sync
+    vmids = get_trusted_vpn_vmids_sync()
+    if not vmids:
         logging.info("internal_traffic_monitoring_vpn_container_disabled")
         return False
-    try:
-        # Проверяем, запущен ли контейнер
-        status_check = subprocess.run(
-            ["pct", "status", str(VPN_VMID)],
-            capture_output=True,
-            text=True
-        )
-        if "status: running" not in status_check.stdout:
-            logging.info("vpn_container_is_not_running_skipping_rules", VPN_VMID)
-            return False
+    success = True
+    for vmid in vmids:
+        try:
+            # Проверяем, запущен ли контейнер
+            status_check = subprocess.run(
+                ["pct", "status", str(vmid)],
+                capture_output=True,
+                text=True
+            )
+            if "status: running" not in status_check.stdout:
+                logging.info("vpn_container_is_not_running_skipping_rules", vmid)
+                continue
 
-        # Проверяем наличие правила во внутренней цепочке OUTPUT
-        check_cmd = [
-            "pct", "exec", str(VPN_VMID), "--",
-            "iptables", "-C", "OUTPUT", "-m", "conntrack", "--ctstate", "NEW", "-j", "LOG", "--log-prefix", "LXC_VPN_LOCAL_OUT: "
-        ]
-        check_run = subprocess.run(check_cmd, capture_output=True)
-        if check_run.returncode != 0:
-            insert_cmd = [
-                "pct", "exec", str(VPN_VMID), "--",
-                "iptables", "-I", "OUTPUT", "-m", "conntrack", "--ctstate", "NEW", "-j", "LOG", "--log-prefix", "LXC_VPN_LOCAL_OUT: "
+            # Проверяем наличие правила во внутренней цепочке OUTPUT
+            check_cmd = [
+                "pct", "exec", str(vmid), "--",
+                "iptables", "-C", "OUTPUT", "-m", "conntrack", "--ctstate", "NEW", "-j", "LOG", "--log-prefix", "LXC_VPN_LOCAL_OUT: "
             ]
-            subprocess.run(insert_cmd, check=True)
-            logging.info("successfully_set_iptables_rule_for_local_processes", VPN_VMID)
-        else:
-            logging.info("rule_for_local_processes_is_already_set", VPN_VMID)
-        return True
-    except Exception as e:
-        logging.error("error_setting_iptables_rules_in_vpn_container", VPN_VMID, e)
-        return False
+            check_run = subprocess.run(check_cmd, capture_output=True)
+            if check_run.returncode != 0:
+                insert_cmd = [
+                    "pct", "exec", str(vmid), "--",
+                    "iptables", "-I", "OUTPUT", "-m", "conntrack", "--ctstate", "NEW", "-j", "LOG", "--log-prefix", "LXC_VPN_LOCAL_OUT: "
+                ]
+                subprocess.run(insert_cmd, check=True)
+                logging.info("successfully_set_iptables_rule_for_local_processes", vmid)
+            else:
+                logging.info("rule_for_local_processes_is_already_set", vmid)
+        except Exception as e:
+            logging.error("error_setting_iptables_rules_in_vpn_container", vmid, e)
+            success = False
+    return success
 
 
-def cleanup_vpn_container_rules():
-    """Удаление logging-правил iptables из VPN-контейнера."""
+def cleanup_vpn_container_rules(target_vmid: Optional[int] = None):
+    """Удаление logging-правил iptables из доверенных VPN-контейнеров."""
     if platform.system() != 'Linux' or os.geteuid() != 0:
         return
-    if not VPN_VMID:
-        return
-    try:
-        # Проверяем статус контейнера перед удалением
-        status_check = subprocess.run(
-            ["pct", "status", str(VPN_VMID)],
-            capture_output=True,
-            text=True
-        )
-        if "status: running" not in status_check.stdout:
-            return
-        delete_cmd = [
-            "pct", "exec", str(VPN_VMID), "--",
-            "iptables", "-D", "OUTPUT", "-m", "conntrack", "--ctstate", "NEW", "-j", "LOG", "--log-prefix", "LXC_VPN_LOCAL_OUT: "
-        ]
-        subprocess.run(delete_cmd, capture_output=True)
-        logging.info("iptables_rules_successfully_removed_from_vpn_container", VPN_VMID)
-    except Exception as e:
-        logging.error("error_removing_iptables_rules_from_vpn_container", VPN_VMID, e)
+    from modules.proxmox.monitor.traffic.parser import get_trusted_vpn_vmids_sync
+    vmids = [target_vmid] if target_vmid else get_trusted_vpn_vmids_sync()
+    for vmid in vmids:
+        try:
+            # Проверяем статус контейнера перед удалением
+            status_check = subprocess.run(
+                ["pct", "status", str(vmid)],
+                capture_output=True,
+                text=True
+            )
+            if "status: running" not in status_check.stdout:
+                continue
+            delete_cmd = [
+                "pct", "exec", str(vmid), "--",
+                "iptables", "-D", "OUTPUT", "-m", "conntrack", "--ctstate", "NEW", "-j", "LOG", "--log-prefix", "LXC_VPN_LOCAL_OUT: "
+            ]
+            subprocess.run(delete_cmd, capture_output=True)
+            logging.info("iptables_rules_successfully_removed_from_vpn_container", vmid)
+        except Exception as e:
+            logging.error("error_removing_iptables_rules_from_vpn_container", vmid, e)
 
 
 def setup_iptables():

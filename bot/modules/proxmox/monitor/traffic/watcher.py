@@ -10,7 +10,7 @@ from core.messages import get_local_traffic_alert
 from modules.proxmox.monitor.firewall import setup_iptables
 
 # Импортируем хелперы из соседних файлов
-from .parser import find_kernel_log_path, parse_iptables_line, classify_connection
+from .parser import find_kernel_log_path, parse_iptables_line, classify_connection, is_vpn_vmid
 from .vpn import find_real_vpn_client_ip, find_xray_client_email
 from .killer import get_and_kill_local_or_lxc_process
 from .firewall import block_local_ip, cleanup_local_blocks_on_startup
@@ -36,7 +36,7 @@ async def handle_traffic_log_line(line):
         if is_local:
             conn_key = (proto, dst, spt, dpt)
             recent_local_conns.append(conn_key)
-        elif vmid == settings.vpn_vmid and direction == 'OUT':
+        elif is_vpn_vmid(vmid) and direction == 'OUT':
             conn_key = (proto, dst, spt, dpt)
             if conn_key in recent_local_conns:
                 return
@@ -166,7 +166,7 @@ async def handle_traffic_log_line(line):
                 logging.info("traffic_monitor_connection_whitelisted_node_or_globally_ignoring", src, dst, dpt, node)
                 return
 
-            is_transit_vpn = (vmid == settings.vpn_vmid and not is_local)
+            is_transit_vpn = (is_vpn_vmid(vmid) and not is_local)
             proc_name, killed_pid = None, None
             if direction == 'OUT' and dpt in settings.monitor_lxc_ports_sensitive:
                 logging.info("traffic_monitor_attempting_to_destroy_process_for", vmid, spt)
@@ -186,7 +186,7 @@ async def handle_traffic_log_line(line):
             xray_client_email = None
             inbound_tag = None
             from core.spectre_client import spectre_manager
-            is_panel_container = (vmid == settings.vpn_vmid or spectre_manager.get_panel_by_vmid(int(vmid)) is not None)
+            is_panel_container = (is_vpn_vmid(vmid) or spectre_manager.get_panel_by_vmid(int(vmid)) is not None)
             if is_panel_container and not is_local and direction == 'OUT':
                 real_client_ip = find_real_vpn_client_ip(proto, src, dst, spt, dpt)
                 xray_client_email, inbound_tag = await find_xray_client_email(vmid, dst, dpt, real_client_ip)
@@ -285,6 +285,23 @@ async def handle_traffic_log_line(line):
                 InlineKeyboardButton(text="📋 Скопировать IP", callback_data=f"copy:ip:{target_ip}")
             ]
             buttons.append(row3)
+
+            # Строка 4: Управление доверенным статусом контейнера (VPN/P2P)
+            if vmid != 0:
+                if not is_vpn_vmid(vmid):
+                    buttons.append([
+                        InlineKeyboardButton(
+                            text=f"🌐 Сделать LXC {vmid} доверенным (VPN/P2P)",
+                            callback_data=f"trust_lxc:{vmid}"
+                        )
+                    ])
+                else:
+                    buttons.append([
+                        InlineKeyboardButton(
+                            text=f"🚫 Убрать LXC {vmid} из доверенных",
+                            callback_data=f"untrust_lxc:{vmid}"
+                        )
+                    ])
                 
             kb = InlineKeyboardMarkup(inline_keyboard=buttons)
             

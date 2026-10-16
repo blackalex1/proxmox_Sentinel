@@ -94,6 +94,7 @@ async def get_node_selection_keyboard() -> InlineKeyboardMarkup:
         buttons.append([InlineKeyboardButton(text=_("whitelist", "offline_label", label=label), callback_data=f"wl_view:{node}")])
             
     # Добавляем кнопку просмотра всех правил
+    buttons.append([InlineKeyboardButton(text="🌐 Доверенные контейнеры (VPN/P2P)", callback_data="wl_trusted_vmids")])
     buttons.append([InlineKeyboardButton(text=_("whitelist", "btn_show_all"), callback_data="wl_view_all")])
     buttons.append([InlineKeyboardButton(text=_("keyboards", "btn_back_to_menu"), callback_data="main_menu")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
@@ -441,3 +442,136 @@ async def cb_quick_whitelist(callback: CallbackQuery):
     except Exception as e:
         logging.error("error_during_quick_white-listing", e)
         await callback.answer(_("whitelist", "qwl_save_error"), show_alert=True)
+
+
+@router.callback_query(F.data == "wl_trusted_vmids")
+async def cb_whitelist_trusted_vmids(callback: CallbackQuery, state: Optional[FSMContext] = None):
+    if state:
+        await state.clear()
+    from modules.proxmox.monitor.traffic.parser import get_trusted_vpn_vmids_sync
+    trusted = get_trusted_vpn_vmids_sync()
+    
+    text = (
+        "🌐 <b>Доверенные LXC контейнеры (VPN / P2P транзит)</b>\n"
+        "⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯\n"
+        "Контейнерам из этого списка <b>разрешены любые исходящие порты</b> (для P2P, стриминга, BitTorrent, Shadowsocks/SS-KD и клиентов).\n"
+        "При этом любые попытки доступа на <b>sensitive порты</b> (SSH 22, БД, Proxmox 8006) продолжают строго отслеживаться и пресекаться.\n\n"
+    )
+    if trusted:
+        text += "<b>Активные доверенные контейнеры:</b>\n"
+        for v in trusted:
+            panel = spectre_manager.get_panel_by_vmid(v)
+            name = f" ({panel.name})" if panel else ""
+            text += f"• <b>LXC {v}</b>{name} — <i>VPN/P2P режим активен</i>\n"
+    else:
+        text += "<i>В списке пока нет доверенных контейнеров.</i>\n"
+
+    kb_buttons = []
+    # Кнопки для удаления каждого доверенного контейнера
+    for v in trusted:
+        kb_buttons.append([
+            InlineKeyboardButton(text=f"🗑 Убрать LXC {v} из доверенных", callback_data=f"untrust_lxc:{v}")
+        ])
+    
+    kb_buttons.append([
+        InlineKeyboardButton(text="⬅️ Назад", callback_data="whitelist_main")
+    ])
+    
+    kb = InlineKeyboardMarkup(inline_keyboard=kb_buttons)
+    try:
+        await callback.message.edit_text(text=text, parse_mode="HTML", reply_markup=kb)
+    except Exception:
+        pass
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("trust_lxc:"))
+async def cb_trust_lxc(callback: CallbackQuery):
+    try:
+        vmid_str = callback.data.split(":", 1)[1]
+        vmid = int(vmid_str)
+        from core.db import add_trusted_vpn_vmid
+        await add_trusted_vpn_vmid(vmid)
+        from modules.proxmox.monitor.traffic.parser import update_trusted_vpn_vmids_cache
+        await update_trusted_vpn_vmids_cache()
+        try:
+            from modules.proxmox.monitor.firewall import setup_vpn_container_rules
+            setup_vpn_container_rules()
+        except Exception:
+            pass
+
+        await callback.answer(
+            f"✅ LXC {vmid} добавлен в доверенные узлы (VPN/P2P)!\nВсе порты разрешены, кроме sensitive.",
+            show_alert=True
+        )
+        orig_text = callback.message.html_text or callback.message.text or ""
+        new_text = f"{orig_text}\n\n🌐 <b>LXC {vmid} переведен в доверенный режим (VPN/P2P)</b>"
+        try:
+            await callback.message.edit_text(text=new_text, parse_mode="HTML", reply_markup=None)
+        except Exception:
+            pass
+    except Exception as e:
+        logging.error("error_trusting_lxc", e)
+        await callback.answer("Ошибка при добавлении контейнера в доверенные", show_alert=True)
+
+
+@router.callback_query(F.data.startswith("untrust_lxc:"))
+async def cb_untrust_lxc(callback: CallbackQuery):
+    try:
+        vmid_str = callback.data.split(":", 1)[1]
+        vmid = int(vmid_str)
+        from core.db import remove_trusted_vpn_vmid
+        await remove_trusted_vpn_vmid(vmid)
+        from modules.proxmox.monitor.traffic.parser import update_trusted_vpn_vmids_cache
+        await update_trusted_vpn_vmids_cache()
+        try:
+            from modules.proxmox.monitor.firewall import cleanup_vpn_container_rules
+            cleanup_vpn_container_rules(vmid)
+        except Exception:
+            pass
+
+        await callback.answer(
+            f"⚠️ LXC {vmid} удален из доверенных узлов. Включен строгий режим мониторинга.",
+            show_alert=True
+        )
+        # Если мы были в меню доверенных, обновляем список
+        if callback.message and "Доверенные LXC контейнеры" in (callback.message.text or ""):
+            await cb_whitelist_trusted_vmids(callback, None)
+        else:
+            orig_text = callback.message.html_text or callback.message.text or ""
+            new_text = f"{orig_text}\n\n⚠️ <b>LXC {vmid} удален из доверенных (строгий режим)</b>"
+            try:
+                await callback.message.edit_text(text=new_text, parse_mode="HTML", reply_markup=None)
+            except Exception:
+                pass
+    except Exception as e:
+        logging.error("error_untrusting_lxc", e)
+        await callback.answer("Ошибка при удалении контейнера из доверенных", show_alert=True)
+
+
+@router.callback_query(F.data.startswith("qblock:ip:"))
+async def cb_quick_block_ip(callback: CallbackQuery):
+    try:
+        ip = callback.data.split(":", 2)[2]
+        from modules.proxmox.monitor.traffic.firewall import block_local_ip
+        await block_local_ip(ip, delay=3600, reason="Быстрая блокировка из алерта")
+        await callback.answer(f"🚫 IP {ip} заблокирован на 1 час (iptables DROP)", show_alert=True)
+
+        orig_text = callback.message.html_text or callback.message.text or ""
+        new_text = f"{orig_text}\n\n🚫 <b>IP {ip} заблокирован на 1 час (iptables DROP)</b>"
+        try:
+            await callback.message.edit_text(text=new_text, parse_mode="HTML", reply_markup=None)
+        except Exception:
+            pass
+    except Exception as e:
+        logging.error("error_quick_blocking_ip", e)
+        await callback.answer("Ошибка при блокировке IP", show_alert=True)
+
+
+@router.callback_query(F.data.startswith("copy:ip:"))
+async def cb_copy_ip(callback: CallbackQuery):
+    try:
+        ip = callback.data.split(":", 2)[2]
+        await callback.answer(f"{ip}", show_alert=True)
+    except Exception:
+        await callback.answer()
