@@ -1,5 +1,6 @@
 import logging
 import re
+from typing import Optional
 from aiogram import Router, types, F
 from aiogram.filters.command import Command
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery

@@ -2,6 +2,7 @@ import os
 import platform
 import subprocess
 import logging
+from typing import Optional
 
 from core.config import settings
 def setup_vpn_container_rules():
