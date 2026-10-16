@@ -230,7 +230,15 @@ class ResilientOutbox:
         self.lock = asyncio.Lock()
         self.rate_limit_until = 0.0
         self._message_cooldowns: dict[tuple, float] = {}
+        self._drop_requested = False
         self.load_from_disk()
+
+    def clear_queue(self):
+        """Мгновенно прерывает отправку и очищает всю очередь как в памяти, так и на диске."""
+        self._drop_requested = True
+        self.queue = []
+        self.save_to_disk()
+        logger.info("[Outbox] Queue successfully cleared.")
 
     def load_from_disk(self):
         """Загружает очередь сообщений с диска с автоматической очисткой и дедупликацией старых правок и дубликатов карточек."""
@@ -341,6 +349,8 @@ class ResilientOutbox:
                     return
 
             self.queue.append(msg_data)
+            if len(self.queue) > 100:
+                self.queue = self.queue[-100:]
             self.save_to_disk()
             logger.info("outbox_message_added_deferred_queue_total", chat_id, len(self.queue))
 
@@ -366,6 +376,8 @@ class ResilientOutbox:
                 self.queue[existing_idx] = msg_data
             else:
                 self.queue.append(msg_data)
+            if len(self.queue) > 100:
+                self.queue = self.queue[-100:]
             self.save_to_disk()
             logger.info("outbox_edit_added_deferred_queue_total", chat_id, message_id, len(self.queue))
 
@@ -389,6 +401,11 @@ class ResilientOutbox:
             remaining_queue = []
             
             for idx, msg in enumerate(self.queue, 1):
+                if self._drop_requested:
+                    logger.info("[Outbox] Drop requested, clearing remaining queue immediately.")
+                    remaining_queue = []
+                    self._drop_requested = False
+                    break
                 chat_id = msg["chat_id"]
                 text = msg["text"]
                 kwargs = msg.get("kwargs", {}).copy()
