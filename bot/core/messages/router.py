@@ -41,12 +41,19 @@ def get_router_clients_list_text(has_clients: bool) -> str:
 def get_router_client_details_card(
     hostname: str,
     ip: str,
-    mac: str,
-    active: bool,
-    full_ban: Optional[Dict[str, Any]],
-    port_bans: List[Dict[str, Any]],
-    allowed_ports: Optional[List[Dict[str, Any]]] = None
+    mac: str = "",
+    active: bool = False,
+    full_ban: Optional[Dict[str, Any]] = None,
+    port_bans: Optional[List[Dict[str, Any]]] = None,
+    allowed_ports: Optional[List[Dict[str, Any]]] = None,
+    *args,
+    **kwargs
 ) -> str:
+    # Обратная совместимость, если port_bans передан 5-м аргументом вместо full_ban
+    if isinstance(full_ban, list) and port_bans is None:
+        port_bans = full_ban
+        full_ban = None
+
     status_emoji = _("router", "status_active") if active else _("router", "status_offline")
     port_bans_list = port_bans if isinstance(port_bans, list) else []
     allowed_ports_list = allowed_ports if isinstance(allowed_ports, list) else []
@@ -122,10 +129,16 @@ def get_router_custom_allow_port_prompt_text(ip: str) -> str:
 
 def get_router_active_bans_text(
     ip: str,
-    full_ban: Optional[Dict[str, Any]],
-    port_bans: List[Dict[str, Any]],
-    allowed_ports: Optional[List[Dict[str, Any]]] = None
+    full_ban: Optional[Dict[str, Any]] = None,
+    port_bans: Optional[List[Dict[str, Any]]] = None,
+    allowed_ports: Optional[List[Dict[str, Any]]] = None,
+    *args,
+    **kwargs
 ) -> str:
+    if isinstance(full_ban, list) and port_bans is None:
+        port_bans = full_ban
+        full_ban = None
+
     text = _("router", "active_bans_header", ip=ip)
     if full_ban:
         expire = full_ban.get('expire_time')
