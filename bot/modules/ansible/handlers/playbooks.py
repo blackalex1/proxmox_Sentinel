@@ -77,7 +77,7 @@ async def process_ansible_main(callback: CallbackQuery, state: FSMContext):
 
 @router.callback_query(F.data.startswith("ansible_run_"), F.data != "ansible_run_selected")
 async def ask_for_host(callback: CallbackQuery, state: FSMContext):
-    clean_name = callback.data.split("ansible_run_")[1]
+    clean_name = callback.data.removeprefix("ansible_run_")
     
     files = glob.glob(os.path.join(ANSIBLE_PLAYBOOKS_DIR, "*.yml")) + glob.glob(os.path.join(ANSIBLE_PLAYBOOKS_DIR, "*.yaml"))
     playbook_path = next((f for f in files if os.path.basename(f)[:50] == clean_name and os.path.basename(f) != "reboot_server.yml"), None)
@@ -119,7 +119,7 @@ async def process_ansible_all(callback: CallbackQuery, state: FSMContext):
 
 @router.callback_query(AnsibleState.waiting_for_host, F.data.startswith("ansible_toggle_h:"))
 async def process_ansible_toggle_host(callback: CallbackQuery, state: FSMContext):
-    target = callback.data.split("ansible_toggle_h:")[1]
+    target = callback.data.removeprefix("ansible_toggle_h:")
     data = await state.get_data()
     selected_hosts = data.get("selected_hosts", [])
     
@@ -160,7 +160,7 @@ async def process_ansible_host_input(message: types.Message, state: FSMContext):
 
 @router.callback_query(AnsibleState.waiting_for_reboot, F.data.startswith("ansible_toggle_reboot:"))
 async def process_ansible_toggle_reboot(callback: CallbackQuery, state: FSMContext):
-    target = callback.data.split("ansible_toggle_reboot:")[1]
+    target = callback.data.removeprefix("ansible_toggle_reboot:")
     data = await state.get_data()
     reboot_hosts = data.get("reboot_hosts", [])
     selected_reboot_hosts = data.get("selected_reboot_hosts", [])

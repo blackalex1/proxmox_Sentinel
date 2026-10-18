@@ -8,7 +8,8 @@ from modules.proxmox.monitor.hysteria_alerts import (
     process_hysteria_audit_event,
     active_activity_cards,
     check_and_send_card_delayed,
-    is_card_active
+    is_card_active,
+    _last_new_ip_alerts
 )
 from core.outbox import ResilientOutbox, OUTBOX_FILE
 
@@ -17,6 +18,7 @@ from core.outbox import ResilientOutbox, OUTBOX_FILE
 def clean_state():
     """Очищаем состояние карточек и очереди перед каждым тестом."""
     active_activity_cards.clear()
+    _last_new_ip_alerts.clear()
     import os
     if os.path.exists(OUTBOX_FILE):
         try:
@@ -25,6 +27,7 @@ def clean_state():
             pass
     yield
     active_activity_cards.clear()
+    _last_new_ip_alerts.clear()
     if os.path.exists(OUTBOX_FILE):
         try:
             os.remove(OUTBOX_FILE)

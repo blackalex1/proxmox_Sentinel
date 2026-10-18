@@ -1,21 +1,38 @@
 import asyncio
 import logging
+import ipaddress
 
 # Память для локальных временных блокировок на хосте Proxmox: dst_ip -> asyncio.Task
 active_local_blocks = {}
 
+def get_iptables_bin(ip_str: str) -> str:
+    """Возвращает 'ip6tables' для IPv6 адресов и 'iptables' для IPv4."""
+    try:
+        addr = ipaddress.ip_address(ip_str.strip())
+        return "ip6tables" if addr.version == 6 else "iptables"
+    except ValueError:
+        return "ip6tables" if ":" in ip_str else "iptables"
+
 async def block_local_ip(dst_ip, delay=3600, reason="Вручную"):
     """
-    Временно блокирует целевой IP на хосте Proxmox (как для самого хоста, так и для всех LXC контейнеров) через iptables.
+    Временно блокирует целевой IP на хосте Proxmox (как для самого хоста, так и для всех LXC контейнеров) через iptables/ip6tables.
     """
+    dst_ip = str(dst_ip).strip()
+    try:
+        ipaddress.ip_address(dst_ip)
+    except ValueError:
+        logging.error("local_ips_invalid_ip_address_rejected: %s", dst_ip)
+        return False
+
     key = dst_ip
     if key in active_local_blocks:
         active_local_blocks[key].cancel()
         
-    cmd_output_del = f"iptables -D OUTPUT -d {dst_ip} -m comment --comment \"AEGIS-TEMP-BLOCK\" -j DROP 2>/dev/null || true"
-    cmd_output_add = f"iptables -I OUTPUT -d {dst_ip} -m comment --comment \"AEGIS-TEMP-BLOCK\" -j DROP"
-    cmd_forward_del = f"iptables -D FORWARD -d {dst_ip} -m comment --comment \"AEGIS-TEMP-BLOCK\" -j DROP 2>/dev/null || true"
-    cmd_forward_add = f"iptables -I FORWARD -d {dst_ip} -m comment --comment \"AEGIS-TEMP-BLOCK\" -j DROP"
+    ipt_bin = get_iptables_bin(dst_ip)
+    cmd_output_del = f"{ipt_bin} -D OUTPUT -d {dst_ip} -m comment --comment \"AEGIS-TEMP-BLOCK\" -j DROP 2>/dev/null || true"
+    cmd_output_add = f"{ipt_bin} -I OUTPUT -d {dst_ip} -m comment --comment \"AEGIS-TEMP-BLOCK\" -j DROP"
+    cmd_forward_del = f"{ipt_bin} -D FORWARD -d {dst_ip} -m comment --comment \"AEGIS-TEMP-BLOCK\" -j DROP 2>/dev/null || true"
+    cmd_forward_add = f"{ipt_bin} -I FORWARD -d {dst_ip} -m comment --comment \"AEGIS-TEMP-BLOCK\" -j DROP"
     
     try:
         for c in [cmd_output_del, cmd_output_add, cmd_forward_del, cmd_forward_add]:
@@ -41,8 +58,8 @@ async def block_local_ip(dst_ip, delay=3600, reason="Вручную"):
             try:
                 await asyncio.sleep(delay)
                 for c in [
-                    f"iptables -D OUTPUT -d {dst_ip} -m comment --comment \"AEGIS-TEMP-BLOCK\" -j DROP",
-                    f"iptables -D FORWARD -d {dst_ip} -m comment --comment \"AEGIS-TEMP-BLOCK\" -j DROP"
+                    f"{ipt_bin} -D OUTPUT -d {dst_ip} -m comment --comment \"AEGIS-TEMP-BLOCK\" -j DROP",
+                    f"{ipt_bin} -D FORWARD -d {dst_ip} -m comment --comment \"AEGIS-TEMP-BLOCK\" -j DROP"
                 ]:
                     unblock_proc = await asyncio.create_subprocess_shell(
                         c,
@@ -71,12 +88,16 @@ async def block_local_ip(dst_ip, delay=3600, reason="Вручную"):
 
 async def cleanup_local_blocks_on_startup():
     """
-    Очищает любые забытые временные блокировки Aegis IPS на локальном хосте Proxmox при старте бота.
+    Очищает любые забытые временные блокировки Aegis IPS на локальном хосте Proxmox при старте бота (IPv4 и IPv6).
     """
     try:
         cleanup_cmd = (
             "iptables-save | grep 'AEGIS-TEMP-BLOCK' | while read -r line; do "
             "rule=$(echo \"$line\" | sed 's/-A /iptables -D /'); "
+            "eval \"$rule\"; "
+            "done; "
+            "ip6tables-save 2>/dev/null | grep 'AEGIS-TEMP-BLOCK' | while read -r line; do "
+            "rule=$(echo \"$line\" | sed 's/-A /ip6tables -D /'); "
             "eval \"$rule\"; "
             "done"
         )
@@ -100,15 +121,22 @@ async def unban_local_ip(dst_ip):
     """
     Снимает временную блокировку целевого IP на хосте Proxmox вручную.
     """
+    dst_ip = str(dst_ip).strip()
+    try:
+        ipaddress.ip_address(dst_ip)
+    except ValueError:
+        return False, f"Некорректный IP-адрес: {dst_ip}"
+
     key = dst_ip
     if key in active_local_blocks:
         active_local_blocks[key].cancel()
         active_local_blocks.pop(key, None)
         
+    ipt_bin = get_iptables_bin(dst_ip)
     try:
         for c in [
-            f"iptables -D OUTPUT -d {dst_ip} -m comment --comment \"AEGIS-TEMP-BLOCK\" -j DROP",
-            f"iptables -D FORWARD -d {dst_ip} -m comment --comment \"AEGIS-TEMP-BLOCK\" -j DROP"
+            f"{ipt_bin} -D OUTPUT -d {dst_ip} -m comment --comment \"AEGIS-TEMP-BLOCK\" -j DROP",
+            f"{ipt_bin} -D FORWARD -d {dst_ip} -m comment --comment \"AEGIS-TEMP-BLOCK\" -j DROP"
         ]:
             proc = await asyncio.create_subprocess_shell(
                 c,
@@ -127,3 +155,4 @@ async def unban_local_ip(dst_ip):
     except Exception as e:
         logging.error("local_ips_error_unblocking_on_proxmox_host", dst_ip, e)
         return False, str(e)
+

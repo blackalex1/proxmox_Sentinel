@@ -6,6 +6,7 @@ import pytest
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'bot')))
 
 from core.rich import (
+    HAS_RICH_API,
     build_rich_message,
     _parse_html_table,
     parse_to_rich_text,
@@ -16,6 +17,9 @@ from core.rich import (
     InputRichBlockParagraph,
     InputRichMessage,
 )
+
+if not HAS_RICH_API:
+    pytestmark = pytest.mark.skip(reason="aiogram installation does not have native InputRichMessage support")
 
 def test_html_table_parsing_basic():
     html_content = (

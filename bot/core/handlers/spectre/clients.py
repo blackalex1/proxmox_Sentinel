@@ -346,21 +346,31 @@ async def cb_block_ip(callback: CallbackQuery):
     Handles '❌ Запретить и заблокировать' callback:
     Format: block_ip:<panel_name>:<username>:<ip>
     """
-    parts = callback.data.split(":", 3)
-    if len(parts) < 4:
-        with suppress(TelegramBadRequest, TelegramAPIError):
-            await callback.answer("Ошибка формата данных", show_alert=True)
-        return
-        
-    panel_name = parts[1]
-    username = parts[2]
-    ip = parts[3]
-    
+    raw = callback.data.removeprefix("block_ip:")
     panel = None
+    rem = ""
     for p in spectre_manager.panels.values():
-        if p.name == panel_name:
+        if raw.startswith(f"{p.name}:"):
             panel = p
+            rem = raw[len(p.name) + 1:]
             break
+            
+    if panel and ":" in rem:
+        username, ip = rem.split(":", 1)
+    else:
+        parts = raw.split(":", 2)
+        if len(parts) < 3:
+            with suppress(TelegramBadRequest, TelegramAPIError):
+                await callback.answer("Ошибка формата данных", show_alert=True)
+            return
+        panel_name = parts[0]
+        username = parts[1]
+        ip = parts[2]
+        if not panel:
+            for p in spectre_manager.panels.values():
+                if p.name == panel_name:
+                    panel = p
+                    break
             
     if not panel and spectre_manager.panels:
         panel = list(spectre_manager.panels.values())[0]

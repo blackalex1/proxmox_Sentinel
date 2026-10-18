@@ -64,8 +64,10 @@ def prompt_variable(key, description, default=""):
             new_lines[-1] += '\n'
         new_lines.append(f"{key}={user_input}\n")
 
-    with open(env_path, 'w', encoding='utf-8') as f:
+    tmp_path = f"{env_path}.tmp"
+    with open(tmp_path, 'w', encoding='utf-8') as f:
         f.writelines(new_lines)
+    os.replace(tmp_path, env_path)
         
     if settings.bot_language == 'ru':
         print(f"   ✓ Сохранено: {key}={user_input}")

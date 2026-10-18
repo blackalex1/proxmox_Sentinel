@@ -198,7 +198,7 @@ async def render_ban_center(message_or_query) -> tuple[str, InlineKeyboardMarkup
                 kb_buttons.append([
                     InlineKeyboardButton(
                         text=_("ban_center", "btn_unban_ip", ip=ban['dst_ip']),
-                        callback_data=f"ban_center_unban:{ban['server_ip']}:{ban['client_ip']}:{ban['port']}:{ban['protocol']}"
+                        callback_data=f"ban_center_unban_port:{ban['server_ip']}:{ban['client_ip']}:{ban['port']}:{ban['protocol']}"
                     )
                 ])
             else:
@@ -274,22 +274,29 @@ async def process_ban_center_main(callback: CallbackQuery):
         logging.error("ban_center_error_navigating_to_ban_center", e)
         await callback.answer(_("ban_center", "open_err"), show_alert=True)
 
-@router.callback_query(F.data.startswith("ban_center_unban:"))
+@router.callback_query(F.data.startswith("ban_center_unban:") | F.data.startswith("ban_center_unban_port:"))
 async def process_ban_center_unban(callback: CallbackQuery):
     """Снятие блокировки IP вручную из Центра блокировок."""
     try:
-        parts = callback.data.split(":")
-        if len(parts) < 3:
-            await callback.answer(_("ban_center", "invalid_callback_err"), show_alert=True)
-            return
-            
-        server_ip = parts[1]
-        dst_ip = parts[2]
-        
-        is_port_ban = len(parts) >= 5
+        is_port_ban = callback.data.startswith("ban_center_unban_port:")
         if is_port_ban:
+            parts = callback.data.split(":", 4)
+            if len(parts) < 5:
+                await callback.answer(_("ban_center", "invalid_callback_err"), show_alert=True)
+                return
+            server_ip = parts[1]
+            dst_ip = parts[2]
             port = int(parts[3])
             proto = parts[4]
+        else:
+            parts = callback.data.split(":", 2)
+            if len(parts) < 3:
+                await callback.answer(_("ban_center", "invalid_callback_err"), show_alert=True)
+                return
+            server_ip = parts[1]
+            dst_ip = parts[2]
+            port = None
+            proto = None
             
         success = False
         desc = ""
@@ -398,12 +405,10 @@ def get_unban_key_cmd(keys_path: str, key_body: str) -> str:
 async def process_ban_center_unbankey(callback: CallbackQuery):
     """Восстановление (разблокировка) SSH-ключа из Центра блокировок."""
     try:
-        parts = callback.data.split(":")
-        if len(parts) < 2:
+        key_id = callback.data.removeprefix("ban_center_unbankey:")
+        if not key_id:
             await callback.answer(_("ban_center", "invalid_callback_err"), show_alert=True)
             return
-            
-        key_id = parts[1]
         
         from core.db import get_state, set_state
         banned_keys = await get_state("banned_ssh_keys", [])

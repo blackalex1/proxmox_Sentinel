@@ -320,8 +320,10 @@ class ResilientOutbox:
                     msg_copy["kwargs"] = kwargs_copy
                 serialized_queue.append(msg_copy)
                 
-            with open(OUTBOX_FILE, 'w', encoding='utf-8') as f:
+            temp_file = f"{OUTBOX_FILE}.tmp.{os.getpid()}"
+            with open(temp_file, 'w', encoding='utf-8') as f:
                 json.dump(serialized_queue, f, ensure_ascii=False, indent=2)
+            os.replace(temp_file, OUTBOX_FILE)
         except Exception as e:
             logger.error("outbox_error_saving_queue_disk", e)
 
@@ -477,9 +479,8 @@ class ResilientOutbox:
                     logger.warning("outbox_network_error_sending_message_suspending", chat_id, e)
                     remaining_queue.append(msg)
                     # Добавляем все оставшиеся сообщения обратно в очередь
-                    # (ВАЖНО: сохраняем оригинальный индекс текущего элемента для правильного слайсинга)
-                    current_idx = self.queue.index(msg)
-                    remaining_queue.extend(self.queue[current_idx+1:])
+                    # (Используем прямой срез по 1-based индексу idx, избегая багов с дубликатами сообщений)
+                    remaining_queue.extend(self.queue[idx:])
                     break
                 except TelegramRetryAfter as e:
                     # Защита от флуда: если Telegram попросил подождать (Flood Control)
@@ -492,8 +493,7 @@ class ResilientOutbox:
                     else:
                         self.rate_limit_until = time.time() + min(e.retry_after, 60)
                         remaining_queue.append(msg)
-                        current_idx = self.queue.index(msg)
-                        remaining_queue.extend(self.queue[current_idx+1:])
+                        remaining_queue.extend(self.queue[idx:])
                         await asyncio.sleep(min(e.retry_after, 5))
                         break
 
@@ -502,6 +502,11 @@ class ResilientOutbox:
                     # сообщение больше не отправляем, удаляем из очереди
                     logger.error("outbox_telegram_api_error_sending_message", chat_id, e)
                 except Exception as e:
+                    if is_network_error(e):
+                        logger.warning("outbox_network_error_sending_message_suspending", chat_id, e)
+                        remaining_queue.append(msg)
+                        remaining_queue.extend(self.queue[idx:])
+                        break
                     logger.error("outbox_unknown_error_sending_message_deleted", chat_id, e)
             
             self.queue = remaining_queue

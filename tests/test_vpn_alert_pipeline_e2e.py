@@ -8,16 +8,18 @@ from core.db import (
     execute_write, execute_read_all, get_db_connection
 )
 from modules.proxmox.monitor.hysteria_alerts import (
-    check_new_ip_and_get_history, process_hysteria_audit_event
+    check_new_ip_and_get_history, process_hysteria_audit_event, _last_new_ip_alerts
 )
 
 
 @pytest.fixture(autouse=True)
 def setup_test_db(tmp_path, monkeypatch):
+    _last_new_ip_alerts.clear()
     test_db = str(tmp_path / 'test_vpn_history.db')
     monkeypatch.setattr('core.db.DB_FILE', test_db)
     init_db()
-    return test_db
+    yield test_db
+    _last_new_ip_alerts.clear()
 
 
 @pytest.mark.asyncio
@@ -101,3 +103,63 @@ async def test_vpn_unapproved_ip_triggers_alert_and_approve_flow():
         )
 
         assert mock_send_alert.called is False
+
+
+@pytest.mark.asyncio
+async def test_vpn_new_ip_cooldown_suppresses_rapid_reconnects():
+    """Verifies that an unapproved IP only triggers 1 alert, and repeated reconnects within cooldown are suppressed."""
+    await execute_write('DELETE FROM approved_ips')
+    await execute_write('DELETE FROM vpn_sessions')
+
+    mock_panel = AsyncMock()
+    mock_panel.name = 'testPanel'
+    mock_send_alert = AsyncMock()
+
+    unapproved_ip = '198.51.100.50'
+    username = 'test_user_mobile'
+    details_json = json.dumps({'username': username, 'tx': 1024, 'rx': 2048})
+    now = time.time()
+
+    with patch('modules.proxmox.monitor.utils.send_alert_to_admins', mock_send_alert), \
+         patch('modules.proxmox.monitor.utils.get_geoip_info', AsyncMock(return_value={'country': 'RU', 'city': 'St Petersburg'})):
+
+        # 1. First connection from 198.51.100.50 -> Alert MUST be dispatched
+        await process_hysteria_audit_event(
+            panel=mock_panel,
+            action='singbox_connect',
+            client_ip=unapproved_ip,
+            log_timestamp=int(now),
+            details_str=details_json
+        )
+        assert mock_send_alert.call_count == 1
+
+        # 2. Second connection 2 seconds later (simulating mobile network reconnect) -> MUST be suppressed by cooldown
+        await process_hysteria_audit_event(
+            panel=mock_panel,
+            action='singbox_connect',
+            client_ip=unapproved_ip,
+            log_timestamp=int(now + 2),
+            details_str=details_json
+        )
+        assert mock_send_alert.call_count == 1  # Still 1, no duplicate alert!
+
+        # 3. Third connection 10 seconds later -> Still suppressed
+        await process_hysteria_audit_event(
+            panel=mock_panel,
+            action='singbox_connect',
+            client_ip=unapproved_ip,
+            log_timestamp=int(now + 10),
+            details_str=details_json
+        )
+        assert mock_send_alert.call_count == 1
+
+        # 4. Connection from a DIFFERENT unapproved IP -> Alert MUST be dispatched
+        diff_ip = '198.51.100.99'
+        await process_hysteria_audit_event(
+            panel=mock_panel,
+            action='singbox_connect',
+            client_ip=diff_ip,
+            log_timestamp=int(now + 15),
+            details_str=json.dumps({'username': username, 'tx': 0, 'rx': 0})
+        )
+        assert mock_send_alert.call_count == 2

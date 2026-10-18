@@ -13,10 +13,8 @@ class ProxmoxCloneState(StatesGroup):
 
 @router.callback_query(F.data.startswith("cmd_clone_"))
 async def start_proxmox_clone(callback: CallbackQuery, state: FSMContext):
-    parts = callback.data.split("_")
-    node_name = parts[2]
-    vmid = parts[3]
-    vm_type = parts[4]
+    raw = callback.data.removeprefix("cmd_clone_")
+    node_name, vmid, vm_type = raw.rsplit("_", 2)
     
     await state.update_data(
         node_name=node_name,

@@ -280,11 +280,17 @@ from core.sender import (
 
 
 def is_private_ip(ip):
-    """Проверяет, относится ли IP-адрес к приватным/локальным диапазонам RFC 1918."""
+    """Проверяет, относится ли IP-адрес к приватным/локальным диапазонам RFC 1918 / RFC 4193."""
     if not ip or ip == 'UNKNOWN':
         return True
     if ip == '::1' or ip == 'localhost':
         return True
+    try:
+        import ipaddress
+        addr = ipaddress.ip_address(ip.strip())
+        return addr.is_private or addr.is_loopback or addr.is_link_local
+    except Exception:
+        pass
     try:
         parts = list(map(int, ip.split('.')))
         if len(parts) != 4:
@@ -311,35 +317,34 @@ def is_private_ip(ip):
 
 async def get_geoip_info(ip: str) -> str:
     """Получает геологикационную информацию (страна, город, провайдер) для IP-адреса."""
-    if not ip or ip == "unknown" or ip == "WEB_GUI" or ip == "LOCAL":
-        return "Локальная сеть"
-    
-    # Игнорируем RFC 1918 приватные адреса и IPv6 loopback
-    if ip.startswith("127.") or ip.startswith("192.168.") or ip.startswith("10.") or ip.startswith("172.16.") or ip.startswith("::1") or ip == "localhost":
+    if not ip or ip == "unknown" or ip == "WEB_GUI" or ip == "LOCAL" or is_private_ip(ip):
         return "Локальная сеть"
         
     try:
         import aiohttp
         url = f"http://ip-api.com/json/{ip}?fields=status,country,city,isp,org"
         session = await bot.session.create_session()
-        async with session.get(url, timeout=3.0) as response:
-            if response.status == 200:
-                data = await response.json()
-                if data.get("status") == "success":
-                    country = data.get("country", "")
-                    city = data.get("city", "")
-                    isp = data.get("isp") or data.get("org") or ""
-                    geo_parts = []
-                    if country:
-                        geo_parts.append(country)
-                    if city:
-                        geo_parts.append(city)
-                    geo_str = " - ".join(geo_parts) if geo_parts else ""
-                    if isp:
-                        if geo_str:
-                            return f"{geo_str} ({isp})"
-                        return isp
-                    return geo_str or "Определено"
+        try:
+            async with session.get(url, timeout=3.0) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    if data.get("status") == "success":
+                        country = data.get("country", "")
+                        city = data.get("city", "")
+                        isp = data.get("isp") or data.get("org") or ""
+                        geo_parts = []
+                        if country:
+                            geo_parts.append(country)
+                        if city:
+                            geo_parts.append(city)
+                        geo_str = " - ".join(geo_parts) if geo_parts else ""
+                        if isp:
+                            if geo_str:
+                                return f"{geo_str} ({isp})"
+                            return isp
+                        return geo_str or "Определено"
+        finally:
+            await session.close()
     except Exception as e:
         logging.warning("geoip_failed_to_obtain_data_for", ip, e)
     return "Неизвестно"

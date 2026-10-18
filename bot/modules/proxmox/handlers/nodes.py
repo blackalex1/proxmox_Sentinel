@@ -58,7 +58,7 @@ async def process_back_to_nodes(callback: CallbackQuery):
 @router.callback_query(F.data.startswith("node_"))
 async def process_node_select(callback: CallbackQuery):
     try:
-        node_name = callback.data.split("_")[1]
+        node_name = callback.data.removeprefix("node_")
         from modules.proxmox.keyboards import get_vms_keyboard
         try:
             await callback.message.edit_text(

@@ -134,7 +134,7 @@ async def cb_router_list(callback: CallbackQuery, state: FSMContext):
 async def cb_router_client_details(callback: CallbackQuery, state: FSMContext):
     """Открывает детальное меню управления клиентом."""
     await state.clear()
-    ip = callback.data.split(":")[1]
+    ip = callback.data.removeprefix("r_cl:")
     text, kb = await render_client_details(ip)
     await edit_rich_message(chat_id=callback.message.chat.id, message_id=callback.message.message_id, text=text, reply_markup=kb, parse_mode="HTML")
     await callback.answer()
@@ -144,7 +144,7 @@ async def cb_router_client_details(callback: CallbackQuery, state: FSMContext):
 
 @router.callback_query(F.data.startswith("r_ban_all_menu:"))
 async def cb_router_ban_all_menu(callback: CallbackQuery):
-    ip = callback.data.split(":")[1]
+    ip = callback.data.removeprefix("r_ban_all_menu:")
     text = get_router_ban_all_menu_text(ip)
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text=_("router", "dur_1_hour", "1 час"), callback_data=f"r_ban_all:{ip}:3600")],
@@ -159,9 +159,9 @@ async def cb_router_ban_all_menu(callback: CallbackQuery):
 
 @router.callback_query(F.data.startswith("r_ban_all:"))
 async def cb_router_ban_all_action(callback: CallbackQuery):
-    parts = callback.data.split(":")
-    ip = parts[1]
-    seconds = int(parts[2])
+    raw = callback.data.removeprefix("r_ban_all:")
+    ip, seconds_str = raw.rsplit(":", 1)
+    seconds = int(seconds_str)
     
     await callback.answer(_("router", "action_applying_ssh", "Выполняю блокировку по SSH..."), show_alert=False)
     success, desc = await ban_router_ip(ip, delay=seconds, reason="Вручную из TG")
@@ -178,7 +178,7 @@ async def cb_router_ban_all_action(callback: CallbackQuery):
 
 @router.callback_query(F.data.startswith("r_ban_port_menu:"))
 async def cb_router_ban_port_menu(callback: CallbackQuery):
-    ip = callback.data.split(":")[1]
+    ip = callback.data.removeprefix("r_ban_port_menu:")
     text = get_router_ban_port_menu_text(ip)
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [
@@ -203,10 +203,8 @@ async def cb_router_ban_port_menu(callback: CallbackQuery):
 
 @router.callback_query(F.data.startswith("r_ban_port_dur:"))
 async def cb_router_ban_port_duration_menu(callback: CallbackQuery):
-    parts = callback.data.split(":")
-    ip = parts[1]
-    port = parts[2]
-    proto = parts[3]
+    raw = callback.data.removeprefix("r_ban_port_dur:")
+    ip, port, proto = raw.rsplit(":", 2)
     
     port_label = port.replace("_", ", ")
     text = get_router_ban_port_duration_text(ip, port_label, proto)
@@ -223,11 +221,9 @@ async def cb_router_ban_port_duration_menu(callback: CallbackQuery):
 
 @router.callback_query(F.data.startswith("r_ban_port:"))
 async def cb_router_ban_port_action(callback: CallbackQuery):
-    parts = callback.data.split(":")
-    ip = parts[1]
-    port_raw = parts[2]
-    proto = parts[3]
-    seconds = int(parts[4])
+    raw = callback.data.removeprefix("r_ban_port:")
+    ip, port_raw, proto, seconds_str = raw.rsplit(":", 3)
+    seconds = int(seconds_str)
     
     await callback.answer(_("router", "action_banning_port_ssh", "Добавляю правила блокировки порта по SSH..."), show_alert=False)
     
@@ -256,7 +252,7 @@ async def cb_router_ban_port_action(callback: CallbackQuery):
 
 @router.callback_query(F.data.startswith("r_custom_port:"))
 async def cb_router_custom_port_prompt(callback: CallbackQuery, state: FSMContext):
-    ip = callback.data.split(":")[1]
+    ip = callback.data.removeprefix("r_custom_port:")
     await state.update_data(ip=ip)
     await state.set_state(RouterPortControlState.waiting_for_custom_port)
     
@@ -318,7 +314,7 @@ async def process_custom_port_input(message: types.Message, state: FSMContext):
 
 @router.callback_query(F.data.startswith("r_allow_port_menu:"))
 async def cb_router_allow_port_menu(callback: CallbackQuery):
-    ip = callback.data.split(":")[1]
+    ip = callback.data.removeprefix("r_allow_port_menu:")
     text = get_router_allow_port_menu_text(ip)
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [
@@ -352,10 +348,8 @@ async def cb_router_allow_port_menu(callback: CallbackQuery):
 
 @router.callback_query(F.data.startswith("r_allow_act:"))
 async def cb_router_allow_port_action(callback: CallbackQuery):
-    parts = callback.data.split(":")
-    ip = parts[1]
-    port_raw = parts[2]
-    proto = parts[3]
+    raw = callback.data.removeprefix("r_allow_act:")
+    ip, port_raw, proto = raw.rsplit(":", 2)
     
     await callback.answer(_("router", "action_allowing_port_ssh", "Добавляю правила разрешения порта по SSH..."), show_alert=False)
     
@@ -383,7 +377,7 @@ async def cb_router_allow_port_action(callback: CallbackQuery):
 
 @router.callback_query(F.data.startswith("r_custom_allow_port:"))
 async def cb_router_custom_allow_port_prompt(callback: CallbackQuery, state: FSMContext):
-    ip = callback.data.split(":")[1]
+    ip = callback.data.removeprefix("r_custom_allow_port:")
     await state.update_data(ip=ip)
     await state.set_state(RouterPortControlState.waiting_for_custom_allow_port)
     
@@ -443,10 +437,9 @@ async def process_custom_allow_port_input(message: types.Message, state: FSMCont
 
 @router.callback_query(F.data.startswith("r_al_alert:"))
 async def cb_router_allow_alert_action(callback: CallbackQuery):
-    parts = callback.data.split(":")
-    ip = parts[1]
-    port = int(parts[2])
-    proto = parts[3]
+    raw = callback.data.removeprefix("r_al_alert:")
+    ip, port_str, proto = raw.rsplit(":", 2)
+    port = int(port_str)
     
     success, desc = await allow_router_port(ip, port, proto=proto, reason="Из алерта TG")
     p_label = "Все порты" if port == 0 else str(port)
@@ -468,7 +461,7 @@ async def cb_router_allow_alert_action(callback: CallbackQuery):
 
 @router.callback_query(F.data.startswith("r_bans:"))
 async def cb_router_active_bans_list(callback: CallbackQuery):
-    ip = callback.data.split(":")[1]
+    ip = callback.data.removeprefix("r_bans:")
     
     full_ban = await execute_read_one("SELECT * FROM temp_bans WHERE server_ip = 'router' AND dst_ip = ?", (ip,))
     port_bans = await execute_read_all("SELECT * FROM temp_port_bans WHERE server_ip = 'router' AND client_ip = ?", (ip,))
@@ -507,7 +500,7 @@ async def cb_router_active_bans_list(callback: CallbackQuery):
 
 @router.callback_query(F.data.startswith("r_unban_all:"))
 async def cb_router_unban_all_action(callback: CallbackQuery):
-    ip = callback.data.split(":")[1]
+    ip = callback.data.removeprefix("r_unban_all:")
     
     await callback.answer(_("router", "action_unbanning_ssh", "Снимаю блокировку по SSH..."), show_alert=False)
     success, desc = await unban_router_ip(ip)
@@ -522,10 +515,9 @@ async def cb_router_unban_all_action(callback: CallbackQuery):
 
 @router.callback_query(F.data.startswith("r_unban_port:"))
 async def cb_router_unban_port_action(callback: CallbackQuery):
-    parts = callback.data.split(":")
-    ip = parts[1]
-    port = int(parts[2])
-    proto = parts[3]
+    raw = callback.data.removeprefix("r_unban_port:")
+    ip, port_str, proto = raw.rsplit(":", 2)
+    port = int(port_str)
     
     await callback.answer(_("router", "action_unbanning_port_ssh", f"Снимаю блокировку порта {port}/{proto} по SSH...", port=port, proto=proto), show_alert=False)
     success, desc = await unban_router_port(ip, port, proto)
@@ -547,10 +539,9 @@ async def cb_router_unban_port_action(callback: CallbackQuery):
 
 @router.callback_query(F.data.startswith("r_disallow_port:"))
 async def cb_router_disallow_port_action(callback: CallbackQuery):
-    parts = callback.data.split(":")
-    ip = parts[1]
-    port = int(parts[2])
-    proto = parts[3]
+    raw = callback.data.removeprefix("r_disallow_port:")
+    ip, port_str, proto = raw.rsplit(":", 2)
+    port = int(port_str)
     
     await callback.answer(_("router", "action_disallowing_port_ssh", "Удаляю правила разрешения порта по SSH..."), show_alert=False)
     success, desc = await disallow_router_port(ip, port, proto)
@@ -576,12 +567,11 @@ async def cb_router_disallow_port_action(callback: CallbackQuery):
 @router.callback_query(F.data.startswith("router_block:"))
 async def handle_router_block_ip(callback: CallbackQuery):
     try:
-        parts = callback.data.split(":")
-        if len(parts) < 2:
+        ip = callback.data.removeprefix("router_block:")
+        if not ip:
             await callback.answer(_("router", "invalid_data_format"), show_alert=True)
             return
             
-        ip = parts[1]
         success, desc = await ban_router_ip(ip)
         if success:
             await callback.answer(_("router", "ip_blocked_successfully", ip=ip), show_alert=True)
@@ -611,12 +601,11 @@ async def handle_router_block_ip(callback: CallbackQuery):
 @router.callback_query(F.data.startswith("router_unblock:"))
 async def handle_router_unblock_ip(callback: CallbackQuery):
     try:
-        parts = callback.data.split(":")
-        if len(parts) < 2:
+        ip = callback.data.removeprefix("router_unblock:")
+        if not ip:
             await callback.answer(_("router", "invalid_data_format"), show_alert=True)
             return
             
-        ip = parts[1]
         success, desc = await unban_router_ip(ip)
         if success:
             await callback.answer(_("router", "ip_unblocked_successfully", ip=ip), show_alert=True)

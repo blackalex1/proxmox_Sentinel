@@ -10,6 +10,8 @@ import asyncio
 from pathlib import Path
 from unittest.mock import AsyncMock, patch, MagicMock
 
+pytest.importorskip("sqlalchemy", reason="sqlalchemy is required for live panel attack simulation")
+
 # Подключаем пути к панелям и боту
 PANEL_DIR = Path(__file__).resolve().parent.parent.parent / "panel"
 if PANEL_DIR.exists() and str(PANEL_DIR) not in sys.path:

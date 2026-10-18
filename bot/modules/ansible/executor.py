@@ -133,12 +133,8 @@ async def execute_ansible_playbook(message_or_callback, state: FSMContext, limit
             keyboard = get_ansible_reboot_keyboard(reboot_hosts, [])
 
         if len(full_log_escaped) > 3500:
-            temp_log_path = f"ansible_log_{real_filename}.txt"
-            with open(temp_log_path, "w", encoding="utf-8") as f:
-                f.write(full_log)
-                
-            from aiogram.types import FSInputFile
-            logfile = FSInputFile(temp_log_path)
+            from aiogram.types import BufferedInputFile
+            logfile = BufferedInputFile(full_log.encode("utf-8"), filename=f"ansible_log_{real_filename or 'output'}.txt")
             await status_msg.delete()
             
             caption = f"📝 Полный лог <b>{html.escape(real_filename or '')}</b> {target_text}.\nСтатус: {status}"
@@ -159,7 +155,6 @@ async def execute_ansible_playbook(message_or_callback, state: FSMContext, limit
                     parse_mode="HTML",
                     reply_markup=keyboard
                 )
-            os.remove(temp_log_path)
         else:
             text = f"📝 Отчет по <b>{html.escape(real_filename or '')}</b> {target_text}\nСтатус: {status}\n<pre><code class='language-bash'>{full_log_escaped}</code></pre>"
             if reboot_hosts:

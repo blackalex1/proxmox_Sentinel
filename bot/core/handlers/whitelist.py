@@ -331,10 +331,19 @@ async def cb_whitelist_del_select(callback: CallbackQuery):
 
 @router.callback_query(F.data.startswith("wl_del_item:"))
 async def cb_whitelist_del_item(callback: CallbackQuery):
-    parts = callback.data.split(":", 3)
-    node = parts[1]
-    item_type = parts[2] # "ip_ports" или "processes"
-    item = parts[3]
+    raw = callback.data.removeprefix("wl_del_item:")
+    if ":ip_ports:" in raw:
+        node, item = raw.split(":ip_ports:", 1)
+        item_type = "ip_ports"
+    elif ":processes:" in raw:
+        node, item = raw.split(":processes:", 1)
+        item_type = "processes"
+    else:
+        parts = raw.split(":", 2)
+        if len(parts) >= 3:
+            node, item_type, item = parts[0], parts[1], parts[2]
+        else:
+            return
     
     whitelists = await get_node_whitelists()
     if node in whitelists and item_type in whitelists[node]:
@@ -407,14 +416,20 @@ async def cmd_whitelist_process_cli(message: types.Message):
 @router.callback_query(F.data.startswith("qwl:"))
 async def cb_quick_whitelist(callback: CallbackQuery):
     try:
-        parts = callback.data.split(":", 3)
-        if len(parts) < 4:
-            await callback.answer(_("whitelist", "qwl_invalid_callback"), show_alert=True)
-            return
-            
-        node = parts[1]
-        wl_type = parts[2]
-        val = parts[3]
+        raw = callback.data.removeprefix("qwl:")
+        if ":ip:" in raw:
+            node, val = raw.split(":ip:", 1)
+            wl_type = "ip"
+        elif ":ipport:" in raw:
+            node, val = raw.split(":ipport:", 1)
+            wl_type = "ipport"
+        else:
+            parts = raw.split(":", 2)
+            if len(parts) >= 3:
+                node, wl_type, val = parts[0], parts[1], parts[2]
+            else:
+                await callback.answer(_("whitelist", "qwl_invalid_callback"), show_alert=True)
+                return
         
         # Если тип ipport, val содержит ip:port. Если тип ip, val содержит ip.
         whitelists = await get_node_whitelists()
@@ -553,7 +568,7 @@ async def cb_untrust_lxc(callback: CallbackQuery):
 @router.callback_query(F.data.startswith("qblock:ip:"))
 async def cb_quick_block_ip(callback: CallbackQuery):
     try:
-        ip = callback.data.split(":", 2)[2]
+        ip = callback.data.removeprefix("qblock:ip:")
         from modules.proxmox.monitor.traffic.firewall import block_local_ip
         await block_local_ip(ip, delay=3600, reason="Быстрая блокировка из алерта")
         await callback.answer(f"🚫 IP {ip} заблокирован на 1 час (iptables DROP)", show_alert=True)
@@ -572,7 +587,7 @@ async def cb_quick_block_ip(callback: CallbackQuery):
 @router.callback_query(F.data.startswith("copy:ip:"))
 async def cb_copy_ip(callback: CallbackQuery):
     try:
-        ip = callback.data.split(":", 2)[2]
+        ip = callback.data.removeprefix("copy:ip:")
         await callback.answer(f"{ip}", show_alert=True)
     except Exception:
         await callback.answer()

@@ -4,24 +4,34 @@ from core.config import settings
 
 class ProxmoxClient:
     def __init__(self):
+        self.proxmox = None
         if not settings.proxmox_host:
             logging.warning("proxmox_host_is_not_set_work_with_proxmox")
             return
             
         if settings.proxmox_token_id and settings.proxmox_token_secret:
             token_name = settings.proxmox_token_id.split('!')[1] if '!' in settings.proxmox_token_id else settings.proxmox_token_id
-            self.proxmox = ProxmoxAPI(
-                settings.proxmox_host, 
-                user=settings.proxmox_user, 
-                token_name=token_name,
-                token_value=settings.proxmox_token_secret, 
-                verify_ssl=settings.proxmox_verify_ssl
-            )
+            try:
+                self.proxmox = ProxmoxAPI(
+                    settings.proxmox_host, 
+                    user=settings.proxmox_user, 
+                    token_name=token_name,
+                    token_value=settings.proxmox_token_secret, 
+                    verify_ssl=settings.proxmox_verify_ssl
+                )
+            except Exception as e:
+                logging.error(f"error_initializing_proxmox_api: {e}")
+                self.proxmox = None
         else:
             logging.error("proxmox_token_id_or_proxmox_token_secret_not_set")
 
     def get_nodes(self):
-        return self.proxmox.nodes.get()
+        if not self.proxmox: return []
+        try:
+            return self.proxmox.nodes.get()
+        except Exception as e:
+            logging.error("error_obtaining_nodes_list", e)
+            return []
         
     def get_vms(self, node_name):
         if not self.proxmox: return []
@@ -68,22 +78,27 @@ class ProxmoxClient:
         return None
 
     def start_vm(self, node_name, vm_id, is_lxc=False):
+        if not self.proxmox: return None
         vm_type = 'lxc' if is_lxc else 'qemu'
         return getattr(self.proxmox.nodes(node_name), vm_type)(vm_id).status.start.post()
 
     def stop_vm(self, node_name, vm_id, is_lxc=False):
+        if not self.proxmox: return None
         vm_type = 'lxc' if is_lxc else 'qemu'
         return getattr(self.proxmox.nodes(node_name), vm_type)(vm_id).status.stop.post()
 
     def shutdown_vm(self, node_name, vm_id, is_lxc=False):
+        if not self.proxmox: return None
         vm_type = 'lxc' if is_lxc else 'qemu'
         return getattr(self.proxmox.nodes(node_name), vm_type)(vm_id).status.shutdown.post()
 
     def reboot_vm(self, node_name, vm_id, is_lxc=False):
+        if not self.proxmox: return None
         vm_type = 'lxc' if is_lxc else 'qemu'
         return getattr(self.proxmox.nodes(node_name), vm_type)(vm_id).status.reboot.post()
 
     def get_vm_status(self, node_name, vm_id, is_lxc=False):
+        if not self.proxmox: return {}
         vm_type = 'lxc' if is_lxc else 'qemu'
         return getattr(self.proxmox.nodes(node_name), vm_type)(vm_id).status.current.get()
 
@@ -104,6 +119,7 @@ class ProxmoxClient:
             raise
 
     def clone_vm(self, node_name, vm_id, new_id, new_name, is_lxc=False):
+        if not self.proxmox: return None
         vm_type = 'lxc' if is_lxc else 'qemu'
         return getattr(self.proxmox.nodes(node_name), vm_type)(vm_id).clone.post(
             newid=new_id, 

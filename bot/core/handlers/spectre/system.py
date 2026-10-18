@@ -71,7 +71,7 @@ async def run_backup_for_panel(message: types.Message, panel_key: str):
         error_info = res.get("msg") or res.get("error") or _("spectre", "unknown_error")
         await status_msg.edit_text(_("spectre", "backup_failed", name=panel.name, error=error_info), reply_markup=kb)
 
-@router.message(Command("status"))
+@router.message(Command("spectre_status", "panel_status"))
 async def cmd_status_spectre(message: types.Message):
     """
     Выводит системный статус панели.
@@ -243,11 +243,11 @@ async def show_audit_categories(message: types.Message, panel_key: str):
 
 @router.callback_query(F.data.startswith("spectre_audit_cat:"))
 async def cb_audit_category(callback: CallbackQuery):
-    parts = callback.data.split(":", 2)
-    if len(parts) < 3:
-        return
-    panel_key = parts[1]
-    search = parts[2]
+    raw = callback.data.removeprefix("spectre_audit_cat:")
+    if ":" in raw:
+        panel_key, search = raw.rsplit(":", 1)
+    else:
+        panel_key, search = raw, ""
     
     await callback.message.delete()
     await run_audit_for_panel(callback.message, panel_key, search=search)

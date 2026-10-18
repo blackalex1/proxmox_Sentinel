@@ -50,14 +50,15 @@ async def callback_vpn_history_select(callback: CallbackQuery):
 
 @router.callback_query(F.data.startswith("vpn_hist:"))
 async def callback_vpn_history_view(callback: CallbackQuery):
-    data_parts = callback.data.split(":")
-    if len(data_parts) < 3:
-        return
-        
-    username = data_parts[1]
-    try:
-        page = int(data_parts[2])
-    except ValueError:
+    raw = callback.data.removeprefix("vpn_hist:")
+    if ":" in raw:
+        username, page_str = raw.rsplit(":", 1)
+        try:
+            page = int(page_str)
+        except ValueError:
+            page = 0
+    else:
+        username = raw
         page = 0
         
     # 1. Получаем общее число сессий пользователя
@@ -203,7 +204,7 @@ async def callback_vpn_history_view(callback: CallbackQuery):
 
 @router.callback_query(F.data.startswith("approve_ip:"))
 async def callback_approve_ip(callback: CallbackQuery):
-    parts = callback.data.split(":")
+    parts = callback.data.split(":", 2)
     if len(parts) < 3:
         return
     username = parts[1]
