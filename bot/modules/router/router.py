@@ -143,12 +143,13 @@ async def unban_router_ip(ip):
         success, desc = True, "Блокировка успешно снята"
         
     else: # keenetic / generic
-        # Удаляем все правила блокировки для данного IP из цепочек FORWARD и INPUT
-        for _ in range(10):
-            success_f, _, _ = await run_router_ssh_cmd(f"iptables -D FORWARD -s {ip} -j DROP")
-            success_i, _, _ = await run_router_ssh_cmd(f"iptables -D INPUT -s {ip} -j DROP")
-            if not success_f and not success_i:
-                break
+        # Удаляем все правила блокировки для данного IP из цепочек FORWARD и INPUT в одном SSH-подключении
+        combined_cmd = (
+            f"while iptables -D FORWARD -s {ip} -j DROP 2>/dev/null; do :; done; "
+            f"while iptables -D INPUT -s {ip} -j DROP 2>/dev/null; do :; done; "
+            "true"
+        )
+        await run_router_ssh_cmd(combined_cmd)
         success, desc = True, "Блокировка успешно снята"
         
     if success:

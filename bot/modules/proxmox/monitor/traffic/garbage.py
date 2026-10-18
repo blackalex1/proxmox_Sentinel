@@ -135,17 +135,8 @@ async def monitor_expired_bans():
                 logging.info("garbage_collector_expired_block_detected_for_on", dst_ip, server_ip)
                 
                 if server_ip == "local":
-                    # Снимаем локальную блокировку
-                    for c in [
-                        f"iptables -D OUTPUT -d {dst_ip} -m comment --comment \"AEGIS-TEMP-BLOCK\" -j DROP 2>/dev/null || true",
-                        f"iptables -D FORWARD -d {dst_ip} -m comment --comment \"AEGIS-TEMP-BLOCK\" -j DROP 2>/dev/null || true"
-                    ]:
-                        proc = await asyncio.create_subprocess_shell(
-                            c,
-                            stdout=asyncio.subprocess.DEVNULL,
-                            stderr=asyncio.subprocess.DEVNULL
-                        )
-                        await proc.wait()
+                    from modules.proxmox.monitor.traffic.firewall import unban_local_ip
+                    await unban_local_ip(dst_ip)
                     logging.info("garbage_collector_local_block_of_removed", dst_ip)
                 elif server_ip == "router":
                     # Снимаем блокировку на роутере через SSH
@@ -159,16 +150,16 @@ async def monitor_expired_bans():
                     # Ищем настройки нужного сервера
                     server = next((s for s in settings.remote_servers if s['ip'] == server_ip), None)
                     if server:
-                        unblock_cmd = [f"iptables -D OUTPUT -d {dst_ip} -m comment --comment \"AEGIS-TEMP-BLOCK\" -j DROP 2>/dev/null || true"]
-                        success, _, stderr = await run_remote_ssh_cmd(server, unblock_cmd)
+                        from modules.proxmox.monitor.remote.traffic.firewall import unban_remote_ip
+                        success, desc = await unban_remote_ip(server, dst_ip)
                         if success:
                             logging.info("garbage_collector_remote_block_of_on_vps", dst_ip, server_ip)
                         else:
-                            logging.error("garbage_collector_failed_to_remove_remote_block", dst_ip, server_ip, stderr)
+                            logging.error("garbage_collector_failed_to_remove_remote_block", dst_ip, server_ip, desc)
                     else:
                         logging.warning("garbage_collector_server_not_found_in_remote_servers", server_ip, dst_ip)
                 
-                # Удаляем запись из БД
+                # Удаляем запись из БД (на случай если не была удалена внутри функций снятия блокировки)
                 await execute_write(
                     "DELETE FROM temp_bans WHERE server_ip = ? AND dst_ip = ?",
                     (server_ip, dst_ip)

@@ -364,7 +364,7 @@ async def test_send_rich_message_draft_api():
     """
     from modules.proxmox.monitor.utils import send_rich_message_draft
     
-    with patch('core.bot.bot.send_rich_message_draft', new_callable=AsyncMock) as mock_draft:
+    with patch('core.bot.bot.send_rich_message_draft', create=True, new_callable=AsyncMock) as mock_draft:
         mock_draft.return_value = True
         success = await send_rich_message_draft(
             chat_id=12345,

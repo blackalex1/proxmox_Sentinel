@@ -11,6 +11,30 @@ from core.messages.i18n import _
 # In-memory cards state: (panel_name, username, protocol) -> card dict
 active_activity_cards = {}
 
+# In-memory new IP alert timestamps: (username_lower, client_ip) -> float timestamp
+_last_new_ip_alerts = {}
+
+def is_new_ip_in_cooldown(username: str, client_ip: str, now: float = None) -> bool:
+    if now is None:
+        now = time.time()
+    cooldown = getattr(settings, "vpn_new_ip_cooldown_sec", 3600)
+    key = (username.lower(), client_ip)
+    last_time = _last_new_ip_alerts.get(key, 0)
+    return (now - last_time) < cooldown
+
+def mark_new_ip_alert_sent(username: str, client_ip: str, now: float = None):
+    if now is None:
+        now = time.time()
+    _last_new_ip_alerts[(username.lower(), client_ip)] = now
+    
+    # Prune expired IP alert timestamps when dict exceeds threshold
+    if len(_last_new_ip_alerts) > 500:
+        cooldown = getattr(settings, "vpn_new_ip_cooldown_sec", 3600)
+        cutoff = now - (cooldown * 2)
+        expired = [k for k, ts in _last_new_ip_alerts.items() if ts < cutoff]
+        for k in expired:
+            _last_new_ip_alerts.pop(k, None)
+
 async def trigger_card_edit(card, msg_text):
     if card.get('last_sent_text') == msg_text:
         return
@@ -289,18 +313,22 @@ async def process_hysteria_audit_event(panel, action, client_ip, log_timestamp, 
                 is_new_ip, history = await check_new_ip_and_get_history(username, client_ip, session_id)
                 logging.info(f"[Controller Alerts] Connect event evaluated: user={username}, ip={client_ip}, is_new_ip={is_new_ip}, session_id={session_id}")
                 if is_new_ip and not is_too_old:
-                    from .utils import get_geoip_info, send_alert_to_admins
-                    geoip_info = await get_geoip_info(client_ip)
-                    alert_text = get_new_ip_alert(protocol, panel_name, username, client_ip, timestamp_str, history, geoip_info=geoip_info)
-                    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-                    kb = InlineKeyboardMarkup(inline_keyboard=[
-                        [
-                            InlineKeyboardButton(text=_("spectre", "btn_approve_ip", "✅ Разрешить"), callback_data=f"approve_ip:{username}:{client_ip}"),
-                            InlineKeyboardButton(text=_("spectre", "btn_block_ip", "❌ Запретить и заблокировать"), callback_data=f"block_ip:{panel_name}:{username}:{client_ip}")
-                        ]
-                    ])
-                    await send_alert_to_admins(alert_text, parse_mode="HTML", reply_markup=kb)
-                    logging.info(f"[Controller Alerts] Successfully dispatched New IP alert to admins for {username} ({client_ip})")
+                    if is_new_ip_in_cooldown(username, client_ip, now_time):
+                        logging.info(f"[Controller Alerts] Suppressed repeated New IP alert for {username} ({client_ip}) - in cooldown")
+                    else:
+                        mark_new_ip_alert_sent(username, client_ip, now_time)
+                        from .utils import get_geoip_info, send_alert_to_admins
+                        geoip_info = await get_geoip_info(client_ip)
+                        alert_text = get_new_ip_alert(protocol, panel_name, username, client_ip, timestamp_str, history, geoip_info=geoip_info)
+                        from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+                        kb = InlineKeyboardMarkup(inline_keyboard=[
+                            [
+                                InlineKeyboardButton(text=_("spectre", "btn_approve_ip", "✅ Разрешить"), callback_data=f"approve_ip:{username}:{client_ip}"),
+                                InlineKeyboardButton(text=_("spectre", "btn_block_ip", "❌ Запретить и заблокировать"), callback_data=f"block_ip:{panel_name}:{username}:{client_ip}")
+                            ]
+                        ])
+                        await send_alert_to_admins(alert_text, parse_mode="HTML", reply_markup=kb)
+                        logging.info(f"[Controller Alerts] Successfully dispatched New IP alert to admins for {username} ({client_ip})")
             except Exception as e:
                 logging.error(f"[Controller Alerts] Error checking new IP: {e}")
 
@@ -398,6 +426,9 @@ async def update_controller_active_cards_traffic():
     now_time = time.time()
     for (panel_name, username, protocol), card in list(active_activity_cards.items()):
         if not is_card_active(card, now_time):
+            last_act = card.get('last_activity_at', card.get('started_at', now_time))
+            if now_time - last_act > 1800.0:
+                active_activity_cards.pop((panel_name, username, protocol), None)
             continue
         if not card.get('admin_messages'):
             continue

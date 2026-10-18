@@ -289,13 +289,28 @@ async def cmd_setup_slave(message: types.Message):
 @router.callback_query(F.data.startswith("ctrl_term_sess:"))
 async def cb_ctrl_term_sess(callback: CallbackQuery):
     # Format: ctrl_term_sess:<p_key>:<username>:<ip>
-    parts = callback.data.split(":", 3)
-    if len(parts) < 4:
-        await callback.answer(_("spectre", "data_format_err"), show_alert=True)
-        return
-    p_key = parts[1]
-    username = parts[2]
-    ip = parts[3]
+    raw = callback.data.removeprefix("ctrl_term_sess:")
+    p_key = None
+    rem = ""
+    for k in spectre_manager.panels.keys():
+        if raw.startswith(f"{k}:"):
+            p_key = k
+            rem = raw[len(k) + 1:]
+            break
+
+    if not p_key:
+        parts = raw.split(":", 2)
+        if len(parts) >= 3:
+            p_key, username, ip = parts[0], parts[1], parts[2]
+        else:
+            await callback.answer(_("spectre", "data_format_err"), show_alert=True)
+            return
+    else:
+        if ":" in rem:
+            username, ip = rem.split(":", 1)
+        else:
+            await callback.answer(_("spectre", "data_format_err"), show_alert=True)
+            return
 
     panel = spectre_manager.panels.get(p_key)
     if not panel:
@@ -331,12 +346,21 @@ async def cb_ctrl_term_sess(callback: CallbackQuery):
 @router.callback_query(F.data.startswith("ctrl_reset_pwd:"))
 async def cb_ctrl_reset_pwd(callback: CallbackQuery):
     # Format: ctrl_reset_pwd:<p_key>:<username>
-    parts = callback.data.split(":", 2)
-    if len(parts) < 3:
-        await callback.answer(_("spectre", "data_format_err"), show_alert=True)
-        return
-    p_key = parts[1]
-    username = parts[2]
+    raw = callback.data.removeprefix("ctrl_reset_pwd:")
+    p_key = None
+    username = ""
+    for k in spectre_manager.panels.keys():
+        if raw.startswith(f"{k}:"):
+            p_key = k
+            username = raw[len(k) + 1:]
+            break
+
+    if not p_key:
+        if ":" in raw:
+            p_key, username = raw.rsplit(":", 1)
+        else:
+            await callback.answer(_("spectre", "data_format_err"), show_alert=True)
+            return
 
     panel = spectre_manager.panels.get(p_key)
     if not panel:
@@ -355,8 +379,11 @@ async def cb_ctrl_reset_pwd(callback: CallbackQuery):
         success = False
         error_msg = ""
         
-        # Подготавливаем Python однострочник для выполнения внутри контейнера spectre-panel
-        py_cmd = f"from backend.database.crud.auth import update_admin_password; import sys; sys.exit(0 if update_admin_password('{username}', '{new_pwd}') else 1)"
+        # Подготавливаем Python однострочник для выполнения внутри контейнера spectre-panel с безопасной сериализацией
+        import json
+        u_json = json.dumps(username)
+        p_json = json.dumps(new_pwd)
+        py_cmd = f"from backend.database.crud.auth import update_admin_password; import sys; sys.exit(0 if update_admin_password({u_json}, {p_json}) else 1)"
         docker_cmd = ["docker", "exec", "spectre-panel", "python", "-c", py_cmd]
 
         if panel.source_type == "lxc":
@@ -414,11 +441,15 @@ async def cb_ctrl_reset_pwd(callback: CallbackQuery):
 
 @router.callback_query(F.data.startswith("spectre_clients:"))
 async def cb_spectre_clients(callback: CallbackQuery):
-    data_parts = callback.data.split(":")
-    panel_key = data_parts[1]
-    try:
-        page = int(data_parts[2])
-    except ValueError:
+    raw = callback.data.removeprefix("spectre_clients:")
+    if ":" in raw:
+        panel_key, page_str = raw.rsplit(":", 1)
+        try:
+            page = int(page_str)
+        except ValueError:
+            page = 0
+    else:
+        panel_key = raw
         page = 0
         
     panel = spectre_manager.panels.get(panel_key)
@@ -520,9 +551,19 @@ async def cb_spectre_clients(callback: CallbackQuery):
 
 @router.callback_query(F.data.startswith("spectre_client_view:"))
 async def cb_spectre_client_view(callback: CallbackQuery):
-    data_parts = callback.data.split(":")
-    panel_key = data_parts[1]
-    email = data_parts[2]
+    raw = callback.data.removeprefix("spectre_client_view:")
+    panel_key = None
+    email = ""
+    for k in spectre_manager.panels:
+        if raw.startswith(f"{k}:"):
+            panel_key = k
+            email = raw[len(k) + 1:]
+            break
+    if not panel_key:
+        if ":" in raw:
+            panel_key, email = raw.rsplit(":", 1)
+        else:
+            panel_key, email = raw, ""
     
     panel = spectre_manager.panels.get(panel_key)
     if not panel:
@@ -596,10 +637,23 @@ async def cb_spectre_client_view(callback: CallbackQuery):
 
 @router.callback_query(F.data.startswith("spectre_client_act:"))
 async def cb_spectre_client_act(callback: CallbackQuery):
-    data_parts = callback.data.split(":")
-    panel_key = data_parts[1]
-    email = data_parts[2]
-    action = data_parts[3]
+    raw = callback.data.removeprefix("spectre_client_act:")
+    if ":" not in raw:
+        await callback.answer(_("spectre", "data_format_err"), show_alert=True)
+        return
+    rest, action = raw.rsplit(":", 1)
+    panel_key = None
+    email = ""
+    for k in spectre_manager.panels:
+        if rest.startswith(f"{k}:"):
+            panel_key = k
+            email = rest[len(k) + 1:]
+            break
+    if not panel_key:
+        if ":" in rest:
+            panel_key, email = rest.rsplit(":", 1)
+        else:
+            panel_key, email = rest, ""
     
     panel = spectre_manager.panels.get(panel_key)
     if not panel:

@@ -73,8 +73,8 @@ async def start_auto_backup_scheduler():
     while True:
         try:
             now = datetime.datetime.now()
-            # Проверяем время (3:00 AM)
-            if now.hour == 3 and now.minute == 0:
+            # Запускаем ежедневный бэкап начиная с 3:00 AM один раз в день
+            if now.hour >= 3:
                 current_date = now.date()
                 if last_backup_date != current_date:
                     logging.info("backup_scheduler_time_is_3_00_am")

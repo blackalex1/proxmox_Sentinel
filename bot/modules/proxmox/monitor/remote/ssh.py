@@ -56,8 +56,15 @@ async def get_ssh_connection(server) -> asyncssh.SSHClientConnection:
 
 async def run_remote_ssh_cmd(server, command_args):
     """Выполняет команду на удаленном сервере VPS через закэшированный асинхронный туннель asyncssh."""
+    import shlex
     ip = server['ip']
-    cmd_str = " ".join(command_args)
+    if isinstance(command_args, (list, tuple)):
+        if len(command_args) == 1:
+            cmd_str = command_args[0]
+        else:
+            cmd_str = shlex.join(command_args)
+    else:
+        cmd_str = str(command_args)
     try:
         conn = await get_ssh_connection(server)
         result = await conn.run(cmd_str, check=False)

@@ -18,13 +18,18 @@ def ensure_utf8_env(path):
     except UnicodeDecodeError:
         pass
         
+    def _atomic_write(target_path, data):
+        tmp_target = f"{target_path}.tmp"
+        with open(tmp_target, 'w', encoding='utf-8') as f:
+            f.write(data)
+        os.replace(tmp_target, target_path)
+
     # Try reading as CP1251
     try:
         with open(path, 'r', encoding='cp1251') as f:
             content = f.read()
-        # Write back as UTF-8
-        with open(path, 'w', encoding='utf-8') as f:
-            f.write(content)
+        # Write back as UTF-8 atomically
+        _atomic_write(path, content)
         return
     except Exception:
         pass
@@ -33,8 +38,7 @@ def ensure_utf8_env(path):
     try:
         with open(path, 'r', encoding='utf-8', errors='replace') as f:
             content = f.read()
-        with open(path, 'w', encoding='utf-8') as f:
-            f.write(content)
+        _atomic_write(path, content)
     except Exception:
         pass
 
@@ -92,6 +96,7 @@ class Settings(BaseSettings):
     vpn_ignore_users: List[str] | str = Field(default_factory=list, validation_alias='VPN_IGNORE_USERS')
     alert_vpn_client_unusual_ports: bool = Field(default=False, validation_alias='ALERT_VPN_CLIENT_UNUSUAL_PORTS')
     vpn_alert_debounce_sec: float = Field(default=3.0, validation_alias='VPN_ALERT_DEBOUNCE_SEC')
+    vpn_new_ip_cooldown_sec: int = Field(default=3600, validation_alias='VPN_NEW_IP_COOLDOWN_SEC')
 
     # Мониторинг удаленного сервера (Target VPS)
     remote_monitor_enable: bool = Field(default=False, validation_alias='REMOTE_MONITOR_ENABLE')
