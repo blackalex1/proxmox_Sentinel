@@ -28,7 +28,7 @@ from core.messages import (
     get_router_custom_allow_port_prompt_text,
     get_router_active_bans_text
 )
-from core.sender import edit_rich_message, send_rich_message
+from core.sender import edit_rich_message, send_rich_message, safe_callback_answer
 
 router = Router()
 
@@ -163,12 +163,12 @@ async def cb_router_ban_all_action(callback: CallbackQuery):
     ip, seconds_str = raw.rsplit(":", 1)
     seconds = int(seconds_str)
     
-    await callback.answer(_("router", "action_applying_ssh", "Выполняю блокировку по SSH..."), show_alert=False)
+    await safe_callback_answer(callback, _("router", "action_applying_ssh", "Выполняю блокировку по SSH..."), show_alert=False)
     success, desc = await ban_router_ip(ip, delay=seconds, reason="Вручную из TG")
     if success:
-        await callback.answer(_("router", "ip_blocked_successfully", ip=ip), show_alert=True)
+        await safe_callback_answer(callback, _("router", "ip_blocked_successfully", ip=ip), show_alert=True)
     else:
-        await callback.answer(_("router", "ip_block_failed", desc=desc), show_alert=True)
+        await safe_callback_answer(callback, _("router", "ip_block_failed", desc=desc), show_alert=True)
         
     text, kb = await render_client_details(ip)
     await edit_rich_message(chat_id=callback.message.chat.id, message_id=callback.message.message_id, text=text, reply_markup=kb, parse_mode="HTML")
@@ -225,7 +225,7 @@ async def cb_router_ban_port_action(callback: CallbackQuery):
     ip, port_raw, proto, seconds_str = raw.rsplit(":", 3)
     seconds = int(seconds_str)
     
-    await callback.answer(_("router", "action_banning_port_ssh", "Добавляю правила блокировки порта по SSH..."), show_alert=False)
+    await safe_callback_answer(callback, _("router", "action_banning_port_ssh", "Добавляю правила блокировки порта по SSH..."), show_alert=False)
     
     ports = port_raw.split("_")
     success_all = True
@@ -239,10 +239,10 @@ async def cb_router_ban_port_action(callback: CallbackQuery):
             
     port_label = port_raw.replace("_", ", ")
     if success_all:
-        await callback.answer(_("router", "port_blocked_success", port=port_label, proto=proto), show_alert=True)
+        await safe_callback_answer(callback, _("router", "port_blocked_success", port=port_label, proto=proto), show_alert=True)
     else:
         err_msg = ", ".join(errors)
-        await callback.answer(_("router", "ip_block_failed", desc=err_msg), show_alert=True)
+        await safe_callback_answer(callback, _("router", "ip_block_failed", desc=err_msg), show_alert=True)
         
     text, kb = await render_client_details(ip)
     await edit_rich_message(chat_id=callback.message.chat.id, message_id=callback.message.message_id, text=text, reply_markup=kb, parse_mode="HTML")
@@ -351,7 +351,7 @@ async def cb_router_allow_port_action(callback: CallbackQuery):
     raw = callback.data.removeprefix("r_allow_act:")
     ip, port_raw, proto = raw.rsplit(":", 2)
     
-    await callback.answer(_("router", "action_allowing_port_ssh", "Добавляю правила разрешения порта по SSH..."), show_alert=False)
+    await safe_callback_answer(callback, _("router", "action_allowing_port_ssh", "Добавляю правила разрешения порта по SSH..."), show_alert=False)
     
     ports = port_raw.split("_")
     success_all = True
@@ -366,10 +366,10 @@ async def cb_router_allow_port_action(callback: CallbackQuery):
             
     port_label = "Все порты" if port_raw == "0" else port_raw.replace("_", ", ")
     if success_all:
-        await callback.answer(_("router", "port_allowed_success", port=port_label, proto=proto, ip=ip), show_alert=True)
+        await safe_callback_answer(callback, _("router", "port_allowed_success", port=port_label, proto=proto, ip=ip), show_alert=True)
     else:
         err_msg = ", ".join(errors)
-        await callback.answer(_("router", "ip_block_failed", desc=err_msg), show_alert=True)
+        await safe_callback_answer(callback, _("router", "ip_block_failed", desc=err_msg), show_alert=True)
         
     text, kb = await render_client_details(ip)
     await edit_rich_message(chat_id=callback.message.chat.id, message_id=callback.message.message_id, text=text, reply_markup=kb, parse_mode="HTML")
@@ -444,7 +444,7 @@ async def cb_router_allow_alert_action(callback: CallbackQuery):
     success, desc = await allow_router_port(ip, port, proto=proto, reason="Из алерта TG")
     p_label = "Все порты" if port == 0 else str(port)
     if success:
-        await callback.answer(_("router", "port_allowed_success", port=p_label, proto=proto, ip=ip), show_alert=True)
+        await safe_callback_answer(callback, _("router", "port_allowed_success", port=p_label, proto=proto, ip=ip), show_alert=True)
         # Обновляем клавиатуру или текст сообщения, подтверждая разрешение
         text = callback.message.text
         if text:
@@ -454,7 +454,7 @@ async def cb_router_allow_alert_action(callback: CallbackQuery):
             except Exception:
                 pass
     else:
-        await callback.answer(_("router", "ip_block_failed", desc=desc), show_alert=True)
+        await safe_callback_answer(callback, _("router", "ip_block_failed", desc=desc), show_alert=True)
 
 
 # --- Управление активными правилами устройства ---
@@ -502,12 +502,12 @@ async def cb_router_active_bans_list(callback: CallbackQuery):
 async def cb_router_unban_all_action(callback: CallbackQuery):
     ip = callback.data.removeprefix("r_unban_all:")
     
-    await callback.answer(_("router", "action_unbanning_ssh", "Снимаю блокировку по SSH..."), show_alert=False)
+    await safe_callback_answer(callback, _("router", "action_unbanning_ssh", "Снимаю блокировку по SSH..."), show_alert=False)
     success, desc = await unban_router_ip(ip)
     if success:
-        await callback.answer(_("router", "ip_unblocked_successfully", ip=ip), show_alert=True)
+        await safe_callback_answer(callback, _("router", "ip_unblocked_successfully", ip=ip), show_alert=True)
     else:
-        await callback.answer(_("router", "ip_unblock_failed", desc=desc), show_alert=True)
+        await safe_callback_answer(callback, _("router", "ip_unblock_failed", desc=desc), show_alert=True)
         
     text, kb = await render_client_details(ip)
     await edit_rich_message(chat_id=callback.message.chat.id, message_id=callback.message.message_id, text=text, reply_markup=kb, parse_mode="HTML")
@@ -519,12 +519,12 @@ async def cb_router_unban_port_action(callback: CallbackQuery):
     ip, port_str, proto = raw.rsplit(":", 2)
     port = int(port_str)
     
-    await callback.answer(_("router", "action_unbanning_port_ssh", f"Снимаю блокировку порта {port}/{proto} по SSH...", port=port, proto=proto), show_alert=False)
+    await safe_callback_answer(callback, _("router", "action_unbanning_port_ssh", f"Снимаю блокировку порта {port}/{proto} по SSH...", port=port, proto=proto), show_alert=False)
     success, desc = await unban_router_port(ip, port, proto)
     if success:
-        await callback.answer(_("router", "port_unblocked_success", port=port, proto=proto), show_alert=True)
+        await safe_callback_answer(callback, _("router", "port_unblocked_success", port=port, proto=proto), show_alert=True)
     else:
-        await callback.answer(_("router", "ip_unblock_failed", desc=desc), show_alert=True)
+        await safe_callback_answer(callback, _("router", "ip_unblock_failed", desc=desc), show_alert=True)
         
     full_ban = await execute_read_one("SELECT * FROM temp_bans WHERE server_ip = 'router' AND dst_ip = ?", (ip,))
     port_bans = await execute_read_all("SELECT * FROM temp_port_bans WHERE server_ip = 'router' AND client_ip = ?", (ip,))
@@ -543,13 +543,13 @@ async def cb_router_disallow_port_action(callback: CallbackQuery):
     ip, port_str, proto = raw.rsplit(":", 2)
     port = int(port_str)
     
-    await callback.answer(_("router", "action_disallowing_port_ssh", "Удаляю правила разрешения порта по SSH..."), show_alert=False)
+    await safe_callback_answer(callback, _("router", "action_disallowing_port_ssh", "Удаляю правила разрешения порта по SSH..."), show_alert=False)
     success, desc = await disallow_router_port(ip, port, proto)
     p_label = "Все порты" if port == 0 else str(port)
     if success:
-        await callback.answer(_("router", "port_disallowed_success", port=p_label, proto=proto), show_alert=True)
+        await safe_callback_answer(callback, _("router", "port_disallowed_success", port=p_label, proto=proto), show_alert=True)
     else:
-        await callback.answer(_("router", "ip_block_failed", desc=desc), show_alert=True)
+        await safe_callback_answer(callback, _("router", "ip_block_failed", desc=desc), show_alert=True)
         
     full_ban = await execute_read_one("SELECT * FROM temp_bans WHERE server_ip = 'router' AND dst_ip = ?", (ip,))
     port_bans = await execute_read_all("SELECT * FROM temp_port_bans WHERE server_ip = 'router' AND client_ip = ?", (ip,))
@@ -569,12 +569,12 @@ async def handle_router_block_ip(callback: CallbackQuery):
     try:
         ip = callback.data.removeprefix("router_block:")
         if not ip:
-            await callback.answer(_("router", "invalid_data_format"), show_alert=True)
+            await safe_callback_answer(callback, _("router", "invalid_data_format"), show_alert=True)
             return
             
         success, desc = await ban_router_ip(ip)
         if success:
-            await callback.answer(_("router", "ip_blocked_successfully", ip=ip), show_alert=True)
+            await safe_callback_answer(callback, _("router", "ip_blocked_successfully", ip=ip), show_alert=True)
             kb = InlineKeyboardMarkup(inline_keyboard=[
                 [InlineKeyboardButton(text=_("router", "btn_unblock_ip_router"), callback_data=f"router_unblock:{ip}")]
             ])
@@ -592,10 +592,10 @@ async def handle_router_block_ip(callback: CallbackQuery):
                 except Exception as e:
                     logging.error("failed_to_change_keyboard_on_ban", e)
         else:
-            await callback.answer(_("router", "ip_block_failed", desc=desc), show_alert=True)
+            await safe_callback_answer(callback, _("router", "ip_block_failed", desc=desc), show_alert=True)
     except Exception as e:
         logging.error("error_in_router_block_callback_handler", e)
-        await callback.answer(_("router", "ip_block_error", e=e), show_alert=True)
+        await safe_callback_answer(callback, _("router", "ip_block_error", e=e), show_alert=True)
 
 
 @router.callback_query(F.data.startswith("router_unblock:"))
@@ -603,12 +603,12 @@ async def handle_router_unblock_ip(callback: CallbackQuery):
     try:
         ip = callback.data.removeprefix("router_unblock:")
         if not ip:
-            await callback.answer(_("router", "invalid_data_format"), show_alert=True)
+            await safe_callback_answer(callback, _("router", "invalid_data_format"), show_alert=True)
             return
             
         success, desc = await unban_router_ip(ip)
         if success:
-            await callback.answer(_("router", "ip_unblocked_successfully", ip=ip), show_alert=True)
+            await safe_callback_answer(callback, _("router", "ip_unblocked_successfully", ip=ip), show_alert=True)
             kb = InlineKeyboardMarkup(inline_keyboard=[
                 [InlineKeyboardButton(text=_("router", "btn_block_ip_router"), callback_data=f"router_block:{ip}")]
             ])
@@ -626,7 +626,7 @@ async def handle_router_unblock_ip(callback: CallbackQuery):
                 except Exception as e:
                     logging.error("failed_to_change_keyboard_on_unban", e)
         else:
-            await callback.answer(_("router", "ip_unblock_failed", desc=desc), show_alert=True)
+            await safe_callback_answer(callback, _("router", "ip_unblock_failed", desc=desc), show_alert=True)
     except Exception as e:
         logging.error("error_in_router_unblock_callback_handler", e)
-        await callback.answer(_("router", "ip_unblock_error", e=e), show_alert=True)
+        await safe_callback_answer(callback, _("router", "ip_unblock_error", e=e), show_alert=True)

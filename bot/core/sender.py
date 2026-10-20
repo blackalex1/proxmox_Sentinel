@@ -236,3 +236,22 @@ async def send_alert_to_admins(
         except Exception as e:
             logging.error(f"Failed to send admin alert to {admin_id}: {e}")
 
+
+async def safe_callback_answer(callback: Any, *args, **kwargs) -> bool:
+    """
+    Безопасный ответ на callback query с перехватом TelegramBadRequest (query is too old / invalid).
+    Возвращает True, если ответ успешно отправлен, или False, если запрос устарел или уже был отвечен.
+    """
+    if not callback:
+        return False
+    try:
+        await callback.answer(*args, **kwargs)
+        return True
+    except Exception as e:
+        err_msg = str(e).lower()
+        if "query is too old" in err_msg or "query id is invalid" in err_msg or "query_id_invalid" in err_msg:
+            logging.debug("Callback query %s expired or already answered: %s", getattr(callback, 'id', None), e)
+        else:
+            logging.warning("Error answering callback query %s: %s", getattr(callback, 'id', None), e)
+        return False
+
