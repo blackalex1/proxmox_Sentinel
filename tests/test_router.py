@@ -680,3 +680,52 @@ async def test_router_allow_callbacks():
         await disallow_router_port("192.168.1.99", 80, "tcp")
         await disallow_router_port("192.168.1.99", 443, "tcp")
 
+
+@pytest.mark.asyncio
+async def test_unban_router_ip_bounded_command():
+    from modules.router.router import unban_router_ip
+    from core.config import settings
+
+    orig_enable = settings.router_monitor_enable
+    orig_type = settings.router_type
+    settings.router_monitor_enable = True
+    settings.router_type = 'keenetic'
+
+    try:
+        with patch("modules.router.router.run_router_ssh_cmd", AsyncMock(return_value=(True, "", ""))) as mock_cmd:
+            success, desc = await unban_router_ip("192.168.1.97")
+            assert success is True
+            mock_cmd.assert_called_once()
+            called_cmd = mock_cmd.call_args[0][0]
+            # Убеждаемся, что бесконечный while заменен на безопасный ограниченный цикл
+            assert "while iptables" not in called_cmd
+            assert "for i in 1 2 3" in called_cmd
+    finally:
+        settings.router_monitor_enable = orig_enable
+        settings.router_type = orig_type
+
+
+@pytest.mark.asyncio
+async def test_handle_router_unblock_ip_safe_callback():
+    from modules.router.handlers import handle_router_unblock_ip
+    from aiogram.exceptions import TelegramBadRequest
+
+    cb_mock = AsyncMock()
+    cb_mock.data = "router_unblock:192.168.1.97"
+    cb_mock.message = AsyncMock()
+    cb_mock.message.chat.id = 12345
+    cb_mock.message.message_id = 99
+    cb_mock.message.text = "Alert\n\n🛑 <b>УСТРОЙСТВО 192.168.1.97 ЗАБЛОКИРОВАНО НА РОУТЕРЕ!</b>"
+    # Симулируем ошибку таймаута Telegram Callback
+    cb_mock.answer.side_effect = TelegramBadRequest(method="answerCallbackQuery", message="query is too old and response timeout expired or query ID is invalid")
+
+    with patch("modules.router.handlers.unban_router_ip", AsyncMock(return_value=(True, "OK"))), \
+         patch("modules.router.handlers.edit_rich_message", AsyncMock()) as mock_edit:
+        # Хэндлер не должен падать с необработанным исключением
+        await handle_router_unblock_ip(cb_mock)
+        mock_edit.assert_called_once()
+        # Проверяем, что текст сообщения обновился несмотря на таймаут callback
+        new_text = mock_edit.call_args[1]["text"]
+        assert "ЗАБЛОКИРОВАНО" not in new_text
+
+

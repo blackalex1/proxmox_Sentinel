@@ -4,7 +4,7 @@ import asyncssh
 import os
 from core.config import settings
 
-async def run_router_ssh_cmd(command):
+async def run_router_ssh_cmd(command, timeout=15):
     """Выполняет SSH-команду на роутере с поддержкой авторизации по паролю или ключу."""
     if not settings.router_monitor_enable:
         return False, "", "Мониторинг роутера отключен в конфиге"
@@ -26,7 +26,7 @@ async def run_router_ssh_cmd(command):
             'port': settings.router_ssh_port,
             'username': settings.router_ssh_user,
             'known_hosts': None,
-            'connect_timeout': 15,
+            'connect_timeout': min(timeout, 10),
         }
         
         if settings.router_ssh_password:
@@ -45,9 +45,12 @@ async def run_router_ssh_cmd(command):
                         recent_bot_ports.append(sockname[1])
             except Exception:
                 pass
-            result = await conn.run(command, check=False)
+            result = await asyncio.wait_for(conn.run(command, check=False), timeout=timeout)
             return result.exit_status == 0, result.stdout.strip(), result.stderr.strip()
             
+    except asyncio.TimeoutError:
+        logging.error("router_ssh_command_execution_timeout", f"Command timed out after {timeout}s: {command[:80]}")
+        return False, "", f"Таймаут выполнения команды на роутере ({timeout}с)"
     except Exception as e:
         err_msg = str(e) or type(e).__name__
         logging.error("router_ssh_command_execution_error", err_msg)
@@ -90,7 +93,7 @@ async def ban_router_ip(ip, delay=3600, reason="Вручную"):
                     success, desc = False, f"Ошибка OpenWrt: {stderr}"
         
     elif settings.router_type == 'keenetic':
-        ipt_cmd = f"iptables -I FORWARD -s {ip} -j DROP && iptables -I INPUT -s {ip} -j DROP"
+        ipt_cmd = f"(iptables -w -I FORWARD -s {ip} -j DROP 2>/dev/null || iptables -I FORWARD -s {ip} -j DROP) && (iptables -w -I INPUT -s {ip} -j DROP 2>/dev/null || iptables -I INPUT -s {ip} -j DROP)"
         ok, stdout, stderr = await run_router_ssh_cmd(ipt_cmd)
         if ok:
             success, desc = True, "Добавлено правило блокировки Keenetic (FORWARD + INPUT)"
@@ -98,7 +101,7 @@ async def ban_router_ip(ip, delay=3600, reason="Вручную"):
             success, desc = False, stderr
         
     else: # generic
-        ipt_cmd = f"iptables -I FORWARD -s {ip} -j DROP && iptables -I INPUT -s {ip} -j DROP"
+        ipt_cmd = f"(iptables -w -I FORWARD -s {ip} -j DROP 2>/dev/null || iptables -I FORWARD -s {ip} -j DROP) && (iptables -w -I INPUT -s {ip} -j DROP 2>/dev/null || iptables -I INPUT -s {ip} -j DROP)"
         ok, stdout, stderr = await run_router_ssh_cmd(ipt_cmd)
         if ok:
             success, desc = True, "Добавлено правило блокировки (FORWARD + INPUT)"
@@ -143,10 +146,10 @@ async def unban_router_ip(ip):
         success, desc = True, "Блокировка успешно снята"
         
     else: # keenetic / generic
-        # Удаляем все правила блокировки для данного IP из цепочек FORWARD и INPUT в одном SSH-подключении
+        # Безопасное удаление правил блокировки с ограничением до 3 повторов (без бесконечных циклов)
         combined_cmd = (
-            f"while iptables -D FORWARD -s {ip} -j DROP 2>/dev/null; do :; done; "
-            f"while iptables -D INPUT -s {ip} -j DROP 2>/dev/null; do :; done; "
+            f"for i in 1 2 3; do iptables -w -D FORWARD -s {ip} -j DROP 2>/dev/null || iptables -D FORWARD -s {ip} -j DROP 2>/dev/null || break; done; "
+            f"for i in 1 2 3; do iptables -w -D INPUT -s {ip} -j DROP 2>/dev/null || iptables -D INPUT -s {ip} -j DROP 2>/dev/null || break; done; "
             "true"
         )
         await run_router_ssh_cmd(combined_cmd)

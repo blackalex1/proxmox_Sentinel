@@ -10,6 +10,7 @@ from modules.router.router import unban_router_ip
 from modules.proxmox.monitor.traffic.firewall import unban_local_ip
 from modules.proxmox.monitor.remote.traffic.firewall import unban_remote_ip
 from core.messages.i18n import _
+from core.sender import safe_callback_answer
 
 router = Router(name="core_ban_center_router")
 
@@ -272,7 +273,7 @@ async def process_ban_center_main(callback: CallbackQuery):
         )
     except Exception as e:
         logging.error("ban_center_error_navigating_to_ban_center", e)
-        await callback.answer(_("ban_center", "open_err"), show_alert=True)
+        await safe_callback_answer(callback, _("ban_center", "open_err"), show_alert=True)
 
 @router.callback_query(F.data.startswith("ban_center_unban:") | F.data.startswith("ban_center_unban_port:"))
 async def process_ban_center_unban(callback: CallbackQuery):
@@ -282,7 +283,7 @@ async def process_ban_center_unban(callback: CallbackQuery):
         if is_port_ban:
             parts = callback.data.split(":", 4)
             if len(parts) < 5:
-                await callback.answer(_("ban_center", "invalid_callback_err"), show_alert=True)
+                await safe_callback_answer(callback, _("ban_center", "invalid_callback_err"), show_alert=True)
                 return
             server_ip = parts[1]
             dst_ip = parts[2]
@@ -291,7 +292,7 @@ async def process_ban_center_unban(callback: CallbackQuery):
         else:
             parts = callback.data.split(":", 2)
             if len(parts) < 3:
-                await callback.answer(_("ban_center", "invalid_callback_err"), show_alert=True)
+                await safe_callback_answer(callback, _("ban_center", "invalid_callback_err"), show_alert=True)
                 return
             server_ip = parts[1]
             dst_ip = parts[2]
@@ -301,7 +302,7 @@ async def process_ban_center_unban(callback: CallbackQuery):
         success = False
         desc = ""
         
-        await callback.answer(_("ban_center", "unban_in_progress"), show_alert=False)
+        await safe_callback_answer(callback, _("ban_center", "unban_in_progress"), show_alert=False)
         
         if server_ip == 'router':
             if is_port_ban:
@@ -321,9 +322,9 @@ async def process_ban_center_unban(callback: CallbackQuery):
                 desc = _("ban_center", "vps_not_found_err", ip=server_ip)
                 
         if success:
-            await callback.answer(_("ban_center", "unban_success_alert", ip=dst_ip), show_alert=True)
+            await safe_callback_answer(callback, _("ban_center", "unban_success_alert", ip=dst_ip), show_alert=True)
         else:
-            await callback.answer(_("ban_center", "unban_failed_alert", desc=desc), show_alert=True)
+            await safe_callback_answer(callback, _("ban_center", "unban_failed_alert", desc=desc), show_alert=True)
             
         # Обновляем сообщение Центра блокировок
         text, reply_markup = await render_ban_center(callback)
@@ -341,33 +342,33 @@ async def process_ban_center_unban(callback: CallbackQuery):
             
     except Exception as e:
         logging.error("ban_center_exception_during_manual_unban", e)
-        await callback.answer(_("ban_center", "unban_failed_alert", desc=str(e)), show_alert=True)
+        await safe_callback_answer(callback, _("ban_center", "unban_failed_alert", desc=str(e)), show_alert=True)
 
 @router.callback_query(F.data.startswith("ban_center_unban_pclient:"))
 async def process_unban_panel_client(callback: CallbackQuery):
     try:
         parts = callback.data.split(":", 2)
         if len(parts) < 3:
-            await callback.answer(_("ban_center", "invalid_callback_err"), show_alert=True)
+            await safe_callback_answer(callback, _("ban_center", "invalid_callback_err"), show_alert=True)
             return
             
         p_key = parts[1]
         email = parts[2]
         
-        await callback.answer(_("ban_center", "pclient_unban_in_progress", email=email), show_alert=False)
+        await safe_callback_answer(callback, _("ban_center", "pclient_unban_in_progress", email=email), show_alert=False)
         
         from core.spectre_client import spectre_manager
         panel = spectre_manager.panels.get(p_key)
         if not panel:
-            await callback.answer(f"Панель {p_key} не найдена", show_alert=True)
+            await safe_callback_answer(callback, f"Панель {p_key} не найдена", show_alert=True)
             return
             
         success, res = await panel.request("POST", "api/security/unban-client", json={"email": email})
         if success and res.get("success"):
-            await callback.answer(_("ban_center", "pclient_unban_success_alert", email=email, panel_name=panel.name), show_alert=True)
+            await safe_callback_answer(callback, _("ban_center", "pclient_unban_success_alert", email=email, panel_name=panel.name), show_alert=True)
         else:
             err_desc = res.get("msg", "Unknown error") if isinstance(res, dict) else str(res)
-            await callback.answer(_("ban_center", "pclient_unban_failed_alert", email=email, desc=err_desc), show_alert=True)
+            await safe_callback_answer(callback, _("ban_center", "pclient_unban_failed_alert", email=email, desc=err_desc), show_alert=True)
             
         text, reply_markup = await render_ban_center(callback)
         try:
@@ -383,7 +384,7 @@ async def process_unban_panel_client(callback: CallbackQuery):
             pass
     except Exception as e:
         logging.error(f"ban_center_exception_during_pclient_unban: {e}")
-        await callback.answer(_("ban_center", "pclient_unban_failed_alert", email="", desc=str(e)), show_alert=True)
+        await safe_callback_answer(callback, _("ban_center", "pclient_unban_failed_alert", email="", desc=str(e)), show_alert=True)
 
 def get_unban_key_cmd(keys_path: str, key_body: str) -> str:
     import shlex
@@ -407,7 +408,7 @@ async def process_ban_center_unbankey(callback: CallbackQuery):
     try:
         key_id = callback.data.removeprefix("ban_center_unbankey:")
         if not key_id:
-            await callback.answer(_("ban_center", "invalid_callback_err"), show_alert=True)
+            await safe_callback_answer(callback, _("ban_center", "invalid_callback_err"), show_alert=True)
             return
         
         from core.db import get_state, set_state
@@ -416,10 +417,10 @@ async def process_ban_center_unbankey(callback: CallbackQuery):
         # Находим запись ключа
         key = next((k for k in banned_keys if k['id'] == key_id), None)
         if not key:
-            await callback.answer(_("ban_center", "key_not_found_err"), show_alert=True)
+            await safe_callback_answer(callback, _("ban_center", "key_not_found_err"), show_alert=True)
             return
             
-        await callback.answer(_("ban_center", "restore_key_in_progress"), show_alert=False)
+        await safe_callback_answer(callback, _("ban_center", "restore_key_in_progress"), show_alert=False)
         
         success = False
         desc = ""
@@ -448,7 +449,7 @@ async def process_ban_center_unbankey(callback: CallbackQuery):
             try:
                 vmid = int(target.split("_")[1])
             except Exception:
-                await callback.answer(_("ban_center", "invalid_lxc_id_err"), show_alert=True)
+                await safe_callback_answer(callback, _("ban_center", "invalid_lxc_id_err"), show_alert=True)
                 return
             # Восстанавливаем прямо в пространстве имен контейнера через pct exec
             proc = await asyncio.create_subprocess_exec(
@@ -480,9 +481,9 @@ async def process_ban_center_unbankey(callback: CallbackQuery):
             # Удаляем запись из БД
             new_banned_keys = [k for k in banned_keys if k['id'] != key_id]
             await set_state("banned_ssh_keys", new_banned_keys)
-            await callback.answer(_("ban_center", "restore_key_success_alert"), show_alert=True)
+            await safe_callback_answer(callback, _("ban_center", "restore_key_success_alert"), show_alert=True)
         else:
-            await callback.answer(_("ban_center", "restore_key_failed_alert", desc=desc), show_alert=True)
+            await safe_callback_answer(callback, _("ban_center", "restore_key_failed_alert", desc=desc), show_alert=True)
             
         # Обновляем сообщение Центра блокировок
         text, reply_markup = await render_ban_center(callback)
@@ -500,7 +501,7 @@ async def process_ban_center_unbankey(callback: CallbackQuery):
             
     except Exception as e:
         logging.error("ban_center_exception_during_manual_key_unban", e)
-        await callback.answer(_("ban_center", "restore_key_failed_alert", desc=str(e)), show_alert=True)
+        await safe_callback_answer(callback, _("ban_center", "restore_key_failed_alert", desc=str(e)), show_alert=True)
 
 
 @router.message(Command("unban_login_ip"))
@@ -558,7 +559,7 @@ async def cb_unban_login_ip(callback: CallbackQuery):
     from core.spectre_client import spectre_manager
     panel = spectre_manager.panels.get(panel_key)
     if not panel:
-        await callback.answer(_("ban_center", "vps_not_found_err", ip=""), show_alert=True)
+        await safe_callback_answer(callback, _("ban_center", "vps_not_found_err", ip=""), show_alert=True)
         return
         
     await callback.message.edit_text(_("ban_center", "unban_login_ip_in_progress", ip=ip), parse_mode="HTML")
@@ -566,12 +567,12 @@ async def cb_unban_login_ip(callback: CallbackQuery):
     try:
         success, res = await panel.request("POST", "api/security/unban-ip", data={"ip": ip})
         if success and res.get("success"):
-            await callback.answer(_("ban_center", "unban_success_alert", ip=ip), show_alert=True)
+            await safe_callback_answer(callback, _("ban_center", "unban_success_alert", ip=ip), show_alert=True)
         else:
             msg = res.get("msg") or "Unknown error"
-            await callback.answer(_("ban_center", "unban_failed_alert", desc=msg), show_alert=True)
+            await safe_callback_answer(callback, _("ban_center", "unban_failed_alert", desc=msg), show_alert=True)
     except Exception as e:
-        await callback.answer(_("ban_center", "unban_failed_alert", desc=str(e)), show_alert=True)
+        await safe_callback_answer(callback, _("ban_center", "unban_failed_alert", desc=str(e)), show_alert=True)
         
     # Re-render the ban center
     text, kb = await render_ban_center(callback.message)

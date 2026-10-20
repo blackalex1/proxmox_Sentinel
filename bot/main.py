@@ -232,7 +232,7 @@ async def main():
                     logging.error("error_deleting_webhook", e)
                 
                 logging.info("bot_polling_started_and_ready")
-                poll_task = asyncio.create_task(dp.start_polling(bot, handle_signals=False), name="polling_task")
+                poll_task = asyncio.create_task(dp.start_polling(bot, handle_signals=False, drop_pending_updates=True), name="polling_task")
                 await poll_task
                 break
             except (TelegramNetworkError, ClientOSError, asyncio.TimeoutError, ConnectionResetError, aiohttp.ClientError) as net_err:

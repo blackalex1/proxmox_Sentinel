@@ -274,6 +274,7 @@ from core.sender import (
     edit_rich_message,
     send_rich_message_draft,
     send_alert_to_admins,
+    safe_callback_answer,
 )
 
 

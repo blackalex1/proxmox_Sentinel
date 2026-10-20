@@ -10,6 +10,10 @@ from .helpers import check_is_bot_or_admin
 from core.messages.i18n import _
 
 
+_active_banning_ips = set()
+_recent_autobans = {}
+
+
 async def _process_router_event(event_type: str, event: dict):
     """Общий обработчик сетевых событий роутера с поведенческим анализом от Go-ядра."""
     src_ip = event['src_ip']
@@ -24,6 +28,10 @@ async def _process_router_event(event_type: str, event: dict):
     reason = event.get('reason') or f"Порт {dst_port} ({proto})"
 
     if not is_threat:
+        return
+
+    # Защита от параллельного запуска нескольких банов одного IP из параллельных воркеров
+    if src_ip in _active_banning_ips:
         return
 
     # Проверяем, разрешен ли данный порт клиенту роутера в таблице разрешений или в белом списке
@@ -51,21 +59,36 @@ async def _process_router_event(event_type: str, event: dict):
     import time as pytime
     curr_time = pytime.time()
 
-    # 1. Автоматический бан при подтвержденной угрозе от ядра
+    # 1. Автоматический бан при подтвержденной угрозе от ядра с защитой от гонки потоков
     if settings.router_monitor_enable and settings.router_auto_ban and should_autoban:
-        success, desc = await ban_router_ip(src_ip, reason=reason)
-        if success:
-            timestamp = datetime.datetime.now().strftime("%H:%M:%S")
-            msg = get_router_autoblock_alert(src_ip, dst_host, dst_port, proto, timestamp)
-
-            from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-            kb = InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text=_("router", "btn_unblock_ip_router"), callback_data=f"router_unblock:{src_ip}")]
-            ])
-
-            await send_alert_to_admins(msg, parse_mode="markdown", reply_markup=kb)
-            logging.warning("router_ips_device_automatically_banned_on_router", src_ip)
+        if curr_time - _recent_autobans.get(src_ip, 0) < 15:
             return
+        _active_banning_ips.add(src_ip)
+        try:
+            success, desc = await ban_router_ip(src_ip, reason=reason)
+            if success:
+                _recent_autobans[src_ip] = curr_time
+                timestamp = datetime.datetime.now().strftime("%H:%M:%S")
+                msg = get_router_autoblock_alert(src_ip, dst_host, dst_port, proto, timestamp)
+
+                from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+                buttons = [
+                    [
+                        InlineKeyboardButton(text=_("router", "btn_unblock_ip_router"), callback_data=f"router_unblock:{src_ip}"),
+                        InlineKeyboardButton(text=_("router", "btn_allow_port_alert", f"🟢 Разрешить {dst_port}", port=dst_port), callback_data=f"r_al_alert:{src_ip}:{dst_port}:{proto.lower()}")
+                    ],
+                    [
+                        InlineKeyboardButton(text=_("router", "btn_allow_all_alert", "🌐 Разрешить все порты"), callback_data=f"r_al_alert:{src_ip}:0:all"),
+                        InlineKeyboardButton(text="📋 Скопировать IP", callback_data=f"copy:ip:{src_ip}")
+                    ]
+                ]
+                kb = InlineKeyboardMarkup(inline_keyboard=buttons)
+
+                await send_alert_to_admins(msg, parse_mode="markdown", reply_markup=kb)
+                logging.warning("router_ips_device_automatically_banned_on_router", src_ip)
+                return
+        finally:
+            _active_banning_ips.discard(src_ip)
 
     # 2. Троттлинг предупреждений
     throttle_key = (f"router_{src_ip}", 'threat', 'sensitive_port', dst_host, dst_port)
