@@ -192,6 +192,12 @@ async def monitor_lxc_auth():
                         await tailer.start()
                     else:
                         # 2. Если файла нет (Debian 12+), стримим логи напрямую через pct exec!
+                        # Проверяем наличие конфигурации контейнера, чтобы не запускать pct exec для удаленных LXC
+                        if os.path.exists("/etc/pve") and not (
+                            os.path.exists(f"/etc/pve/local/lxc/{vmid}.conf") or 
+                            os.path.exists(f"/etc/pve/lxc/{vmid}.conf")
+                        ):
+                            continue
                         cmd = ["pct", "exec", str(vmid), "--", "stdbuf", "-oL", "journalctl", "-f", "-n", "0"]
                         tailer = LogTailer(cmd, handle_auth_log_line, vmid)
                         auth_tailers[vmid] = tailer

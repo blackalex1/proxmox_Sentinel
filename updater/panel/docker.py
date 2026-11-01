@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import os
 import shutil
+import socket
 import subprocess
 import time
+import urllib.parse
 from typing import Dict, List, Optional
 
 from ..core.common import (
@@ -90,6 +92,23 @@ class DockerManager:
         except Exception as e:
             log_warn(f"Пропуск автоматической миграции томов Docker: {e}")
 
+    def cleanup_build_artifacts(self) -> None:
+        """Removes dangling images and stale BuildKit cache after building."""
+        log_info("Очистка неиспользуемых слоев и кэша сборщика Docker...")
+        try:
+            # 1. Удаление висячих (dangling) образов (<none>:<none>) от старых сборок
+            run_command(["docker", "image", "prune", "-f"], check=False)
+        except Exception as e:
+            log_warn(f"Не удалось выполнить docker image prune: {e}")
+
+        try:
+            # 2. Удаление висячего кэша сборщика BuildKit
+            run_command(["docker", "builder", "prune", "-f"], check=False)
+            # 3. Удаление всех неиспользуемых слоев кэша сборщика старше 24 часов
+            run_command(["docker", "builder", "prune", "-a", "-f", "--filter", "until=24h"], check=False)
+        except Exception as e:
+            log_warn(f"Не удалось выполнить docker builder prune: {e}")
+
     def rebuild_and_restart(self) -> bool:
         """Rebuilds and restarts all Docker containers."""
         if not shutil.which("docker"):
@@ -116,14 +135,29 @@ class DockerManager:
                 p_url = p_url.replace(":10818", ":10819")
             if p_url.startswith("socks5://") or p_url.startswith("socks4://"):
                 p_url = "http://" + p_url.split("://", 1)[1]
-            docker_env["http_proxy"] = p_url
-            docker_env["https_proxy"] = p_url
-            docker_env["HTTP_PROXY"] = p_url
-            docker_env["HTTPS_PROXY"] = p_url
+
+            proxy_ok = False
+            try:
+                parsed = urllib.parse.urlparse(p_url)
+                host = parsed.hostname or "127.0.0.1"
+                port = parsed.port or (443 if parsed.scheme == "https" else 80)
+                with socket.create_connection((host, port), timeout=0.5):
+                    proxy_ok = True
+            except Exception:
+                proxy_ok = False
+
+            if proxy_ok:
+                docker_env["http_proxy"] = p_url
+                docker_env["https_proxy"] = p_url
+                docker_env["HTTP_PROXY"] = p_url
+                docker_env["HTTPS_PROXY"] = p_url
+            else:
+                log_info(f"Прокси {p_url} не отвечает или закрыт, сборка Docker будет выполнена напрямую.")
 
         try:
             run_command(compose_cmd + ["up", "-d", "--build"], cwd=self.project_dir, env=docker_env if docker_env else None, check=True)
             log_success("Контейнеры Docker успешно собраны и запущены!")
+            self.cleanup_build_artifacts()
             return True
         except Exception as e:
             if docker_env:
@@ -131,6 +165,7 @@ class DockerManager:
                 try:
                     run_command(compose_cmd + ["up", "-d", "--build"], cwd=self.project_dir, env=None, check=True)
                     log_success("Контейнеры Docker успешно собраны и запущены (напрямую)!")
+                    self.cleanup_build_artifacts()
                     return True
                 except Exception as e_direct:
                     log_error(f"Ошибка запуска Docker Compose: {e_direct}")
