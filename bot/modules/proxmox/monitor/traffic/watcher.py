@@ -175,6 +175,38 @@ async def handle_traffic_log_line(line):
 
             # Троттлинг одинаковых алертов (в пределах 5 секунд)
             now = time.time()
+
+            # Защита от шторма алертов по исходящим нетипичным портам (BitTorrent / P2P / сканирование)
+            if direction == 'OUT' and ("нетипичный" in label.lower() or "unusual" in label.lower()):
+                storm_key = (vmid, 'outbound_unusual_storm')
+                storm_info = lxc_alert_throttle.get(storm_key, [0, 0])
+                if now - storm_info[1] > 30:
+                    storm_info = [1, now]
+                else:
+                    storm_info[0] += 1
+                lxc_alert_throttle[storm_key] = storm_info
+
+                if storm_info[0] > 3:
+                    # Подавляем спам: шлем ровно 1 агрегированный алерт и глушим остальные на 30 сек
+                    if storm_info[0] == 4:
+                        from modules.proxmox.monitor.state import lxc_name_cache
+                        c_name = lxc_name_cache.get(vmid, "Unknown")
+                        from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+                        kb = InlineKeyboardMarkup(inline_keyboard=[[
+                            InlineKeyboardButton(
+                                text=f"🌐 Сделать LXC {vmid} доверенным (VPN/P2P)",
+                                callback_data=f"trust_lxc:{vmid}"
+                            )
+                        ]])
+                        storm_alert = (
+                            f"⚠️ <b>[Шторм сетевой активности] LXC {vmid} ({c_name})</b>\n\n"
+                            f"Обнаружен массовый поток исходящих P2P/BitTorrent соединений на нетипичные порты. "
+                            f"Одиночные алерты <b>заглушены на 30 секунд</b> для защиты чата от переполнения.\n\n"
+                            f"Чтобы навсегда отключить предупреждения для этого контейнера, нажмите кнопку ниже:"
+                        )
+                        await send_alert_to_admins(storm_alert, parse_mode="HTML", reply_markup=kb)
+                    return
+
             throttle_key = (vmid, 'threat', label, dst, dpt)
             last_alert = lxc_alert_throttle.get(throttle_key, 0)
             if now - last_alert < 5:

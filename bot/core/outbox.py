@@ -240,6 +240,24 @@ class ResilientOutbox:
         self.save_to_disk()
         logger.info("[Outbox] Queue successfully cleared.")
 
+    def drop_alerts_for_vmid(self, vmid: int) -> int:
+        """Удаляет из очереди Outbox все ожидающие алерты для указанного VMID."""
+        dropped = 0
+        vmid_patterns = [f"LXC {vmid}", f"lxc_{vmid}", f"VMID {vmid}", f":{vmid}:"]
+        new_queue = []
+        for item in self.queue:
+            text = str(item.get("text", ""))
+            kwargs_str = str(item.get("kwargs", {}))
+            if any(p in text or p in kwargs_str for p in vmid_patterns):
+                dropped += 1
+            else:
+                new_queue.append(item)
+        if dropped > 0:
+            self.queue = new_queue
+            self.save_to_disk()
+            logger.info(f"[Outbox] Dropped {dropped} queued alert messages for LXC {vmid}.")
+        return dropped
+
     def load_from_disk(self):
         """Загружает очередь сообщений с диска с автоматической очисткой и дедупликацией старых правок и дубликатов карточек."""
         if os.path.exists(OUTBOX_FILE):
