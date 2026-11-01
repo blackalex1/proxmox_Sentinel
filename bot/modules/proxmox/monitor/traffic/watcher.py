@@ -189,8 +189,6 @@ async def handle_traffic_log_line(line):
                 if storm_info[0] > 3:
                     # Подавляем спам: шлем ровно 1 агрегированный алерт и глушим остальные на 30 сек
                     if storm_info[0] == 4:
-                        from modules.proxmox.monitor.state import lxc_name_cache
-                        c_name = lxc_name_cache.get(vmid, "Unknown")
                         from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
                         kb = InlineKeyboardMarkup(inline_keyboard=[[
                             InlineKeyboardButton(
@@ -199,7 +197,7 @@ async def handle_traffic_log_line(line):
                             )
                         ]])
                         storm_alert = (
-                            f"⚠️ <b>[Шторм сетевой активности] LXC {vmid} ({c_name})</b>\n\n"
+                            f"⚠️ <b>[Шторм сетевой активности] LXC {vmid} ({container_name})</b>\n\n"
                             f"Обнаружен массовый поток исходящих P2P/BitTorrent соединений на нетипичные порты. "
                             f"Одиночные алерты <b>заглушены на 30 секунд</b> для защиты чата от переполнения.\n\n"
                             f"Чтобы навсегда отключить предупреждения для этого контейнера, нажмите кнопку ниже:"
