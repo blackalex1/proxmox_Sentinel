@@ -198,7 +198,7 @@ class SpectreClientManager:
                         if not is_dup:
                             key = f"lxc_{vmid}"
                             new_panels[key] = SpectrePanelInstance(
-                                name=f"LXC {vmid} ({vm.get('name', 'VPN')})",
+                                name=f"LXC {vmid} ({vm.get('name') or f'LXC {vmid}'})",
                                 url=url,
                                 token=token,
                                 secret_path=secret_path,
