@@ -42,12 +42,14 @@ class SentinelCoreManager:
         proxy_url: Optional[str] = None,
         auto_mode: bool = False,
         force: bool = False,
+        progress_callback: Optional[Any] = None,
     ) -> None:
         self.bin_dir = bin_dir
         self.proxy_url = proxy_url
         self.auto_mode = auto_mode
         self.force = force
-        self.downloader = Downloader(proxy_url=proxy_url)
+        self.progress_callback = progress_callback
+        self.downloader = Downloader(proxy_url=proxy_url, progress_callback=progress_callback)
 
         os.makedirs(self.bin_dir, exist_ok=True)
 
@@ -305,8 +307,25 @@ class SentinelCoreManager:
         base_release_url = f"https://github.com/{self.REPO}/releases/download/{tag}"
         checksum_map, size_map = self._fetch_release_metadata(tag)
 
-        lib_asset = f"libsentinel-core-{os_name}-{arch}{lib_ext}"
+        lib_candidates = [
+            f"libsentinel-core-{os_name}-{arch}{lib_ext}",
+            f"sentinel-core-{os_name}-{arch}{lib_ext}",
+        ]
+        lib_asset = next((c for c in lib_candidates if c in size_map or c in checksum_map), lib_candidates[0])
         target_lib = os.path.join(self.bin_dir, f"libsentinel-core{lib_ext}")
+
+        if self.progress_callback:
+            try:
+                self.progress_callback({
+                    "stage": f"Подготовка к загрузке {lib_asset}...",
+                    "percent": 0,
+                    "downloaded_bytes": 0,
+                    "total_bytes": size_map.get(lib_asset, 0),
+                    "filename": lib_asset,
+                    "finished": False,
+                })
+            except Exception:
+                pass
 
         # Download Shared Library
         lib_ok = self.downloader.download_file_with_mirrors(
@@ -326,6 +345,16 @@ class SentinelCoreManager:
                 pass
 
         if lib_asset in checksum_map:
+            if self.progress_callback:
+                try:
+                    self.progress_callback({
+                        "stage": f"Проверка контрольной суммы SHA-256 для {lib_asset}...",
+                        "percent": 90,
+                        "filename": lib_asset,
+                        "finished": False,
+                    })
+                except Exception:
+                    pass
             actual = Downloader.compute_sha256(target_lib)
             if actual.lower() == checksum_map[lib_asset].lower():
                 log_success(f"SHA-256 проверен ({actual[:16]}...)")
@@ -337,6 +366,16 @@ class SentinelCoreManager:
         cli_asset = f"sentinel-core-{os_name}-{arch}{exe_ext}"
         target_cli = os.path.join(self.bin_dir, f"sentinel-core{exe_ext}")
         if cli_asset in size_map or cli_asset in checksum_map:
+            if self.progress_callback:
+                try:
+                    self.progress_callback({
+                        "stage": f"Загрузка бинарника {cli_asset}...",
+                        "percent": 92,
+                        "filename": cli_asset,
+                        "finished": False,
+                    })
+                except Exception:
+                    pass
             cli_ok = self.downloader.download_file_with_mirrors(
                 f"{base_release_url}/{cli_asset}",
                 target_cli,
@@ -349,13 +388,38 @@ class SentinelCoreManager:
                 except Exception:
                     pass
 
-        # Create alias symlink sentinel-core.so in project bin if needed
+        # Create alias in project bin (sentinel-core.dll/so <-> libsentinel-core.dll/so)
         alt_lib = os.path.join(self.bin_dir, f"sentinel-core{lib_ext}")
         try:
-            if not os.path.exists(alt_lib) and os_name != "windows":
-                os.symlink(target_lib, alt_lib)
+            if not os.path.exists(alt_lib) and os.path.exists(target_lib):
+                if os_name != "windows":
+                    os.symlink(target_lib, alt_lib)
+                else:
+                    shutil.copy2(target_lib, alt_lib)
         except Exception:
             pass
+
+        # Also download sentinel-core.h if present
+        h_asset = "sentinel-core.h"
+        target_h = os.path.join(self.bin_dir, h_asset)
+        if h_asset in size_map or h_asset in checksum_map:
+            self.downloader.download_file_with_mirrors(
+                f"{base_release_url}/{h_asset}",
+                target_h,
+                filename_for_log=h_asset,
+                expected_size=size_map.get(h_asset, 0),
+            )
+
+        if self.progress_callback:
+            try:
+                self.progress_callback({
+                    "stage": "Sentinel-Core успешно установлен!",
+                    "percent": 100,
+                    "finished": True,
+                    "success": True,
+                })
+            except Exception:
+                pass
 
         return True
 

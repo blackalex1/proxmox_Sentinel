@@ -29,7 +29,14 @@ async def check_lxc_ansible_status(vmid: int, pub_key_content: str) -> bool:
             stdout=asyncio.subprocess.DEVNULL,
             stderr=asyncio.subprocess.DEVNULL
         )
-        await proc.wait()
+        try:
+            await asyncio.wait_for(proc.wait(), timeout=5.0)
+        except asyncio.TimeoutError:
+            try:
+                proc.kill()
+            except Exception:
+                pass
+            return False
         return proc.returncode == 0
     except Exception as e:
         logging.error(f"Error checking ansible status in LXC {vmid}: {e}")
@@ -69,7 +76,14 @@ async def check_host_ansible_status(pub_key_content: str) -> bool:
             stdout=asyncio.subprocess.DEVNULL,
             stderr=asyncio.subprocess.DEVNULL
         )
-        await proc.wait()
+        try:
+            await asyncio.wait_for(proc.wait(), timeout=5.0)
+        except asyncio.TimeoutError:
+            try:
+                proc.kill()
+            except Exception:
+                pass
+            return False
         return proc.returncode == 0
     except Exception as e:
         logging.error(f"Error checking ansible status on Proxmox Host: {e}")
@@ -77,7 +91,7 @@ async def check_host_ansible_status(pub_key_content: str) -> bool:
 
 from core.messages import get_ansible_setup_loading_text, get_ansible_setup_menu_text
 
-@router.callback_query(F.data == "ansible_setup_menu")
+@router.callback_query(F.data.in_({"ansible_setup_menu", "ansible_setup_env"}))
 async def process_ansible_setup_menu(callback: CallbackQuery):
     """
     Shows Ansible setup menu and scans PVE host, LXC, and VPS.
@@ -98,7 +112,7 @@ async def process_ansible_setup_menu(callback: CallbackQuery):
                 loading_text,
                 parse_mode="HTML"
             )
-        else:
+        elif "message is not modified" not in str(e):
             raise e
     
     # Генерируем/проверяем ключи
@@ -193,9 +207,13 @@ async def process_ansible_setup_menu(callback: CallbackQuery):
         status_text += "<b>Удаленные VPS серверы:</b>\n<i>Нет настроенных VPS серверов</i>\n\n"
         
     menu_text = get_ansible_setup_menu_text(status_text)
-    await status_msg.edit_text(
-        menu_text,
-        parse_mode="HTML",
-        reply_markup=get_ansible_setup_keyboard()
-    )
+    try:
+        await status_msg.edit_text(
+            menu_text,
+            parse_mode="HTML",
+            reply_markup=get_ansible_setup_keyboard()
+        )
+    except TelegramBadRequest as e:
+        if "message is not modified" not in str(e):
+            raise e
 
