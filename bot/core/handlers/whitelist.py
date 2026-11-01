@@ -39,6 +39,7 @@ async def sync_whitelists_to_panels():
 class WhitelistState(StatesGroup):
     waiting_for_ip_port = State()
     waiting_for_process = State()
+    waiting_for_trusted_vmid = State()
 
 def get_node_label(node: str) -> str:
     if node == 'global':
@@ -482,11 +483,15 @@ async def cb_whitelist_trusted_vmids(callback: CallbackQuery, state: Optional[FS
     else:
         text += "<i>В списке пока нет доверенных контейнеров.</i>\n"
 
-    kb_buttons = []
+    kb_buttons = [
+        [InlineKeyboardButton(text="➕ Добавить контейнер в доверенные", callback_data="wl_add_trusted")]
+    ]
     # Кнопки для удаления каждого доверенного контейнера
     for v in trusted:
+        panel = spectre_manager.get_panel_by_vmid(v)
+        name = f" ({panel.name})" if panel else ""
         kb_buttons.append([
-            InlineKeyboardButton(text=f"🗑 Убрать LXC {v} из доверенных", callback_data=f"untrust_lxc:{v}")
+            InlineKeyboardButton(text=f"🗑 Убрать LXC {v}{name} из доверенных", callback_data=f"untrust_lxc:{v}")
         ])
     
     kb_buttons.append([
@@ -501,6 +506,136 @@ async def cb_whitelist_trusted_vmids(callback: CallbackQuery, state: Optional[FS
     await callback.answer()
 
 
+@router.callback_query(F.data == "wl_add_trusted")
+async def cb_add_trusted_vmid_select(callback: CallbackQuery, state: Optional[FSMContext] = None):
+    if state:
+        await state.clear()
+    from modules.proxmox.api import proxmox
+    from modules.proxmox.monitor.traffic.parser import get_trusted_vpn_vmids_sync
+    trusted = set(get_trusted_vpn_vmids_sync())
+    
+    lxc_list = []
+    if proxmox.proxmox:
+        try:
+            resources = proxmox.proxmox.cluster.resources.get(type='vm')
+            for res in resources:
+                if res.get('type') == 'lxc':
+                    lxc_list.append((int(res.get('vmid')), res.get('name', 'LXC'), res.get('status', 'unknown')))
+        except Exception as e:
+            logging.error(f"Error fetching LXC resources for trusted list: {e}")
+            
+    kb_buttons = []
+    lxc_list.sort(key=lambda x: x[0])
+    for vmid, name, status in lxc_list:
+        if vmid not in trusted:
+            emoji = "🟢" if status == "running" else "⚪️"
+            kb_buttons.append([
+                InlineKeyboardButton(
+                    text=f"{emoji} LXC {vmid} ({name})",
+                    callback_data=f"trust_lxc_menu:{vmid}"
+                )
+            ])
+            
+    kb_buttons.append([
+        InlineKeyboardButton(text="✏️ Ввести VMID вручную", callback_data="add_trusted_vmid_manual")
+    ])
+    kb_buttons.append([
+        InlineKeyboardButton(text="⬅️ Назад", callback_data="wl_trusted_vmids")
+    ])
+    
+    text = (
+        "➕ <b>Добавить LXC контейнер в доверенные (VPN / P2P)</b>\n"
+        "⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯\n"
+        "Выберите контейнер из обнаруженных в Proxmox или введите его VMID вручную:\n"
+    )
+    try:
+        await callback.message.edit_text(text=text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb_buttons))
+    except Exception:
+        pass
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("trust_lxc_menu:"))
+async def cb_trust_lxc_menu(callback: CallbackQuery):
+    try:
+        vmid_str = callback.data.split(":", 1)[1]
+        vmid = int(vmid_str)
+        from core.db import add_trusted_vpn_vmid
+        await add_trusted_vpn_vmid(vmid)
+        from modules.proxmox.monitor.traffic.parser import update_trusted_vpn_vmids_cache
+        await update_trusted_vpn_vmids_cache()
+        try:
+            from modules.proxmox.monitor.firewall import setup_vpn_container_rules
+            setup_vpn_container_rules()
+        except Exception:
+            pass
+
+        try:
+            from core.outbox import outbox
+            outbox.drop_alerts_for_vmid(vmid)
+        except Exception:
+            pass
+
+        await callback.answer(f"✅ LXC {vmid} добавлен в доверенные (VPN/P2P)!", show_alert=True)
+        await cb_whitelist_trusted_vmids(callback, None)
+    except Exception as e:
+        logging.error("error_trusting_lxc_menu", e)
+        await callback.answer("Ошибка при добавлении контейнера", show_alert=True)
+
+
+@router.callback_query(F.data == "add_trusted_vmid_manual")
+async def cb_add_trusted_vmid_manual(callback: CallbackQuery, state: FSMContext):
+    await state.set_state(WhitelistState.waiting_for_trusted_vmid)
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="⬅️ Отмена", callback_data="wl_trusted_vmids")]
+    ])
+    try:
+        await callback.message.edit_text(
+            "✏️ <b>Введите VMID контейнера (например: <code>102</code>):</b>",
+            parse_mode="HTML",
+            reply_markup=kb
+        )
+    except Exception:
+        pass
+    await callback.answer()
+
+
+@router.message(WhitelistState.waiting_for_trusted_vmid)
+async def process_trusted_vmid_input(message: types.Message, state: FSMContext):
+    vmid_text = message.text.strip()
+    if not vmid_text.isdigit():
+        await message.answer("❌ <b>Неверный формат VMID.</b> Пожалуйста, введите число (например: <code>102</code>).", parse_mode="HTML")
+        return
+    vmid = int(vmid_text)
+    from core.db import add_trusted_vpn_vmid
+    await add_trusted_vpn_vmid(vmid)
+    from modules.proxmox.monitor.traffic.parser import update_trusted_vpn_vmids_cache
+    await update_trusted_vpn_vmids_cache()
+    try:
+        from modules.proxmox.monitor.firewall import setup_vpn_container_rules
+        setup_vpn_container_rules()
+    except Exception:
+        pass
+
+    try:
+        from core.outbox import outbox
+        outbox.drop_alerts_for_vmid(vmid)
+    except Exception:
+        pass
+
+    await state.clear()
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🌐 К доверенным контейнерам", callback_data="wl_trusted_vmids")],
+        [InlineKeyboardButton(text="🔙 В главное меню", callback_data="main_menu")]
+    ])
+    await message.answer(
+        f"✅ <b>LXC {vmid} успешно добавлен в доверенные контейнеры (VPN/P2P)!</b>\n"
+        f"Исходящие P2P/BitTorrent соединения больше не будут вызывать предупреждений.",
+        parse_mode="HTML",
+        reply_markup=kb
+    )
+
+
 @router.callback_query(F.data.startswith("trust_lxc:"))
 async def cb_trust_lxc(callback: CallbackQuery):
     try:
@@ -513,6 +648,13 @@ async def cb_trust_lxc(callback: CallbackQuery):
         try:
             from modules.proxmox.monitor.firewall import setup_vpn_container_rules
             setup_vpn_container_rules()
+        except Exception:
+            pass
+
+        # Мгновенно сбрасываем из Outbox накопившиеся спам-сообщения по этому контейнеру
+        try:
+            from core.outbox import outbox
+            outbox.drop_alerts_for_vmid(vmid)
         except Exception:
             pass
 
