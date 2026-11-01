@@ -192,13 +192,13 @@ async def handle_traffic_log_line(line):
                         from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
                         kb = InlineKeyboardMarkup(inline_keyboard=[[
                             InlineKeyboardButton(
-                                text=f"🌐 Сделать LXC {vmid} доверенным (VPN/P2P)",
+                                text=f"🌐 Сделать LXC {vmid} доверенным",
                                 callback_data=f"trust_lxc:{vmid}"
                             )
                         ]])
                         storm_alert = (
                             f"⚠️ <b>[Шторм сетевой активности] LXC {vmid} ({container_name})</b>\n\n"
-                            f"Обнаружен массовый поток исходящих P2P/BitTorrent соединений на нетипичные порты. "
+                            f"Обнаружен массовый поток исходящих соединений на нетипичные порты. "
                             f"Одиночные алерты <b>заглушены на 30 секунд</b> для защиты чата от переполнения.\n\n"
                             f"Чтобы навсегда отключить предупреждения для этого контейнера, нажмите кнопку ниже:"
                         )
@@ -321,7 +321,7 @@ async def handle_traffic_log_line(line):
                 if not is_vpn_vmid(vmid):
                     buttons.append([
                         InlineKeyboardButton(
-                            text=f"🌐 Сделать LXC {vmid} доверенным (VPN/P2P)",
+                            text=f"🌐 Сделать LXC {vmid} доверенным",
                             callback_data=f"trust_lxc:{vmid}"
                         )
                     ])

@@ -49,9 +49,15 @@ def get_node_label(node: str) -> str:
     elif node == 'local':
         return _("whitelist", "pve_node")
     elif node.startswith("lxc_"):
-        vmid = node.split("_")[1]
-        panel = spectre_manager.get_panel_by_vmid(int(vmid))
-        return _("whitelist", "lxc_node", vmid=vmid, name=panel.name if panel else 'VPN')
+        vmid_str = node.split("_")[1]
+        try:
+            vmid = int(vmid_str)
+            panel = spectre_manager.get_panel_by_vmid(vmid)
+            from modules.proxmox.monitor.state import lxc_name_cache
+            c_name = panel.name if panel else lxc_name_cache.get(vmid, f"LXC {vmid}")
+            return _("whitelist", "lxc_node", vmid=vmid, name=c_name)
+        except Exception:
+            return _("whitelist", "lxc_node", vmid=vmid_str, name=f"LXC {vmid_str}")
     elif node.startswith("vps_"):
         ip = node.split("_")[1]
         return _("whitelist", "vps_node", ip=ip)
@@ -73,7 +79,7 @@ async def get_node_selection_keyboard() -> InlineKeyboardMarkup:
             
     active_nodes = set()
     
-    # Добавляем обнаруженные активные панели
+    # Добавляем обнаруженные панели Spectre / VPS
     for p_key, p in spectre_manager.panels.items():
         if p.source_type == 'lxc':
             node_key = f"lxc_{p.identifier}"
@@ -83,6 +89,41 @@ async def get_node_selection_keyboard() -> InlineKeyboardMarkup:
             node_key = f"vps_{p.identifier}"
             active_nodes.add(node_key)
             buttons.append([InlineKeyboardButton(text=_("whitelist", "vps_node", ip=p.identifier), callback_data=f"wl_view:{node_key}")])
+
+    # Также добавляем все остальные доступные LXC-контейнеры хоста Proxmox
+    from modules.proxmox.api import proxmox
+    from modules.proxmox.monitor.state import lxc_name_cache
+    if proxmox.proxmox:
+        try:
+            resources = proxmox.proxmox.cluster.resources.get(type='vm')
+            for res in sorted(resources, key=lambda x: int(x.get('vmid', 0))):
+                if res.get('type') == 'lxc':
+                    vmid = int(res.get('vmid'))
+                    node_key = f"lxc_{vmid}"
+                    if node_key not in active_nodes:
+                        active_nodes.add(node_key)
+                        c_name = res.get('name') or lxc_name_cache.get(vmid, f"LXC {vmid}")
+                        status_emoji = "🟢" if res.get('status') == 'running' else "⚪️"
+                        buttons.append([
+                            InlineKeyboardButton(
+                                text=f"{status_emoji} LXC {vmid} ({c_name})",
+                                callback_data=f"wl_view:{node_key}"
+                            )
+                        ])
+        except Exception as e:
+            logging.debug("Error fetching all LXCs for whitelist keyboard: %s", e)
+
+    for vmid, c_name in sorted(lxc_name_cache.items()):
+        if vmid != 0:
+            node_key = f"lxc_{vmid}"
+            if node_key not in active_nodes:
+                active_nodes.add(node_key)
+                buttons.append([
+                    InlineKeyboardButton(
+                        text=f"📦 LXC {vmid} ({c_name})",
+                        callback_data=f"wl_view:{node_key}"
+                    )
+                ])
             
     # Добавляем неактивные ноды, у которых есть правила в БД
     for node in sorted(nodes_with_rules):
@@ -96,7 +137,7 @@ async def get_node_selection_keyboard() -> InlineKeyboardMarkup:
         buttons.append([InlineKeyboardButton(text=_("whitelist", "offline_label", label=label), callback_data=f"wl_view:{node}")])
             
     # Добавляем кнопку просмотра всех правил
-    buttons.append([InlineKeyboardButton(text="🌐 Доверенные контейнеры (VPN/P2P)", callback_data="wl_trusted_vmids")])
+    buttons.append([InlineKeyboardButton(text="🌐 Доверенные контейнеры", callback_data="wl_trusted_vmids")])
     buttons.append([InlineKeyboardButton(text=_("whitelist", "btn_show_all"), callback_data="wl_view_all")])
     buttons.append([InlineKeyboardButton(text=_("keyboards", "btn_back_to_menu"), callback_data="main_menu")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
@@ -469,17 +510,19 @@ async def cb_whitelist_trusted_vmids(callback: CallbackQuery, state: Optional[FS
     trusted = get_trusted_vpn_vmids_sync()
     
     text = (
-        "🌐 <b>Доверенные LXC контейнеры (VPN / P2P транзит)</b>\n"
+        "🌐 <b>Доверенные LXC контейнеры</b>\n"
         "⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯\n"
-        "Контейнерам из этого списка <b>разрешены любые исходящие порты</b> (для P2P, стриминга, BitTorrent, Shadowsocks/SS-KD и клиентов).\n"
-        "При этом любые попытки доступа на <b>sensitive порты</b> (SSH 22, БД, Proxmox 8006) продолжают строго отслеживаться и пресекаться.\n\n"
+        "Контейнерам из этого списка <b>разрешены любые исходящие порты</b> (для P2P, торрентов, стриминга, панелей любого типа и транзита).\n"
+        "При этом любые попытки доступа на <b>sensitive порты</b> (SSH 22, БД, Proxmox 8006) продолжают строго отслеживаться и пресекаться Active IPS.\n\n"
     )
+    from modules.proxmox.monitor.state import lxc_name_cache
     if trusted:
         text += "<b>Активные доверенные контейнеры:</b>\n"
         for v in trusted:
             panel = spectre_manager.get_panel_by_vmid(v)
-            name = f" ({panel.name})" if panel else ""
-            text += f"• <b>LXC {v}</b>{name} — <i>VPN/P2P режим активен</i>\n"
+            c_name = panel.name if panel else lxc_name_cache.get(v)
+            name = f" ({c_name})" if c_name else ""
+            text += f"• <b>LXC {v}</b>{name} — <i>доверенный режим активен</i>\n"
     else:
         text += "<i>В списке пока нет доверенных контейнеров.</i>\n"
 
@@ -489,7 +532,8 @@ async def cb_whitelist_trusted_vmids(callback: CallbackQuery, state: Optional[FS
     # Кнопки для удаления каждого доверенного контейнера
     for v in trusted:
         panel = spectre_manager.get_panel_by_vmid(v)
-        name = f" ({panel.name})" if panel else ""
+        c_name = panel.name if panel else lxc_name_cache.get(v)
+        name = f" ({c_name})" if c_name else ""
         kb_buttons.append([
             InlineKeyboardButton(text=f"🗑 Убрать LXC {v}{name} из доверенных", callback_data=f"untrust_lxc:{v}")
         ])
@@ -544,9 +588,9 @@ async def cb_add_trusted_vmid_select(callback: CallbackQuery, state: Optional[FS
     ])
     
     text = (
-        "➕ <b>Добавить LXC контейнер в доверенные (VPN / P2P)</b>\n"
+        "➕ <b>Добавить LXC контейнер в доверенные</b>\n"
         "⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯\n"
-        "Выберите контейнер из обнаруженных в Proxmox или введите его VMID вручную:\n"
+        "Выберите любой контейнер или панель из Proxmox или введите VMID вручную:\n"
     )
     try:
         await callback.message.edit_text(text=text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb_buttons))
@@ -576,7 +620,7 @@ async def cb_trust_lxc_menu(callback: CallbackQuery):
         except Exception:
             pass
 
-        await callback.answer(f"✅ LXC {vmid} добавлен в доверенные (VPN/P2P)!", show_alert=True)
+        await callback.answer(f"✅ LXC {vmid} добавлен в доверенные!", show_alert=True)
         await cb_whitelist_trusted_vmids(callback, None)
     except Exception as e:
         logging.error("error_trusting_lxc_menu", e)
@@ -629,8 +673,8 @@ async def process_trusted_vmid_input(message: types.Message, state: FSMContext):
         [InlineKeyboardButton(text="🔙 В главное меню", callback_data="main_menu")]
     ])
     await message.answer(
-        f"✅ <b>LXC {vmid} успешно добавлен в доверенные контейнеры (VPN/P2P)!</b>\n"
-        f"Исходящие P2P/BitTorrent соединения больше не будут вызывать предупреждений.",
+        f"✅ <b>LXC {vmid} успешно добавлен в доверенные контейнеры!</b>\n"
+        f"Исходящие соединения на нетипичные порты больше не будут вызывать предупреждений.",
         parse_mode="HTML",
         reply_markup=kb
     )

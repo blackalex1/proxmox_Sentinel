@@ -6,7 +6,7 @@ from typing import Optional
 
 from core.config import settings
 def setup_vpn_container_rules():
-    """Установка logging-правил iptables внутри доверенных VPN-контейнеров для контроля локальных процессов."""
+    """Установка logging-правил iptables внутри доверенных контейнеров для контроля локальных процессов."""
     if platform.system() != 'Linux' or os.geteuid() != 0:
         return False
     from modules.proxmox.monitor.traffic.parser import get_trusted_vpn_vmids_sync
@@ -49,7 +49,7 @@ def setup_vpn_container_rules():
 
 
 def cleanup_vpn_container_rules(target_vmid: Optional[int] = None):
-    """Удаление logging-правил iptables из доверенных VPN-контейнеров."""
+    """Удаление logging-правил iptables из доверенных контейнеров."""
     if platform.system() != 'Linux' or os.geteuid() != 0:
         return
     from modules.proxmox.monitor.traffic.parser import get_trusted_vpn_vmids_sync
@@ -161,7 +161,7 @@ def setup_iptables():
             )
             logging.info("installed_iptables_rule_outbound_host_traffic")
             
-        # Настройка логирования внутренних процессов VPN контейнера
+        # Настройка логирования внутренних процессов доверенных контейнеров
         setup_vpn_container_rules()
             
         return True
@@ -197,9 +197,12 @@ def cleanup_iptables():
             capture_output=True
         )
         
-        # Удаляем внутренние правила VPN контейнера
+        # Удаляем внутренние правила доверенных контейнеров
         cleanup_vpn_container_rules()
         
         logging.info("iptables_rules_for_lxc_and_host_traffic")
     except Exception as e:
         logging.error("error_removing_iptables_rules", e)
+
+setup_trusted_container_rules = setup_vpn_container_rules
+cleanup_trusted_container_rules = cleanup_vpn_container_rules
