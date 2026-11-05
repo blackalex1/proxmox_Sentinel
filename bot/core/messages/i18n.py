@@ -4,12 +4,17 @@ from core.config import settings
 
 logger = logging.getLogger(__name__)
 
+ALLOWED_LOCALES = {"ru", "en"}
+
 class Translator:
     def __init__(self, lang: str = "ru"):
-        self.lang = lang.lower()
+        clean_lang = (lang or "ru").lower().strip()
+        self.lang = clean_lang if clean_lang in ALLOWED_LOCALES else "ru"
         self.cache = {}
 
     def get(self, namespace: str, key: str, default: str = None, **kwargs) -> str:
+        if not namespace or not namespace.isidentifier():
+            return default if default is not None else f"{namespace}:{key}"
         cache_key = f"{self.lang}.{namespace}"
         if cache_key not in self.cache:
             try:
