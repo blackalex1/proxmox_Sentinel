@@ -3,7 +3,8 @@ proxmoxer
 requests
 python-dotenv
 aiohttp-socks
-aiohttp
+aiohttp>=3.14.5
+certifi>=2026.10.18
 pproxy
 pycryptodome
 pydantic

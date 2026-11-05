@@ -12,7 +12,9 @@ class LocalizedFormatter(logging.Formatter):
         self.patterns = []
         try:
             from core.config import settings
-            lang = settings.bot_language.lower()
+            lang = getattr(settings, "bot_language", "ru").lower().strip()
+            if lang not in ("ru", "en"):
+                lang = "ru"
             try:
                 module = importlib.import_module(f"core.messages.locales.{lang}.logs")
                 translation_dict = getattr(module, "translation", {})
