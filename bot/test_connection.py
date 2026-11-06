@@ -81,6 +81,8 @@ def run_test():
         print(f"[*] Выполняем тестовый запрос через Cloudflare Worker...")
         start_time = time.monotonic()
         try:
+            if not target_url.startswith(('https://', 'http://')):
+                raise ValueError(f'Invalid test URL scheme: {target_url}')
             req = urllib.request.Request(target_url, headers={'User-Agent': 'Python-Telegram-CF-Test'})
             with urllib.request.urlopen(req, timeout=8) as response:
                 latency = (time.monotonic() - start_time) * 1000
@@ -132,6 +134,8 @@ def run_test():
         target_url = f"https://api.telegram.org/bot{token}/getMe"
         start_time = time.monotonic()
         try:
+            if not target_url.startswith(('https://', 'http://')):
+                raise ValueError(f'Invalid test URL scheme: {target_url}')
             req = urllib.request.Request(target_url, headers={'User-Agent': 'Python-Telegram-CF-Test'})
             with urllib.request.urlopen(req, timeout=5) as response:
                 latency = (time.monotonic() - start_time) * 1000
