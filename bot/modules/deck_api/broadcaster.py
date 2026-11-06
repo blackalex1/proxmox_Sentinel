@@ -31,13 +31,12 @@ def sanitize_text(text: str) -> str:
 
 class DeckBroadcaster:
     """
-    Потокобезопасный брокер алертов и логов для подключенных мобильных терминалов Sentinel Deck.
-    Ограничивает использование памяти фиксированными кольцевыми буферами (deque).
+    Потокобезопасный брокер алертов для подключенных мобильных терминалов Sentinel Deck.
+    Ограничивает использование памяти фиксированным кольцевым буфером (deque).
     """
-    def __init__(self, max_alerts: int = 100, max_logs: int = 200):
+    def __init__(self, max_alerts: int = 100):
         self._active_clients: set[web.WebSocketResponse] = set()
         self._alerts_history: collections.deque = collections.deque(maxlen=max_alerts)
-        self._logs_history: collections.deque = collections.deque(maxlen=max_logs)
         self._lock = asyncio.Lock()
 
     @property
@@ -56,9 +55,6 @@ class DeckBroadcaster:
 
     def get_recent_alerts(self) -> List[Dict[str, Any]]:
         return list(self._alerts_history)
-
-    def get_recent_logs(self) -> List[Dict[str, Any]]:
-        return list(self._logs_history)
 
     async def broadcast_alert(
         self,
@@ -101,31 +97,6 @@ class DeckBroadcaster:
 
         # Отправляем подключенным клиентам
         await self._broadcast_json(alert_payload)
-
-    async def broadcast_log(
-        self,
-        source: str,
-        raw_line: str,
-        level: str = "INFO"
-    ) -> None:
-        """
-        Транслирует строку лога (например, из auth.log, IPS или journalctl).
-        """
-        clean_line = sanitize_text(raw_line)
-        if not clean_line:
-            return
-
-        log_payload = {
-            "type": "log",
-            "id": f"log_{int(time.time() * 1000)}",
-            "timestamp": time.time(),
-            "source": sanitize_text(source),
-            "level": level,
-            "line": clean_line
-        }
-
-        self._logs_history.append(log_payload)
-        await self._broadcast_json(log_payload)
 
     async def _broadcast_json(self, payload: Dict[str, Any]) -> None:
         if not self._active_clients:

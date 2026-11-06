@@ -28,15 +28,6 @@ async def handle_get_alerts(request: web.Request) -> web.Response:
     })
 
 
-async def handle_get_logs(request: web.Request) -> web.Response:
-    """Получение недавних строк логов"""
-    return web.json_response({
-        "logs": deck_broadcaster.get_recent_logs(),
-        "total": len(deck_broadcaster.get_recent_logs()),
-        "timestamp": time.time()
-    })
-
-
 async def handle_get_nodes(request: web.Request) -> web.Response:
     """Безопасный опрос статуса нод Proxmox"""
     try:
@@ -59,7 +50,6 @@ async def handle_ws_stream(request: web.Request) -> web.WebSocketResponse:
     """
     Потоковый WebSocket-эндпоинт для Sentinel Deck:
     - Потоковая передача алертов в реальном времени
-    - Стриминг логов авторизаций, IPS и сервисов
     - Heartbeat для обнаружения обрыва связи
     """
     # 1. Проверка лимита одновременных подключений (защита от исчерпания дескрипторов сокетов)
@@ -82,17 +72,16 @@ async def handle_ws_stream(request: web.Request) -> web.WebSocketResponse:
     await deck_broadcaster.register(ws)
 
     try:
-        # Отправляем клиенту начальное приветствие и снимок текущих алертов и логов
+        # Отправляем клиенту начальное приветствие и снимок текущих алертов
         init_payload = {
             "type": "init",
             "service": "Proxmox Sentinel",
             "timestamp": time.time(),
-            "recent_alerts": deck_broadcaster.get_recent_alerts(),
-            "recent_logs": deck_broadcaster.get_recent_logs()
+            "recent_alerts": deck_broadcaster.get_recent_alerts()
         }
         await ws.send_json(init_payload)
 
-        # Слушаем входящие сообщения от планшета (например, пинг или квитирование алерта)
+        # Слушаем входящие сообщения от планшета (например, пинг или запрос алертов)
         async for msg in ws:
             if msg.type == web.WSMsgType.TEXT:
                 try:
@@ -120,6 +109,5 @@ def setup_routes(app: web.Application) -> None:
     """Регистрация всех эндпоинтов Deck API"""
     app.router.add_get("/api/v1/health", handle_health)
     app.router.add_get("/api/v1/alerts", handle_get_alerts)
-    app.router.add_get("/api/v1/logs", handle_get_logs)
     app.router.add_get("/api/v1/nodes", handle_get_nodes)
     app.router.add_get("/api/v1/ws/stream", handle_ws_stream)

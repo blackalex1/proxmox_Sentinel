@@ -92,13 +92,6 @@ class TestDeckApiSecurity(AioHTTPTestCase):
         assert "Падение ноды pve-node1" in alert_msg.get("text")
         assert alert_msg.get("severity") == "CRITICAL"
 
-        # 4. Проверяем вещание лога
-        await deck_broadcaster.broadcast_log("auth.log", "Accepted publickey for root from 192.168.1.50")
-        log_msg = await ws.receive_json(timeout=5.0)
-        assert log_msg.get("type") == "log"
-        assert log_msg.get("source") == "auth.log"
-        assert "Accepted publickey for root" in log_msg.get("line")
-
         await ws.close()
         await asyncio.sleep(0.05)
 
