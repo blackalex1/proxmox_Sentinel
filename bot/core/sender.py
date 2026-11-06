@@ -221,6 +221,13 @@ async def send_alert_to_admins(
     """
     Отправка алертов всем администраторам с поддержкой Rich Message.
     """
+    # Мгновенная прямая трансляция в подключенные планшеты Sentinel Deck
+    try:
+        from modules.deck_api import deck_broadcaster
+        await deck_broadcaster.broadcast_alert(text, parse_mode)
+    except Exception as e:
+        logging.debug(f"Deck broadcast skipped: {e}")
+
     if not settings.admin_ids:
         return
         

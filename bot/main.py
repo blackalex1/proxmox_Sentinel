@@ -202,6 +202,11 @@ async def main():
     from core.db import sync_approved_ips_to_panels
     asyncio.create_task(sync_approved_ips_to_panels(), name="sync_approved_ips_to_panels")
 
+    # Прямой API/WebSocket сервер для Sentinel Deck (запускается ТОЛЬКО если enable_deck_api=True в .env)
+    if getattr(settings, 'enable_deck_api', False):
+        from modules.deck_api import start_deck_api_server
+        asyncio.create_task(start_deck_api_server(), name="deck_api_server")
+
     # Запуск пулинга с авто-восстановлением при сетевых сбоях и мгновенной реакцией на SIGTERM
     import signal
     import aiohttp

@@ -151,6 +151,16 @@ class Settings(BaseSettings):
         """Алиас для spectre_panels."""
         return self.spectre_panels
 
+    # Sentinel Deck Direct API & WebSocket (стриминг логов и алертов на планшет)
+    enable_deck_api: bool = Field(default=False, validation_alias=AliasChoices('ENABLE_DECK_API', 'ENABLE_SENTINEL_DECK_API', 'SENTINEL_DECK_ENABLED'))
+    deck_api_host: str = Field(default='0.0.0.0', validation_alias='DECK_API_HOST')
+    deck_api_port: int = Field(default=8443, validation_alias='DECK_API_PORT')
+    deck_api_token: str = Field(default='', validation_alias=AliasChoices('DECK_API_TOKEN', 'SENTINEL_DECK_TOKEN', 'DECK_BEARER_TOKEN'))
+    deck_api_ssl_cert: str = Field(default='', validation_alias='DECK_API_SSL_CERT')
+    deck_api_ssl_key: str = Field(default='', validation_alias='DECK_API_SSL_KEY')
+    deck_api_max_clients: int = Field(default=5, validation_alias='DECK_API_MAX_CLIENTS')
+    deck_api_rate_limit: int = Field(default=60, validation_alias='DECK_API_RATE_LIMIT')
+
 
     # Валидаторы полей
     @field_validator('bot_token')
@@ -231,6 +241,14 @@ class Settings(BaseSettings):
 
         # 2. Парсинг spectre_panels_json
         import json
+        # 3. Валидация безопасности для Sentinel Deck API
+        if self.enable_deck_api:
+            token = (self.deck_api_token or '').strip()
+            if not token:
+                raise ValueError("DECK_API_TOKEN must be configured when ENABLE_DECK_API is true")
+            if len(token) < 16:
+                raise ValueError("DECK_API_TOKEN must be at least 16 characters long for security")
+
         if self.spectre_panels_json:
             try:
                 self.spectre_panels = json.loads(self.spectre_panels_json)
