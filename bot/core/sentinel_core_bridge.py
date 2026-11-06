@@ -38,7 +38,7 @@ def _get_sentinel_core_bin() -> str:
         if os.path.isfile(p) and os.path.getsize(p) > 3 * 1024 * 1024:
             if os.name != 'nt' and not os.access(p, os.X_OK):
                 try:
-                    os.chmod(p, 0o755)
+                    os.chmod(p, 0o750)
                 except Exception:
                     pass
             return p
@@ -233,8 +233,7 @@ def run_core_command(args: List[str], input_data: Optional[str] = None, parse_js
             stdin=subprocess.PIPE if input_data else None,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
-            text=True,
-            encoding="utf-8"
+            text=True
         )
         stdout, stderr = proc.communicate(input=input_data, timeout=10)
         output = (stdout or "").strip()

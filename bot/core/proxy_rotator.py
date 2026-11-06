@@ -245,8 +245,6 @@ class SocksProxyRotator:
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 text=True,
-                encoding="utf-8",
-                errors="ignore",
                 bufsize=1,
                 env=env,
                 **extra_kwargs
