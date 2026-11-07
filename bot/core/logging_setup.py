@@ -16,7 +16,10 @@ class LocalizedFormatter(logging.Formatter):
             if lang not in ("ru", "en"):
                 lang = "ru"
             try:
-                module = importlib.import_module(f"core.messages.locales.{lang}.logs")
+                if lang == "en":
+                    from core.messages.locales.en import logs as module
+                else:
+                    from core.messages.locales.ru import logs as module
                 translation_dict = getattr(module, "translation", {})
                 self.exact_map = translation_dict
                 # Сортируем по длине ключа по убыванию, чтобы более длинные ключи (с суффиксами _1) имели приоритет
