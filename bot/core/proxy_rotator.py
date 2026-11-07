@@ -378,16 +378,20 @@ class SocksProxyRotator:
         loop = asyncio.get_running_loop()
 
         def _fetch_url(target_url: str) -> str:
-            import ssl
-            ctx = ssl.create_default_context()
-            ctx.check_hostname = False
-            ctx.verify_mode = ssl.CERT_NONE
-            req = urllib.request.Request(
-                target_url,
-                headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) SentinelController/1.0"}
-            )
-            with urllib.request.urlopen(req, timeout=4.0, context=ctx) as response:
-                return response.read().decode("utf-8", errors="ignore")
+            if not target_url.startswith(('https://', 'http://')):
+                return ""
+            import requests
+            try:
+                resp = requests.get(
+                    target_url,
+                    headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) SentinelController/1.0"},
+                    timeout=4.0
+                )
+                if resp.status_code == 200:
+                    return resp.text
+            except Exception:
+                pass
+            return ""
 
         try:
             content = await loop.run_in_executor(None, _fetch_url, base_url)

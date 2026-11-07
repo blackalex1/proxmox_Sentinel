@@ -83,28 +83,28 @@ def run_test():
         try:
             if not target_url.startswith(('https://', 'http://')):
                 raise ValueError(f'Invalid test URL scheme: {target_url}')
-            req = urllib.request.Request(target_url, headers={'User-Agent': 'Python-Telegram-CF-Test'})
-            with urllib.request.urlopen(req, timeout=8) as response:
-                latency = (time.monotonic() - start_time) * 1000
-                status = response.status
-                response_data = response.read().decode('utf-8')
+            import requests
+            resp = requests.get(target_url, headers={'User-Agent': 'Python-Telegram-CF-Test'}, timeout=8)
+            latency = (time.monotonic() - start_time) * 1000
+            status = resp.status_code
+            response_data = resp.text
                 
-                print("-" * 75)
-                print(f"[SUCCESS] Подключение через Cloudflare Worker УСПЕШНО выполнено!")
-                print(f"          Время ответа (пинг): {latency:.1f} мс")
-                print(f"          HTTP Статус: {status}")
-                
-                try:
-                    data = json.loads(response_data)
-                    if data.get("ok"):
-                        bot_info = data.get("result", {})
-                        print(f"          Подключенный бот: @{bot_info.get('username')} (ID: {bot_info.get('id')})")
-                        print("\n[ВЫВОД]: Все системы работают отлично! Бот готов к работе на сервере.")
-                        return
-                except:
-                    pass
-                print(f"          Ответ: {response_data[:200]}")
-                
+            print("-" * 75)
+            print(f"[SUCCESS] Подключение через Cloudflare Worker УСПЕШНО выполнено!")
+            print(f"          Время ответа (пинг): {latency:.1f} мс")
+            print(f"          HTTP Статус: {status}")
+            
+            try:
+                data = json.loads(response_data)
+                if data.get("ok"):
+                    bot_info = data.get("result", {})
+                    print(f"          Подключенный бот: @{bot_info.get('username')} (ID: {bot_info.get('id')})")
+                    print("\n[ВЫВОД]: Все системы работают отлично! Бот готов к работе на сервере.")
+                    return
+            except:
+                pass
+            print(f"          Ответ: {response_data[:200]}")
+            
         except urllib.error.HTTPError as e:
             latency = (time.monotonic() - start_time) * 1000
             print(f"[-] [ОШИБКА АВТОРИЗАЦИИ] Код: {e.code}")
@@ -136,10 +136,10 @@ def run_test():
         try:
             if not target_url.startswith(('https://', 'http://')):
                 raise ValueError(f'Invalid test URL scheme: {target_url}')
-            req = urllib.request.Request(target_url, headers={'User-Agent': 'Python-Telegram-CF-Test'})
-            with urllib.request.urlopen(req, timeout=5) as response:
-                latency = (time.monotonic() - start_time) * 1000
-                print(f"[SUCCESS] Прямое подключение к Telegram успешно ({latency:.1f} мс)!")
+            import requests
+            resp = requests.get(target_url, headers={'User-Agent': 'Python-Telegram-CF-Test'}, timeout=5)
+            latency = (time.monotonic() - start_time) * 1000
+            print(f"[SUCCESS] Прямое подключение к Telegram успешно ({latency:.1f} мс)!")
         except Exception as e:
             latency = (time.monotonic() - start_time) * 1000
             print(f"[-] [БЛОКИРОВКА] Прямой доступ к api.telegram.org закрыт ({latency:.1f} мс).")

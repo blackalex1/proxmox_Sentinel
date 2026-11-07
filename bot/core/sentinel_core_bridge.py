@@ -38,7 +38,8 @@ def _get_sentinel_core_bin() -> str:
         if os.path.isfile(p) and os.path.getsize(p) > 3 * 1024 * 1024:
             if os.name != 'nt' and not os.access(p, os.X_OK):
                 try:
-                    os.chmod(p, 0o750)
+                    # nosemgrep: python.lang.security.audit.insecure-file-permissions.insecure-file-permissions
+                    os.chmod(p, 0o700)
                 except Exception:
                     pass
             return p

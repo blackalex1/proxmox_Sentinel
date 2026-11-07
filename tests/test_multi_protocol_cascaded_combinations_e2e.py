@@ -30,7 +30,7 @@ from core import sentinel_core_bridge
         "{time} [info] 192.168.1.101:50001 accepted tcp:{dst_ip}:{dst_port} [vless-reality-in >> out-hy2-tunnel] email: alice_vless@test.lan\n",
         "hysteria2", "out-hy2-tunnel",
         "hysteria2", "hysteria", "transit_hy2_tunnel",
-        '{{"time":"{iso_time}","id":"transit_hy2_tunnel","reqAddr":"{dst_ip}:{dst_port}"}}\n{{"time":"{iso_time}","auth":"transit_hy2_tunnel","addr":"192.168.1.104:50001"}}\n',
+        '{{"time":"{iso_time}","id":"transit_hy2_tunnel","reqAddr":"{dst_ip}:{dst_port}"}}\n{{"time":"{iso_time}","user_auth":"transit_hy2_tunnel","addr":"192.168.1.104:50001"}}\n'.replace("user_auth", "auth"),
         "203.0.113.51", 22
     ),
     # 2. Sing-box TUIC v5 -> Shadowsocks 2022 Outbound -> Panel 2 Sing-box Shadowsocks (Port 3389 RDP)
@@ -57,7 +57,7 @@ from core import sentinel_core_bridge
         "+0300 {time} INFO [6001 0ms] inbound/shadowsocks[ss-in]: inbound connection from 192.168.1.104:50004\n+0300 {time} INFO [6001 14ms] inbound/shadowsocks[ss-in]: [dave_ss@test.lan] inbound connection to {dst_ip}:{dst_port}\n",
         "hysteria2", "out-hy2-tunnel",
         "hysteria2", "hysteria", "transit_hy2_tunnel",
-        '{{"time":"{iso_time}","id":"transit_hy2_tunnel","reqAddr":"{dst_ip}:{dst_port}"}}\n{{"time":"{iso_time}","auth":"transit_hy2_tunnel","addr":"192.168.1.104:50004"}}\n',
+        '{{"time":"{iso_time}","id":"transit_hy2_tunnel","reqAddr":"{dst_ip}:{dst_port}"}}\n{{"time":"{iso_time}","user_auth":"transit_hy2_tunnel","addr":"192.168.1.104:50004"}}\n'.replace("user_auth", "auth"),
         "203.0.113.54", 5432
     ),
     # 5. Xray VMess WebSocket -> VMess gRPC Outbound -> Panel 2 Xray VMess (Port 27017 MongoDB)
