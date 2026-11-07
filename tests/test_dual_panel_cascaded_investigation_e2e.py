@@ -446,3 +446,85 @@ async def test_dual_panel_no_sniffing_cascaded_investigation(dual_panels_environ
     assert "203.0.113.77:22" in alert_text
     assert env["p1_db"]["clients"]["user_nosniff@test.lan"]["enable"] == 0
     assert env["p2_db"]["clients"]["vps_transit_tunnel"]["enable"] == 1
+
+
+# ---------------------------------------------------------------------------
+# TEST 6: THREE-SERVER CASCADE (Server 1 -> Server 2 (IPv4) -> Server 3 (IPv6))
+# ---------------------------------------------------------------------------
+@pytest.mark.asyncio
+async def test_three_server_cascaded_investigation_ipv4_to_ipv6_e2e(dual_panels_environment, monkeypatch):
+    """
+    СЦЕНАРИЙ 6: Трёхуровневый каскад:
+    - Сервер 1 (LXC-104-Gateway): реальный клиент 'cascaded_v4_v6_attacker@test.lan'
+      подключен к инбаунду и через Outbound IPv4 (198.51.100.20:443) отправлен на Сервер 2.
+    - Сервер 2 (VPS-Relay-198.51.100.20): принимает IPv4 от Сервера 1 под туннелем 'p1_to_p2_tunnel'
+      и маршрутизирует через IPv6 Outbound ([2001:db8:2000::3]:8443) на Сервер 3.
+    - Сервер 3 (VPS-Exit-[2001:db8:2000::3]): принимает IPv6 от Сервера 2 под туннелем 'p2_to_p3_tunnel'
+      и совершает выходное соединение на sensitive target [2001:db8:bad:c0de::1]:22 (SSH).
+
+    ПРОВЕРЯЕМ:
+    1. Расследование перехватывает сетевой инцидент с выхода Сервера 3.
+    2. По цепочке через sentinel-core идентифицируется истинный нарушитель на Сервере 1.
+    3. 'cascaded_v4_v6_attacker@test.lan' банится на Сервере 1 (enable=0).
+    4. Транзитный туннель Сервера 3 ('p2_to_p3_tunnel') остаётся активным (enable=1).
+    5. Администраторам уходит алерт с именем истинного нарушителя и IPv6-адресом цели.
+    """
+    env = dual_panels_environment
+    env["p1_db"]["clients"]["cascaded_v4_v6_attacker@test.lan"] = {
+        "enable": 1, "inbound": "vless-p1-in", "uuid": "uuid-v4-v6"
+    }
+    env["p2_db"]["clients"]["p2_to_p3_tunnel"] = {
+        "enable": 1, "inbound": "hy2-v6-exit-in", "uuid": "uuid-v6-tunnel"
+    }
+
+    now_str_xray = time.strftime("%Y/%m/%d %H:%M:%S")
+    now_str_iso = time.strftime("%Y-%m-%dT%H:%M:%SZ")
+    target_ipv6 = "2001:db8:bad:c0de::1"
+    target_port = 22
+
+    # 1. Логи Сервера 1 (Gateway): виден реальный клиент и целевой IPv6-хост
+    p1_log_line = (
+        f"{now_str_xray} [info] 198.51.100.42:51234 accepted tcp:[{target_ipv6}]:{target_port} "
+        f"[vless-p1-in >> out-s2-v4] email: cascaded_v4_v6_attacker@test.lan\n"
+    )
+    env["p1_xray_log"].write_text(p1_log_line, encoding="utf-8")
+
+    # 2. Логи Сервера 3 (Exit VPS): зафиксирован транзитный туннель от Сервера 2
+    p3_hy_lines = [
+        f'{{"time":"{now_str_iso}","auth":"p2_to_p3_tunnel","addr":"[2001:db8:2000::2]:52341"}}\n',
+        f'{{"time":"{now_str_iso}","id":"p2_to_p3_tunnel","reqAddr":"[{target_ipv6}]:{target_port}"}}\n',
+        f'{{"time":"{now_str_iso}","id":"innocent_tg_client@test.lan","reqAddr":"api.telegram.org:443"}}\n',
+    ]
+    env["p2_hysteria_log"].write_text("".join(p3_hy_lines), encoding="utf-8")
+
+    telegram_alerts = []
+    monkeypatch.setattr(
+        "modules.proxmox.monitor.remote.traffic.send_alert_to_admins",
+        AsyncMock(side_effect=lambda text, **kw: telegram_alerts.append(text))
+    )
+    monkeypatch.setattr(
+        "modules.proxmox.monitor.remote.traffic.get_and_kill_remote_process",
+        AsyncMock(return_value=("hysteria", "WHITELISTED"))
+    )
+
+    # Событие файрвола на выходе Сервера 3 по IPv6
+    iptables_v6_line = (
+        f"Sep 02 14:30:00 vps kernel: [123460.000] REMOTE_CONN_OUT: "
+        f"IN= OUT=eth0 SRC=2001:db8:2000::3 DST={target_ipv6} LEN=60 PROTO=TCP SPT=49123 DPT={target_port}"
+    )
+    server_vps3 = {'ip': '198.51.100.14', 'user': 'root', 'key': 'key_path'}
+
+    await handle_remote_traffic_line(iptables_v6_line, server=server_vps3)
+    await asyncio.sleep(0.1)
+
+    # Проверка 1: Администраторам отправлен алерт успешного расследования
+    assert len(telegram_alerts) >= 1
+    alert_text = telegram_alerts[0]
+    assert "cascaded_v4_v6_attacker@test.lan" in alert_text
+    assert f"{target_ipv6}:{target_port}" in alert_text
+
+    # Проверка 2: Истинный виновник заблокирован на Сервере 1
+    assert env["p1_db"]["clients"]["cascaded_v4_v6_attacker@test.lan"]["enable"] == 0
+
+    # Проверка 3: Транзитный туннель на Сервере 3 остался активен для всех остальных
+    assert env["p2_db"]["clients"]["p2_to_p3_tunnel"]["enable"] == 1

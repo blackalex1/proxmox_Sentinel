@@ -59,6 +59,7 @@ class Translator:
     def __init__(self, lang: str = "ru"):
         clean_lang = (lang or "ru").lower().strip()
         self.lang = clean_lang if clean_lang in ALLOWED_LOCALES else "ru"
+        self.cache = _STATIC_LOCALE_MODULES
 
     def get(self, namespace: str, key: str, default: str = None, **kwargs) -> str:
         if not namespace or not namespace.isidentifier():
