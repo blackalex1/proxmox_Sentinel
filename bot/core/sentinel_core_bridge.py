@@ -437,10 +437,8 @@ def find_client_ip_for_email_in_hysteria_log(
             ip = _ffi_call_str("SentinelFindClientIPForEmail", lines_json, email, int(max_age_sec))
             if ip:
                 return ip.strip()
-            return None
         except Exception as e:
             logger.debug("FFI find_client_ip_for_email_in_hysteria_log error: %s", e)
-            return None
 
     if len(lines_json) > 32768:
         return None
@@ -453,8 +451,10 @@ def find_client_ip_for_email_in_hysteria_log(
         "--max-age", str(max_age_sec)
     ]
     res = run_core_command(args)
-    if isinstance(res, dict) and res.get("client_ip"):
-        return res["client_ip"].strip()
+    if isinstance(res, dict):
+        found_ip = (res.get("client_ip") or res.get("ip") or "").strip()
+        if found_ip:
+            return found_ip
     return None
 
 
