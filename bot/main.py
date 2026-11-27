@@ -30,8 +30,8 @@ try:
 
     def _patched_get_cipher(cipher_key):
         try:
-            # Проверяем, работоспособна ли нативная сборка Crypto.Cipher
-            from Crypto.Cipher import AES, ChaCha20
+            # Проверяем, работоспособна ли нативная сборка Crypto.Cipher (pycryptodome)
+            from Crypto.Cipher import AES, ChaCha20  # nosec B413
         except Exception:
             # Если сломана, временно скрываем MAP, заставляя pproxy переключиться на pure-Python (cipherpy)
             _orig_MAP = pproxy.cipher.MAP
