@@ -3,7 +3,7 @@ import logging
 import datetime
 import re
 from modules.proxmox.monitor.utils import send_alert_to_admins
-from core.messages import get_vps_ssh_login_alert
+from core.messages.auth import get_vps_ssh_login_alert
 from .ssh import run_remote_ssh_cmd
 from .helpers import (
     get_active_ssh_ports_for_vps,
@@ -40,9 +40,7 @@ async def handle_remote_ssh_auth_line(line, server=None):
             # Проверка игнорируемых ключей и IP-адресов с защитой от компрометации
             from core.config import settings
             
-            ignore_ips = settings.remote_monitor_ignore_ips
-            if not isinstance(ignore_ips, list):
-                ignore_ips = [ignore_ips] if ignore_ips else []
+            ignore_ips = settings.get_remote_ignore_ips()
                 
             # Получаем публичный IP бота для привязки ключа к IP
             auto_ip = await get_bot_public_ip()
@@ -70,9 +68,7 @@ async def handle_remote_ssh_auth_line(line, server=None):
                 is_verified_bot = False
 
             ignore_by_key = False
-            ignore_keys = settings.remote_monitor_ignore_keys
-            if not isinstance(ignore_keys, list):
-                ignore_keys = [ignore_keys] if ignore_keys else []
+            ignore_keys = settings.get_remote_ignore_keys()
             
             security_warning_str = ""
             for ignored in ignore_keys:

@@ -226,26 +226,46 @@ class ResilientOutbox:
     """Менеджер отложенной отправки сообщений."""
 
     def __init__(self):
-        self.queue = []
+        self._queue = []
         self.lock = asyncio.Lock()
         self.rate_limit_until = 0.0
         self._message_cooldowns: dict[tuple, float] = {}
         self._drop_requested = False
         self.load_from_disk()
 
-    def clear_queue(self):
-        """Мгновенно прерывает отправку и очищает всю очередь как в памяти, так и на диске."""
+    def has_pending(self) -> bool:
+        """Возвращает True, если в очереди есть ожидающие сообщения."""
+        return bool(self._queue)
+
+    def pending_count(self) -> int:
+        """Возвращает количество сообщений в очереди."""
+        return len(self._queue)
+
+    def get_pending_snapshot(self) -> list:
+        """Возвращает копию списка ожидающих сообщений."""
+        return list(self._queue)
+
+    def enqueue_raw(self, item: dict, *, persist: bool = False) -> None:
+        """Добавляет подготовленную запись в очередь (для миграций и тестов)."""
+        self._queue.append(item)
+        if persist:
+            self.save_to_disk()
+
+    def clear_queue(self) -> int:
+        """Мгновенно прерывает отправку, очищает очередь и возвращает число удалённых сообщений."""
+        dropped_count = len(self._queue)
         self._drop_requested = True
-        self.queue = []
+        self._queue = []
         self.save_to_disk()
         logger.info("[Outbox] Queue successfully cleared.")
+        return dropped_count
 
     def drop_alerts_for_vmid(self, vmid: int) -> int:
         """Удаляет из очереди Outbox все ожидающие алерты для указанного VMID."""
         dropped = 0
         vmid_patterns = [f"LXC {vmid}", f"lxc_{vmid}", f"VMID {vmid}", f":{vmid}:"]
         new_queue = []
-        for item in self.queue:
+        for item in self._queue:
             text = str(item.get("text", ""))
             kwargs_str = str(item.get("kwargs", {}))
             if any(p in text or p in kwargs_str for p in vmid_patterns):
@@ -253,7 +273,7 @@ class ResilientOutbox:
             else:
                 new_queue.append(item)
         if dropped > 0:
-            self.queue = new_queue
+            self._queue = new_queue
             self.save_to_disk()
             logger.info(f"[Outbox] Dropped {dropped} queued alert messages for LXC {vmid}.")
         return dropped
@@ -305,13 +325,13 @@ class ResilientOutbox:
                     else:
                         cleaned_queue.append(msg)
                         
-                self.queue = cleaned_queue
-                logger.info("outbox_deferred_messages_queue_loaded_items", len(self.queue))
+                self._queue = cleaned_queue
+                logger.info("outbox_deferred_messages_queue_loaded_items", len(self._queue))
             except Exception as e:
                 logger.error("outbox_error_reading", OUTBOX_FILE, e)
-                self.queue = []
+                self._queue = []
         else:
-            self.queue = []
+            self._queue = []
 
     def save_to_disk(self):
         """Сохраняет текущую очередь сообщений на диск."""
@@ -320,7 +340,7 @@ class ResilientOutbox:
             
             # Сериализуем копию очереди, чтобы не портить объекты в памяти
             serialized_queue = []
-            for msg in self.queue:
+            for msg in self._queue:
                 msg_copy = msg.copy()
                 if "kwargs" in msg_copy:
                     kwargs_copy = msg_copy["kwargs"].copy()
@@ -358,26 +378,26 @@ class ResilientOutbox:
             dedup_key = _extract_dedup_key(msg_data)
             if dedup_key:
                 existing_idx = None
-                for idx, item in enumerate(self.queue):
+                for idx, item in enumerate(self._queue):
                     if not item.get("is_edit") and _extract_dedup_key(item) == dedup_key:
                         existing_idx = idx
                         break
                 if existing_idx is not None:
-                    self.queue[existing_idx] = msg_data
+                    self._queue[existing_idx] = msg_data
                     self.save_to_disk()
-                    logger.info("outbox_message_updated_in_queue_total", chat_id, len(self.queue))
+                    logger.info("outbox_message_updated_in_queue_total", chat_id, len(self._queue))
                     return
 
-            self.queue.append(msg_data)
+            self._queue.append(msg_data)
             self.save_to_disk()
-            logger.info("outbox_message_added_deferred_queue_total", chat_id, len(self.queue))
+            logger.info("outbox_message_added_deferred_queue_total", chat_id, len(self._queue))
 
     async def add_edit(self, chat_id, message_id, text, **kwargs):
         """Добавляет запрос на редактирование сообщения в очередь с авто-дедупликацией."""
         async with self.lock:
             # Дедупликация: если в очереди уже есть запрос на редактирование этого же сообщения, обновляем его
             existing_idx = None
-            for idx, item in enumerate(self.queue):
+            for idx, item in enumerate(self._queue):
                 if item.get("is_edit") and item.get("chat_id") == chat_id and item.get("message_id") == message_id:
                     existing_idx = idx
                     break
@@ -391,11 +411,11 @@ class ResilientOutbox:
                 "timestamp": time.time()
             }
             if existing_idx is not None:
-                self.queue[existing_idx] = msg_data
+                self._queue[existing_idx] = msg_data
             else:
-                self.queue.append(msg_data)
+                self._queue.append(msg_data)
             self.save_to_disk()
-            logger.info("outbox_edit_added_deferred_queue_total", chat_id, message_id, len(self.queue))
+            logger.info("outbox_edit_added_deferred_queue_total", chat_id, message_id, len(self._queue))
 
 
     async def flush_queue(self, bot: Bot):
@@ -405,18 +425,18 @@ class ResilientOutbox:
         При достижении лимитов Telegram (429 Too Many Requests) отправка приостанавливается на указанное время.
         Каждое отложенное сообщение снабжается пометкой о его номере в очереди: "[Отложенное сообщение 1/120]".
         """
-        if not self.queue:
+        if not self._queue:
             return
 
         if time.time() < self.rate_limit_until:
             return
 
         async with self.lock:
-            total_count = len(self.queue)
+            total_count = len(self._queue)
             logger.info("outbox_starting_transmission_deferred_messages_items", total_count)
             remaining_queue = []
             
-            for idx, msg in enumerate(self.queue, 1):
+            for idx, msg in enumerate(self._queue, 1):
                 if self._drop_requested:
                     logger.info("[Outbox] Drop requested, clearing remaining queue immediately.")
                     remaining_queue = []
@@ -498,7 +518,7 @@ class ResilientOutbox:
                     remaining_queue.append(msg)
                     # Добавляем все оставшиеся сообщения обратно в очередь
                     # (Используем прямой срез по 1-based индексу idx, избегая багов с дубликатами сообщений)
-                    remaining_queue.extend(self.queue[idx:])
+                    remaining_queue.extend(self._queue[idx:])
                     break
                 except TelegramRetryAfter as e:
                     # Защита от флуда: если Telegram попросил подождать (Flood Control)
@@ -511,7 +531,7 @@ class ResilientOutbox:
                     else:
                         self.rate_limit_until = time.time() + min(e.retry_after, 60)
                         remaining_queue.append(msg)
-                        remaining_queue.extend(self.queue[idx:])
+                        remaining_queue.extend(self._queue[idx:])
                         await asyncio.sleep(min(e.retry_after, 5))
                         break
 
@@ -523,11 +543,11 @@ class ResilientOutbox:
                     if is_network_error(e):
                         logger.warning("outbox_network_error_sending_message_suspending", chat_id, e)
                         remaining_queue.append(msg)
-                        remaining_queue.extend(self.queue[idx:])
+                        remaining_queue.extend(self._queue[idx:])
                         break
                     logger.error("outbox_unknown_error_sending_message_deleted", chat_id, e)
             
-            self.queue = remaining_queue
+            self._queue = remaining_queue
             self.save_to_disk()
 
     async def _send_rich_message_impl(self, bot: Bot, chat_id, text, parse_mode="HTML", reply_markup=None, ephemeral_params=None):
@@ -720,7 +740,7 @@ async def outbox_sender_loop(bot: Bot):
     while True:
         try:
             await asyncio.sleep(5)
-            if outbox.queue:
+            if outbox.has_pending():
                 await outbox.flush_queue(bot)
         except Exception as e:
             logger.error("outbox_error_sending_loop", e)

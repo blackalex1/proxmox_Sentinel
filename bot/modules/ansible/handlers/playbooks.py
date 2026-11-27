@@ -14,7 +14,7 @@ ANSIBLE_PLAYBOOKS_DIR = settings.ansible_playbooks_dir or os.path.join(base_dir,
 from modules.ansible.keyboards import get_ansible_main_keyboard, get_ansible_dynamic_host_keyboard
 from modules.ansible.inventory import generate_ansible_hosts_ini
 from modules.ansible.executor import execute_ansible_playbook
-from core.messages import (
+from core.messages.ansible import (
     get_ansible_missing_dir_text,
     get_ansible_playbooks_menu_text,
     get_ansible_ask_host_text,

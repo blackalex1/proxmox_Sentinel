@@ -2,7 +2,11 @@ import asyncio
 import logging
 
 from core.config import settings
-from core.messages import get_ips_autoblock_alert_audit, get_login_success_alert, get_spectre_2fa_alert
+from core.messages.spectre import (
+    get_ips_autoblock_alert_audit,
+    get_login_success_alert,
+    get_spectre_2fa_alert,
+)
 from .utils import send_alert_to_admins
 from .resources import monitor_lxc_resources
 from .auth import monitor_lxc_auth
@@ -12,8 +16,6 @@ from .remote import monitor_remote_server
 
 async def start_all_lxc_monitors():
     """Инициализация и запуск всех фоновых асинхронных задач мониторинга LXC и удаленных серверов."""
-    from modules.router.monitor.core import monitor_router_connections
-    
     # 0. Запускаем фоновый Garbage Collector для очистки просроченных временных блокировок
     asyncio.create_task(monitor_expired_bans(), name="monitor_expired_bans")
     
@@ -28,6 +30,8 @@ async def start_all_lxc_monitors():
     
     # 4. Запускаем автообнаружение панелей Spectre Panel
     from core.spectre_client import spectre_manager
+    from modules.proxmox.api import proxmox
+    spectre_manager.configure(lxc_provider=proxmox)
     try:
         await spectre_manager.discover_panels()
     except Exception as e:
@@ -40,11 +44,6 @@ async def start_all_lxc_monitors():
         from .remote.resources import monitor_remote_resources
         asyncio.create_task(monitor_remote_resources(), name="monitor_remote_resources")
         logging.info("remote_server_monitoring_started")
-        
-    # 6. Запускаем мониторинг роутера (SSH conntrack/syslog), если включен в конфиге
-    if settings.router_monitor_enable:
-        asyncio.create_task(monitor_router_connections(), name="monitor_router_connections")
-        logging.info("router_monitoring_started_mode", settings.router_monitor_mode)
         
     # 7. Запускаем фоновый планировщик автоматических бэкапов
     asyncio.create_task(start_auto_backup_scheduler(), name="auto_backup_scheduler")
@@ -79,7 +78,7 @@ async def start_auto_backup_scheduler():
                 if last_backup_date != current_date:
                     logging.info("backup_scheduler_time_is_3_00_am")
                     
-                    panels = list(spectre_manager.panels.values())
+                    panels = spectre_manager.iter_panels()
                     if not panels:
                         logging.warning("backup_scheduler_no_panels_detected_for_backup")
                     else:
@@ -93,7 +92,7 @@ async def start_auto_backup_scheduler():
                                     timestamp = int(datetime.datetime.now().timestamp())
                                     
                                     # Отправляем файл администраторам
-                                    for admin_id in settings.admin_ids:
+                                    for admin_id in settings.get_admin_ids():
                                         try:
                                             document = BufferedInputFile(
                                                 file_bytes, 
@@ -142,7 +141,7 @@ async def monitor_panel_audit_logs():
     
     while True:
         try:
-            for p_key, panel in list(spectre_manager.panels.items()):
+            for p_key, panel in spectre_manager.iter_panel_items():
                 
                 # При первом запуске инициализируем ID последнего лога, не пропуская свежие (за последние 120с)
                 if p_key not in last_log_ids:
@@ -359,7 +358,7 @@ async def monitor_panel_2fa_logs():
 
     while True:
         try:
-            panels = list(spectre_manager.panels.items())
+            panels = spectre_manager.iter_panel_items()
             current_keys = set()
             
             for p_key, panel in panels:
@@ -384,11 +383,7 @@ async def monitor_panel_2fa_logs():
                         await tailer.start()
                     elif panel.source_type == "vps":
                         from modules.proxmox.monitor.remote.ssh import get_ssh_base_cmd
-                        server = None
-                        for s in settings.remote_servers:
-                            if s.get('ip') == panel.identifier:
-                                server = s
-                                break
+                        server = settings.find_remote_server(panel.identifier)
                         if server:
                             ssh_base = get_ssh_base_cmd(server)
                             cmd = ssh_base + ["tail", "-F", "-n", "0", log_path]

@@ -19,7 +19,7 @@ if PANEL_DIR.exists() and str(PANEL_DIR) not in sys.path:
 
 from core.spectre_client import SpectrePanelInstance, SpectreClientManager, spectre_manager
 from modules.proxmox.monitor.remote.traffic import handle_remote_traffic_line
-from core.handlers.spectre.clients import cmd_ban_client, cmd_unban_client
+from handlers.spectre.clients import cmd_ban_client, cmd_unban_client
 
 
 def find_free_port() -> int:
@@ -140,7 +140,7 @@ async def test_simulate_xray_remote_vps_attack_autoban(live_spectre_attack_panel
         source_type="vps",
         identifier="198.51.100.14"
     )
-    spectre_manager.panels = {"vps_198.51.100.14": panel_instance}
+    spectre_manager.set_panels({"vps_198.51.100.14": panel_instance})
 
     # Имитируем автоблокировку атаковавшего Xray клиента
     block_res = await spectre_manager.disable_client_everywhere("xray_attacker@attack.com")
@@ -174,7 +174,7 @@ async def test_simulate_hysteria2_tunnel_attack_autoban(live_spectre_attack_pane
         source_type="vps",
         identifier="198.51.100.14"
     )
-    spectre_manager.panels = {"vps_198.51.100.14": panel_instance}
+    spectre_manager.set_panels({"vps_198.51.100.14": panel_instance})
 
     # Имитируем мгновенную блокировку Hysteria2 туннеля при атаке
     block_res = await spectre_manager.disable_client_everywhere("hysteria_attacker@attack.com")
@@ -210,7 +210,7 @@ async def test_simulate_lxc_singbox_attack_autoban(live_spectre_attack_panel):
         source_type="lxc",
         identifier="104"
     )
-    spectre_manager.panels = {"lxc_104": panel_instance}
+    spectre_manager.set_panels({"lxc_104": panel_instance})
 
     # Выполняем автоблокировку при обнаружении атаки
     block_res = await spectre_manager.disable_client_everywhere("singbox_attacker@attack.com")
@@ -240,7 +240,7 @@ async def test_admin_telegram_unban_recovery_e2e(live_spectre_attack_panel):
         source_type="lxc",
         identifier="104"
     )
-    spectre_manager.panels = {"lxc_104": panel_instance}
+    spectre_manager.set_panels({"lxc_104": panel_instance})
 
     # Вызываем разблокировку Xray клиента через команду бота /unban
     mock_status_msg = AsyncMock()
@@ -298,10 +298,10 @@ async def test_simulate_cascaded_tunnel_investigation_live(live_spectre_attack_p
         source_type="vps",
         identifier="198.51.100.14"
     )
-    spectre_manager.panels = {
+    spectre_manager.set_panels({
         "lxc_104": lxc_panel,
         "vps_198.51.100.14": vps_panel
-    }
+    })
 
     # Мокаем поиск соединения по IP/портам в логах ядра
     async def mock_get_client_by_connection(client_ip, dst_ip, port, source_type, source_id, strict_target_only=True):

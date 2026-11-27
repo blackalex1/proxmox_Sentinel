@@ -15,12 +15,14 @@ core.db.init_db()
 async def test_verify_env_configuration():
     from core.env_verifier import verify_env_configuration
     
-    # Подменяем настройки
-    with patch('core.config.settings.admin_ids', []), \
-         patch('core.config.settings.proxmox_host', ''), \
-         patch('core.config.settings.ansible_playbooks_dir', ''), \
-         patch('core.config.settings.router_monitor_enable', False), \
-         patch('core.config.settings.remote_monitor_enable', False), \
+    from core.config import settings
+    with settings.override(
+        admin_ids=[],
+        proxmox_host='',
+        ansible_playbooks_dir='',
+        router_monitor_enable=False,
+        remote_monitor_enable=False,
+    ), \
          patch('logging.warning') as mock_warn, \
          patch('logging.info') as mock_info:
         
@@ -105,7 +107,7 @@ async def test_unban_remote_ip():
 
 @pytest.mark.asyncio
 async def test_render_ban_center_empty():
-    from core.handlers.ban_center import render_ban_center
+    from handlers.ban_center import render_ban_center
     from core.db import execute_write
     
     await execute_write("DELETE FROM temp_bans")
@@ -118,7 +120,7 @@ async def test_render_ban_center_empty():
 
 @pytest.mark.asyncio
 async def test_render_ban_center_active():
-    from core.handlers.ban_center import render_ban_center
+    from handlers.ban_center import render_ban_center
     from core.db import execute_write
     import datetime
     
@@ -154,7 +156,7 @@ async def test_render_ban_center_active():
 
 @pytest.mark.asyncio
 async def test_render_ban_center_with_ssh_keys():
-    from core.handlers.ban_center import render_ban_center
+    from handlers.ban_center import render_ban_center
     from core.db import execute_write, set_state
     
     await execute_write("DELETE FROM temp_bans")
@@ -185,7 +187,7 @@ async def test_render_ban_center_with_ssh_keys():
 
 @pytest.mark.asyncio
 async def test_process_ban_center_unbankey_success():
-    from core.handlers.ban_center import process_ban_center_unbankey, get_unban_key_cmd
+    from handlers.ban_center import process_ban_center_unbankey, get_unban_key_cmd
     from core.db import get_state, set_state
     from aiogram.types import CallbackQuery
     
@@ -214,7 +216,7 @@ async def test_process_ban_center_unbankey_success():
         await mock_message.edit_text(text, parse_mode=parse_mode, reply_markup=reply_markup)
         
     with patch("asyncio.create_subprocess_exec", AsyncMock(return_value=mock_proc)) as mock_exec, \
-         patch("modules.proxmox.monitor.utils.edit_rich_message", side_effect=dummy_edit_rich) as mock_edit_rich:
+         patch("handlers.ban_center.edit_rich_message", side_effect=dummy_edit_rich) as mock_edit_rich:
         await process_ban_center_unbankey(mock_callback)
         
         # Проверяем, что ключ был дописан
@@ -236,7 +238,7 @@ async def test_process_ban_center_unbankey_success():
 
 @pytest.mark.asyncio
 async def test_render_ban_center_with_reasons():
-    from core.handlers.ban_center import render_ban_center
+    from handlers.ban_center import render_ban_center
     from core.db import execute_write
     import datetime
 
@@ -256,7 +258,7 @@ async def test_render_ban_center_with_reasons():
 
 @pytest.mark.asyncio
 async def test_render_ban_center_with_login_bans():
-    from core.handlers.ban_center import render_ban_center
+    from handlers.ban_center import render_ban_center
     from core.db import execute_write
     
     await execute_write("DELETE FROM temp_bans")
@@ -273,7 +275,7 @@ async def test_render_ban_center_with_login_bans():
     }))
     
     from core.spectre_client import spectre_manager
-    with patch.dict(spectre_manager.panels, {"panel1": mock_panel}):
+    with spectre_manager.override_panels({"panel1": mock_panel}):
         text, reply_markup = await render_ban_center(None)
         
         # 8.8.8.8 должен быть в тексте
@@ -289,7 +291,7 @@ async def test_render_ban_center_with_login_bans():
 
 @pytest.mark.asyncio
 async def test_cb_unban_login_ip_success():
-    from core.handlers.ban_center import cb_unban_login_ip
+    from handlers.ban_center import cb_unban_login_ip
     from aiogram.types import CallbackQuery
     
     mock_message = AsyncMock()
@@ -306,8 +308,8 @@ async def test_cb_unban_login_ip_success():
     mock_panel.request = AsyncMock(return_value=(True, {"success": True, "msg": "IP 8.8.8.8 разблокирован"}))
     
     from core.spectre_client import spectre_manager
-    with patch.dict(spectre_manager.panels, {"panel1": mock_panel}), \
-         patch("modules.proxmox.monitor.utils.edit_rich_message", AsyncMock()) as mock_edit_rich:
+    with spectre_manager.override_panels({"panel1": mock_panel}), \
+         patch("handlers.ban_center.edit_rich_message", AsyncMock()) as mock_edit_rich:
         await cb_unban_login_ip(mock_callback)
         
         # Проверяем, что запрос улетел на панель

@@ -2,15 +2,17 @@ import os
 import platform
 import subprocess
 import logging
-from typing import Optional
+from typing import Iterable, Optional
 
 from core.config import settings
-def setup_vpn_container_rules():
+from .trusted_vmids import get_trusted_vpn_vmids_sync
+
+
+def setup_vpn_container_rules(vmids: Optional[Iterable[int]] = None):
     """Установка logging-правил iptables внутри доверенных контейнеров для контроля локальных процессов."""
     if platform.system() != 'Linux' or os.geteuid() != 0:
         return False
-    from modules.proxmox.monitor.traffic.parser import get_trusted_vpn_vmids_sync
-    vmids = get_trusted_vpn_vmids_sync()
+    vmids = list(vmids) if vmids is not None else get_trusted_vpn_vmids_sync()
     if not vmids:
         logging.info("internal_traffic_monitoring_vpn_container_disabled")
         return False
@@ -48,13 +50,17 @@ def setup_vpn_container_rules():
     return success
 
 
-def cleanup_vpn_container_rules(target_vmid: Optional[int] = None):
+def cleanup_vpn_container_rules(target_vmid: Optional[int] = None, vmids: Optional[Iterable[int]] = None):
     """Удаление logging-правил iptables из доверенных контейнеров."""
     if platform.system() != 'Linux' or os.geteuid() != 0:
         return
-    from modules.proxmox.monitor.traffic.parser import get_trusted_vpn_vmids_sync
-    vmids = [target_vmid] if target_vmid else get_trusted_vpn_vmids_sync()
-    for vmid in vmids:
+    if target_vmid is not None:
+        target_vmids = [target_vmid]
+    elif vmids is not None:
+        target_vmids = list(vmids)
+    else:
+        target_vmids = get_trusted_vpn_vmids_sync()
+    for vmid in target_vmids:
         try:
             # Проверяем статус контейнера перед удалением
             status_check = subprocess.run(

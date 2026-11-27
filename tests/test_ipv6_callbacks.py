@@ -84,21 +84,21 @@ async def test_router_ipv6_callbacks():
 async def test_spectre_ipv6_panel_callbacks():
     from core.spectre_client import spectre_manager
     from core.spectre_client.client import SpectrePanelInstance
-    from bot.core.handlers.spectre.panel import (
+    from bot.handlers.spectre.panel import (
         cb_spectre_clients,
         cb_spectre_client_view,
         cb_spectre_client_act,
         cb_ctrl_term_sess,
         cb_ctrl_reset_pwd,
     )
-    from bot.core.handlers.spectre.system import cb_audit_category
+    from bot.handlers.spectre.system import cb_audit_category
 
     panel_key = "vps_2001:db8::1"
     mock_instance = MagicMock(spec=SpectrePanelInstance)
     mock_instance.name = "VPS 2001:db8::1"
     mock_instance.request = AsyncMock(return_value=(True, {"success": True, "clients": []}))
     mock_instance.get_audit_logs = AsyncMock(return_value=(True, {"logs": []}))
-    spectre_manager.panels[panel_key] = mock_instance
+    spectre_manager.set_panel(panel_key, mock_instance)
 
     cb_mock = AsyncMock()
     cb_mock.message = AsyncMock()
@@ -117,20 +117,20 @@ async def test_spectre_ipv6_panel_callbacks():
             "success": True,
             "clients": [{"client": {"email": "user@example.com", "up": 1024, "down": 2048, "total": 0, "enable": 1, "expiry_time": 0}}]
         }))
-        with patch("modules.proxmox.monitor.utils.edit_rich_message", AsyncMock()):
+        with patch("core.sender.edit_rich_message", AsyncMock()):
             cb_mock.data = f"spectre_client_view:{panel_key}:user@example.com"
             await cb_spectre_client_view(cb_mock)
 
         # 3. cb_spectre_client_act with IPv6 panel_key, email and action:
         mock_instance.request = AsyncMock(return_value=(True, {"success": True}))
-        with patch("bot.core.handlers.spectre.panel.cb_spectre_client_view", AsyncMock()) as mock_view:
+        with patch("bot.handlers.spectre.panel.cb_spectre_client_view", AsyncMock()) as mock_view:
             cb_mock.data = f"spectre_client_act:{panel_key}:user@example.com:ban"
             await cb_spectre_client_act(cb_mock)
             mock_instance.request.assert_called_with("POST", "/api/security/disable-client", data={"email": "user@example.com"})
             mock_view.assert_called_once()
 
         # 4. cb_audit_category with IPv6 panel_key:
-        with patch("bot.core.handlers.spectre.system.run_audit_for_panel", AsyncMock()) as mock_audit:
+        with patch("bot.handlers.spectre.system.run_audit_for_panel", AsyncMock()) as mock_audit:
             cb_mock.data = f"spectre_audit_cat:{panel_key}:login"
             await cb_audit_category(cb_mock)
             mock_audit.assert_called_once_with(cb_mock.message, panel_key, search="login")
@@ -152,16 +152,16 @@ async def test_spectre_ipv6_panel_callbacks():
         cb_mock.answer.assert_called()
 
     finally:
-        spectre_manager.panels.pop(panel_key, None)
+        spectre_manager.remove_panel(panel_key)
 
 
 @pytest.mark.asyncio
 async def test_history_special_username_callback():
-    from bot.core.handlers.history import callback_vpn_history_view
+    from bot.handlers.history import callback_vpn_history_view
     cb_mock = AsyncMock()
     cb_mock.message = AsyncMock()
 
-    with patch("bot.core.handlers.history.execute_read_one", AsyncMock(return_value={'cnt': 0})):
+    with patch("bot.handlers.history.execute_read_one", AsyncMock(return_value={'cnt': 0})):
         cb_mock.data = "vpn_hist:special:username:with:colons:3"
         await callback_vpn_history_view(cb_mock)
         # Should not raise exception, extracted username "special:username:with:colons" and page 3
@@ -172,7 +172,7 @@ async def test_history_special_username_callback():
 
 @pytest.mark.asyncio
 async def test_whitelist_ipv6_callbacks():
-    from bot.core.handlers.whitelist import (
+    from bot.handlers.whitelist import (
         cb_whitelist_del_item,
         cb_quick_whitelist,
         cb_quick_block_ip,
@@ -185,18 +185,18 @@ async def test_whitelist_ipv6_callbacks():
     cb_mock.message.text = "Orig"
 
     # 1. cb_whitelist_del_item with IPv6 node:
-    with patch("bot.core.handlers.whitelist.get_node_whitelists", AsyncMock(return_value={"vps_2001:db8::1": {"ip_ports": ["2001:db8::cafe:80"], "processes": []}})), \
-         patch("bot.core.handlers.whitelist.save_node_whitelists", AsyncMock()) as mock_save, \
-         patch("bot.core.handlers.whitelist.sync_whitelists_to_panels", AsyncMock()), \
-         patch("bot.core.handlers.whitelist.cb_whitelist_del_select", AsyncMock()):
+    with patch("bot.handlers.whitelist.get_node_whitelists", AsyncMock(return_value={"vps_2001:db8::1": {"ip_ports": ["2001:db8::cafe:80"], "processes": []}})), \
+         patch("bot.handlers.whitelist.save_node_whitelists", AsyncMock()) as mock_save, \
+         patch("bot.handlers.whitelist.sync_whitelists_to_panels", AsyncMock()), \
+         patch("bot.handlers.whitelist.cb_whitelist_del_select", AsyncMock()):
         cb_mock.data = "wl_del_item:vps_2001:db8::1:ip_ports:2001:db8::cafe:80"
         await cb_whitelist_del_item(cb_mock)
         mock_save.assert_called_once_with({"vps_2001:db8::1": {"ip_ports": [], "processes": []}})
 
     # 2. cb_quick_whitelist with IPv6 node and IPv6 target ip:port:
-    with patch("bot.core.handlers.whitelist.get_node_whitelists", AsyncMock(return_value={})), \
-         patch("bot.core.handlers.whitelist.save_node_whitelists", AsyncMock()) as mock_save, \
-         patch("bot.core.handlers.whitelist.sync_whitelists_to_panels", AsyncMock()):
+    with patch("bot.handlers.whitelist.get_node_whitelists", AsyncMock(return_value={})), \
+         patch("bot.handlers.whitelist.save_node_whitelists", AsyncMock()) as mock_save, \
+         patch("bot.handlers.whitelist.sync_whitelists_to_panels", AsyncMock()):
         cb_mock.data = "qwl:vps_2001:db8::1:ipport:2001:db8::cafe:80"
         await cb_quick_whitelist(cb_mock)
         mock_save.assert_called_once()

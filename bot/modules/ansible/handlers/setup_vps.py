@@ -11,7 +11,7 @@ ANSIBLE_PLAYBOOKS_DIR = settings.ansible_playbooks_dir or os.path.join(base_dir,
 
 async def setup_ansible_user_on_remote_vps(server: dict, pub_key_content: str) -> bool:
     """Настраивает пользователя ansible на удаленном VPS по SSH (под root)."""
-    from modules.proxmox.monitor.remote.ssh import run_remote_ssh_cmd
+    from core.remote_ssh import run_remote_ssh_cmd
     try:
         # 1. Проверяем, существует ли пользователь ansible
         success, stdout, stderr = await run_remote_ssh_cmd(server, ["id ansible"])
@@ -52,7 +52,7 @@ async def setup_ansible_user_on_remote_vps(server: dict, pub_key_content: str) -
         logging.error("error_configuring_user_ansible_on_vps", server['ip'], e)
         return False
 
-from core.messages import (
+from core.messages.ansible import (
     get_ansible_setup_vps_start_text,
     get_ansible_setup_success_text,
     get_ansible_setup_failed_text,
@@ -77,7 +77,8 @@ async def process_ansible_setup_vps_handler(callback: CallbackQuery):
         return
 
     from core.config import settings
-    if not settings.remote_servers:
+    remote_servers = settings.get_remote_servers()
+    if not remote_servers:
         err_msg = get_ansible_setup_failed_text("VPS", "No remote VPS configured in .env")
         await callback.message.edit_text(err_msg, parse_mode="HTML", reply_markup=get_ansible_main_keyboard())
         return
@@ -93,7 +94,7 @@ async def process_ansible_setup_vps_handler(callback: CallbackQuery):
         else:
             failed_ips.append(server['ip'])
             
-    for server in settings.remote_servers:
+    for server in remote_servers:
         tasks.append(run_setup_for_vps(server))
         
     if tasks:

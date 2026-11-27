@@ -6,7 +6,7 @@ import datetime
 from core.config import settings
 from modules.proxmox.monitor.state import lxc_name_cache, lxc_traffic_history, recent_local_conns, lxc_alert_throttle, recent_bot_ports
 from modules.proxmox.monitor.utils import LogTailer, send_alert_to_admins
-from core.messages import get_local_traffic_alert
+from core.messages.traffic import get_local_traffic_alert
 from modules.proxmox.monitor.firewall import setup_iptables
 
 # Импортируем хелперы из соседних файлов
@@ -97,9 +97,8 @@ async def handle_traffic_log_line(line):
                 if not is_bot:
                     # Резервная проверка через ss и procfs
                     try:
-                        from modules.router.monitor.helpers import is_local_bot_process
+                        from core.sys_utils import is_local_bot_process
 
-                        
                         if await is_local_bot_process(spt, dst):
                             is_bot = True
                             logging.debug("traffic_monitor_port_identified_as_bot_process", spt)
@@ -152,10 +151,9 @@ async def handle_traffic_log_line(line):
                 
                 if src == proxmox_ip or dst == proxmox_ip:
                     target_ip = dst if src == proxmox_ip else src
-                    from modules.ansible.keyboards import ANSIBLE_PLAYBOOKS_DIR
-                    from modules.ansible.parser import get_ansible_inventory_ips
+                    from core.ansible_inventory import get_ansible_inventory_ips
                     try:
-                        inventory_ips = get_ansible_inventory_ips(ANSIBLE_PLAYBOOKS_DIR)
+                        inventory_ips = get_ansible_inventory_ips(settings.get_ansible_playbooks_dir())
                         if target_ip in inventory_ips:
                             logging.info("traffic_monitor_ignoring_legitimate_ssh_connection_ansible_pve", proxmox_ip, target_ip)
                             return
@@ -168,7 +166,7 @@ async def handle_traffic_log_line(line):
 
             is_transit_vpn = (is_vpn_vmid(vmid) and not is_local)
             proc_name, killed_pid = None, None
-            if direction == 'OUT' and dpt in settings.monitor_lxc_ports_sensitive:
+            if direction == 'OUT' and settings.is_sensitive_lxc_port(dpt):
                 logging.info("traffic_monitor_attempting_to_destroy_process_for", vmid, spt)
                 proc_name, killed_pid = await get_and_kill_local_or_lxc_process(vmid, spt)
                 logging.info("traffic_monitor_process_destruction_result_proc_name_killed_pid", proc_name, killed_pid)
@@ -244,7 +242,7 @@ async def handle_traffic_log_line(line):
                 desc_with_client += f" (Клиент: {xray_client_email})"
                 
                 # Авто-блокировка вредоносного клиента при критической угрозе или атаке на чувствительные порты
-                if risk_level == 'CRITICAL' or dpt in settings.monitor_lxc_ports_sensitive:
+                if risk_level == 'CRITICAL' or settings.is_sensitive_lxc_port(dpt):
                     if vmid != 0:
                         try:
                             proc_drop = await asyncio.create_subprocess_exec(

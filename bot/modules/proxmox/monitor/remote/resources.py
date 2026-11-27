@@ -4,7 +4,11 @@ import time
 from core.config import settings
 from modules.proxmox.monitor.remote.ssh import run_remote_ssh_cmd
 from modules.proxmox.monitor.utils import send_alert_to_admins
-from core.messages import get_vps_cpu_alert, get_vps_ram_alert, get_vps_disk_alert
+from core.messages.resources import (
+    get_vps_cpu_alert,
+    get_vps_ram_alert,
+    get_vps_disk_alert,
+)
 
 # Период повторной отправки алертов о нагрузке по ресурсам (10 минут)
 ALERT_THROTTLE_INTERVAL = 600
@@ -20,11 +24,12 @@ async def monitor_remote_resources():
     logging.info("remote_vps_resource_monitoring_started")
     while True:
         try:
-            if not settings.remote_servers:
+            remote_servers = settings.get_remote_servers()
+            if not remote_servers:
                 await asyncio.sleep(60)
                 continue
                 
-            for server in settings.remote_servers:
+            for server in remote_servers:
                 ip = server['ip']
                 now = time.time()
                 

@@ -6,25 +6,22 @@ import importlib
 
 # Ensure we import messages package
 import core.messages
-from core.messages.i18n import translator
+from core.messages.i18n import _get_locale_dict, translator
 
 NAMESPACES = ["auth", "nodes", "resources", "traffic", "router", "spectre", "proxy", "whitelist", "ban_center", "keyboards", "proxmox", "ansible"]
 
 @pytest.fixture(autouse=True)
 def restore_translator_lang():
-    orig_lang = translator.lang
+    orig_lang = translator.get_lang()
     yield
-    translator.lang = orig_lang
-    translator.cache.clear()
+    translator.set_lang(orig_lang)
+    translator.clear_cache()
 
 def test_locales_keys_parity():
     """Проверяет, что списки ключей перевода полностью совпадают для RU и EN локалей во всех пространствах имен."""
     for ns in NAMESPACES:
-        ru_module = importlib.import_module(f"core.messages.locales.ru.{ns}")
-        en_module = importlib.import_module(f"core.messages.locales.en.{ns}")
-        
-        ru_keys = set(getattr(ru_module, "translation", {}).keys())
-        en_keys = set(getattr(en_module, "translation", {}).keys())
+        ru_keys = set(_get_locale_dict("ru", ns).keys())
+        en_keys = set(_get_locale_dict("en", ns).keys())
         
         missing_in_en = ru_keys - en_keys
         missing_in_ru = en_keys - ru_keys
@@ -37,6 +34,8 @@ def get_dummy_args(func):
     sig = inspect.signature(func)
     args = []
     for name, param in sig.parameters.items():
+        if param.kind in (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD):
+            continue
         if param.default is not inspect.Parameter.empty:
             continue
             
@@ -85,35 +84,34 @@ def get_dummy_args(func):
 def test_all_messages_functions_can_be_translated(lang):
     """Динамически вызывает все экспортируемые функции формирования сообщений и проверяет результат."""
     # Устанавливаем язык переводчика
-    translator.lang = lang
+    translator.set_lang(lang)
     # Очищаем кэш, чтобы принудительно перечитать файлы локалей для выбранного языка
-    translator.cache.clear()
-    
-    for func_name in core.messages.__all__:
-        if func_name in ("build_rich_message", "send_rich_message", "edit_rich_message"):
-            continue
-        func = getattr(core.messages, func_name)
-        if not callable(func) or inspect.iscoroutinefunction(func):
-            continue
+    translator.clear_cache()
 
-            
-        args = get_dummy_args(func)
-        try:
-            result = func(*args)
-        except Exception as e:
-            pytest.fail(f"Функция {func_name} бросила исключение при вызове с фейковыми аргументами: {e}")
-            
-        assert isinstance(result, str), f"Функция {func_name} вернула {type(result)} вместо строки"
-        assert len(result) > 0, f"Функция {func_name} вернула пустую строку"
-        
-        # Проверяем, что в результирующей строке не осталось непереведенных ключей (вид namespace:key)
-        for ns in NAMESPACES:
-            assert f"{ns}:" not in result, f"Найден непереведенный ключ '{ns}:...' в результате функции {func_name} на языке '{lang}':\n{result}"
-            
-        # Проверяем, что в отформатированной строке не осталось нераскрытых плейсхолдеров вроде {ip}
-        # Исключаем HTML/CSS конструкции и специфические плейсхолдеры в фигурных скобках
-        import re
-        unresolved_placeholders = re.findall(r'(?<!\{)\{([a-zA-Z_][a-zA-Z0-9_]*)\}(?!\})', result)
-        # Убираем валидные конструкции, которые не являются параметрами форматирования (например, style="...")
-        unresolved_placeholders = [p for p in unresolved_placeholders if p not in ('background-color', 'border-collapse', 'width', 'padding', 'text-align', 'color')]
-        assert not unresolved_placeholders, f"Найдены нераскрытые плейсхолдеры {unresolved_placeholders} в результате функции {func_name} на языке '{lang}'"
+    message_submodules = [
+        "auth", "nodes", "resources", "traffic", "router",
+        "spectre", "proxy", "whitelist", "ban_center", "ansible", "threats",
+    ]
+    for submod_name in message_submodules:
+        submod = importlib.import_module(f"core.messages.{submod_name}")
+        for func_name, func in inspect.getmembers(submod, inspect.isfunction):
+            if func.__module__ != submod.__name__ or not func_name.startswith("get_"):
+                continue
+            args = get_dummy_args(func)
+            try:
+                result = func(*args)
+            except Exception as e:
+                pytest.fail(f"Функция {func_name} бросила исключение при вызове с фейковыми аргументами: {e}")
+
+            assert isinstance(result, str), f"Функция {func_name} вернула {type(result)} вместо строки"
+            assert len(result) > 0, f"Функция {func_name} вернула пустую строку"
+
+            # Проверяем, что в результирующей строке не осталось непереведенных ключей (вид namespace:key)
+            for ns in NAMESPACES:
+                assert f"{ns}:" not in result, f"Найден непереведенный ключ '{ns}:...' в результате функции {func_name} на языке '{lang}':\n{result}"
+
+            # Проверяем, что в отформатированной строке не осталось нераскрытых плейсхолдеров вроде {ip}
+            import re
+            unresolved_placeholders = re.findall(r'(?<!\{)\{([a-zA-Z_][a-zA-Z0-9_]*)\}(?!\})', result)
+            unresolved_placeholders = [p for p in unresolved_placeholders if p not in ('background-color', 'border-collapse', 'width', 'padding', 'text-align', 'color')]
+            assert not unresolved_placeholders, f"Найдены нераскрытые плейсхолдеры {unresolved_placeholders} в результате функции {func_name} на языке '{lang}'"

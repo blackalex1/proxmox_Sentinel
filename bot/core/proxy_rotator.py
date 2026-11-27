@@ -683,8 +683,8 @@ async def handle_telegram_connection_failure(bot, primary_proxy, session_kwargs)
     _is_rotating = True
     try:
         from aiogram.client.session.aiohttp import AiohttpSession
-        from modules.proxmox.monitor.utils import send_alert_to_admins
-        from core.messages import get_proxy_switch_alert
+        from core.sender import send_alert_to_admins
+        from core.messages.proxy import get_proxy_switch_alert
 
         logger.warning("[Proxy Rotator] Lost connection to Telegram. Waiting 5s before re-checking primary channel...")
         await asyncio.sleep(5)
@@ -739,7 +739,7 @@ async def _primary_proxy_recovery_loop(bot, primary_proxy, session_kwargs):
     """
     global _using_fallback, _active_fallback_proxy
     from aiogram.client.session.aiohttp import AiohttpSession
-    from modules.proxmox.monitor.utils import send_alert_to_admins
+    from core.sender import send_alert_to_admins
 
     logger.info("[Proxy Rotator] Started background recovery monitor for primary proxy (%s)...", primary_proxy)
     while _using_fallback:

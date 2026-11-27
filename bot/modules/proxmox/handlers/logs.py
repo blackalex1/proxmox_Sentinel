@@ -151,7 +151,7 @@ async def process_vps_auth_logs(callback: CallbackQuery):
         from core.spectre_client.manager import spectre_manager
         
         panel_key = None
-        for p_key, p in spectre_manager.panels.items():
+        for p_key, p in spectre_manager.iter_panel_items():
             if p.source_type == 'vps' and p.identifier == server_ip:
                 panel_key = p_key
                 break

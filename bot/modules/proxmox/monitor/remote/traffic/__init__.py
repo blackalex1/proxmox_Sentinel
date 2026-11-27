@@ -7,7 +7,7 @@ from typing import Optional, Tuple, Dict, Any, List
 from core.config import settings
 
 from modules.proxmox.monitor.utils import send_alert_to_admins
-from core.messages import (
+from core.messages.traffic import (
     get_ips_investigation_success_alert,
     get_ips_investigation_failed_alert,
     get_ips_sensitive_access_alert,
@@ -15,7 +15,7 @@ from core.messages import (
     get_ips_xray_attack_alert,
     get_ips_whitelisted_alert,
     get_ips_process_killed_alert,
-    get_ips_process_warning_alert
+    get_ips_process_warning_alert,
 )
 from ..ssh import run_remote_ssh_cmd
 from .firewall import block_remote_ip, cleanup_remote_blocks_on_startup
@@ -50,7 +50,7 @@ async def get_and_kill_remote_process(server, spt):
                     proc_name_lower = proc_name.lower().strip()
                     is_critical = (
                         any(kw in proc_name_lower for kw in ["hysteria", "xray", "sing-box"]) or
-                        proc_name_lower in settings.ips_process_whitelist or
+                        settings.is_process_whitelisted(proc_name) or
                         await is_whitelisted(node_name, process=proc_name)
                     )
                     if is_critical:
@@ -168,7 +168,7 @@ async def investigate_and_resolve_remote_attack(server, dst_ip, dpt, tunnel_emai
         inbound_tag = None
         
         # 2. Ищем виновника на upstream LXC панелях напрямую в их логах
-        lxc_panels = [p for p in spectre_manager.panels.values() if p.source_type == 'lxc']
+        lxc_panels = spectre_manager.get_lxc_panels()
         for p in lxc_panels:
             try:
                 res_conn = await _safe_get_client_by_connection(
@@ -249,25 +249,24 @@ async def investigate_and_resolve_remote_attack(server, dst_ip, dpt, tunnel_emai
                 hysteria_logs_summary = ""
                 
                 # Сбор логов с LXC контейнеров
-                for p in spectre_manager.panels.values():
-                    if p.source_type == 'lxc':
-                        try:
-                            xray_paths = ["/var/log/xray/access.log", "/var/log/xray/error.log", "/app/bin/singbox.log"]
-                            if p.env_path:
-                                base_dir = p.env_path.replace("/config/.env", "")
-                                xray_paths.append(f"{base_dir}/bin/xray.log")
-                                xray_paths.append(f"{base_dir}/bin/singbox.log")
-                            
-                            lines = None
-                            for path in xray_paths:
-                                lines = await spectre_manager._read_log_lines(p, path)
-                                if lines:
-                                    break
+                for p in spectre_manager.get_lxc_panels():
+                    try:
+                        xray_paths = ["/var/log/xray/access.log", "/var/log/xray/error.log", "/app/bin/singbox.log"]
+                        if p.env_path:
+                            base_dir = p.env_path.replace("/config/.env", "")
+                            xray_paths.append(f"{base_dir}/bin/xray.log")
+                            xray_paths.append(f"{base_dir}/bin/singbox.log")
+                        
+                        lines = None
+                        for path in xray_paths:
+                            lines = await spectre_manager._read_log_lines(p, path)
                             if lines:
-                                last_lines = lines[-5:]
-                                xray_logs_summary += f"\n<b>Логи ({p.name}):</b>\n<code>" + "\n".join(last_lines) + "</code>\n"
-                        except Exception as e:
-                            logging.error(f"Failed to gather LXC logs: {e}")
+                                break
+                        if lines:
+                            last_lines = lines[-5:]
+                            xray_logs_summary += f"\n<b>Логи ({p.name}):</b>\n<code>" + "\n".join(last_lines) + "</code>\n"
+                    except Exception as e:
+                        logging.error(f"Failed to gather LXC logs: {e}")
                             
                 # Сбор логов Hysteria с VPS
                 try:
@@ -358,7 +357,7 @@ async def handle_remote_traffic_line(line, server=None):
         throttle_key = f"remote_traffic_{server['ip']}_{direction}_{src}_{dst}_{dpt}"
         
         if direction == 'IN' and is_sensitive:
-            if src not in settings.trusted_admin_ips:
+            if not settings.is_trusted_admin_ip(src):
                 last_alert = recent_remote_traffic_alerts.get(throttle_key, 0)
                 if now - last_alert < 60:
                     return
@@ -395,7 +394,7 @@ async def handle_remote_traffic_line(line, server=None):
             target_panel = None
             upstream_inbound_tag = None
             
-            lxc_panels = [p for p in spectre_manager.panels.values() if p.source_type == 'lxc']
+            lxc_panels = spectre_manager.get_lxc_panels()
             for p in lxc_panels:
                 try:
                     res_upstream = await _safe_get_client_by_connection(

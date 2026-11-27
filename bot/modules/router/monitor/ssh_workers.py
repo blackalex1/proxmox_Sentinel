@@ -88,7 +88,7 @@ async def monitor_router_conntrack():
                 sockname = conn.get_extra_info('sockname')
                 if sockname and isinstance(sockname, tuple):
                     try:
-                        from modules.proxmox.monitor.state import recent_bot_ports
+                        from core.runtime_state import recent_bot_ports
                         recent_bot_ports.append(sockname[1])
                     except Exception:
                         pass
@@ -168,7 +168,7 @@ async def monitor_router_syslog():
                 sockname = conn.get_extra_info('sockname')
                 if sockname and isinstance(sockname, tuple):
                     try:
-                        from modules.proxmox.monitor.state import recent_bot_ports
+                        from core.runtime_state import recent_bot_ports
                         recent_bot_ports.append(sockname[1])
                     except Exception:
                         pass
@@ -248,7 +248,7 @@ async def monitor_router_syslog_v2():
                 sockname = conn.get_extra_info('sockname')
                 if sockname and isinstance(sockname, tuple):
                     try:
-                        from modules.proxmox.monitor.state import recent_bot_ports
+                        from core.runtime_state import recent_bot_ports
                         recent_bot_ports.append(sockname[1])
                     except Exception:
                         pass

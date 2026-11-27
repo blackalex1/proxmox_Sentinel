@@ -2,7 +2,7 @@ import pytest
 import asyncio
 from unittest.mock import AsyncMock, patch, MagicMock, mock_open
 from core.spectre_client import parse_env_content, SpectrePanelInstance, SpectreClientManager, spectre_manager
-from core.handlers.spectre import cmd_panel, cmd_backup, cmd_status_spectre, cmd_my_spectre, cmd_ban_client, cmd_unban_client
+from handlers.spectre import cmd_panel, cmd_backup, cmd_status_spectre, cmd_my_spectre, cmd_ban_client, cmd_unban_client
 from core.config import settings
 
 
@@ -69,33 +69,31 @@ async def test_discover_panels():
     
     # Mock remote VPS discovery
     mock_server = {'ip': '1.1.1.1', 'user': 'root', 'key': 'key_path'}
-    
-    with patch("modules.proxmox.api.proxmox", mock_proxmox), \
-         patch("asyncio.create_subprocess_exec", return_value=mock_proc), \
-         patch("core.config.settings.proxmox_host", "192.168.1.100:8006"), \
-         patch("core.config.settings.remote_monitor_enable", True), \
-         patch("core.config.settings.remote_servers", [mock_server]), \
-         patch("core.spectre_client.manager.probe_panel_url", AsyncMock(side_effect=lambda ip, port: f"http://{ip}:{port}")), \
-         patch("modules.proxmox.monitor.remote.ssh.run_remote_ssh_cmd", AsyncMock(return_value=(
-             True,
-             "PANEL_PORT=15000\nAPI_TOKEN=vps_token\nPANEL_SECRET_PATH=ui",
-             ""
-         ))):
+    mock_ssh = AsyncMock(return_value=(
+        True,
+        "PANEL_PORT=15000\nAPI_TOKEN=vps_token\nPANEL_SECRET_PATH=ui",
+        ""
+    ))
+    manager.configure(lxc_provider=mock_proxmox, ssh_runner=mock_ssh)
+
+    with patch("asyncio.create_subprocess_exec", return_value=mock_proc), \
+         settings.override(proxmox_host="192.168.1.100:8006", remote_monitor_enable=True, remote_servers=[mock_server]), \
+         patch("core.spectre_client.manager.probe_panel_url", AsyncMock(side_effect=lambda ip, port: f"http://{ip}:{port}")):
          
         await manager.discover_panels()
         
         # Verify both LXC and VPS panels were discovered
-        assert len(manager.panels) == 2
-        assert "lxc_999" in manager.panels
-        assert "vps_1.1.1.1" in manager.panels
+        assert manager.panel_count() == 2
+        assert manager.get_panel("lxc_999") is not None
+        assert manager.get_panel("vps_1.1.1.1") is not None
         
         # Check details
-        lxc_p = manager.panels["lxc_999"]
+        lxc_p = manager.get_panel("lxc_999")
         assert lxc_p.url == "http://10.0.0.99:2053"
         assert lxc_p.token == "lxc_token"
         assert lxc_p.secret_path == "secret"
         
-        vps_p = manager.panels["vps_1.1.1.1"]
+        vps_p = manager.get_panel("vps_1.1.1.1")
         assert vps_p.url == "http://1.1.1.1:15000"
         assert vps_p.token == "vps_token"
         assert vps_p.secret_path == "ui"
@@ -106,7 +104,7 @@ async def test_spectre_handlers_panel(monkeypatch):
     
     # Setup mock panels
     panel1 = SpectrePanelInstance("Panel 1", "http://10.0.0.99:2053", "token1", "ui", "lxc", "999")
-    spectre_manager.panels = {"lxc_999": panel1}
+    spectre_manager.set_panels({"lxc_999": panel1})
     
     # Test single panel handler
     await cmd_panel(mock_message)
@@ -118,7 +116,7 @@ async def test_spectre_handlers_panel(monkeypatch):
     # Test multiple panels handler
     mock_message.reply.reset_mock()
     panel2 = SpectrePanelInstance("Panel 2", "http://1.1.1.1:15000", "token2", "ui", "vps", "1.1.1.1")
-    spectre_manager.panels = {"lxc_999": panel1, "vps_1.1.1.1": panel2}
+    spectre_manager.set_panels({"lxc_999": panel1, "vps_1.1.1.1": panel2})
     
     await cmd_panel(mock_message)
     mock_message.reply.assert_called_once()
@@ -144,10 +142,10 @@ async def test_two_phase_ips_success(monkeypatch):
     lxc_panel = SpectrePanelInstance("LXC Panel", "http://127.0.0.1:20530", "lxc_token", "ui", "lxc", "999")
     vps_panel = SpectrePanelInstance("VPS Panel", "http://127.0.0.1:15000", "vps_token", "ui", "vps", "1.1.1.1")
     
-    spectre_manager.panels = {
+    spectre_manager.set_panels({
         "lxc_999": lxc_panel,
         "vps_1.1.1.1": vps_panel
-    }
+    })
     
     api_calls = []
     
@@ -212,10 +210,10 @@ async def test_cascaded_xray_tunnel_investigation(monkeypatch):
     lxc_panel = SpectrePanelInstance("LXC Panel", "http://127.0.0.1:20530", "lxc_token", "ui", "lxc", "999")
     vps_panel = SpectrePanelInstance("VPS Panel", "http://127.0.0.1:15000", "vps_token", "ui", "vps", "1.1.1.1")
     
-    spectre_manager.panels = {
+    spectre_manager.set_panels({
         "lxc_999": lxc_panel,
         "vps_1.1.1.1": vps_panel
-    }
+    })
     
     api_calls = []
     async def mock_request(self, method, path, **kwargs):
@@ -263,9 +261,9 @@ async def test_direct_vps_client_attack(monkeypatch):
     recent_remote_traffic_alerts.clear()
     
     vps_panel = SpectrePanelInstance("VPS Panel", "http://127.0.0.1:15000", "vps_token", "ui", "vps", "1.1.1.1")
-    spectre_manager.panels = {
+    spectre_manager.set_panels({
         "vps_1.1.1.1": vps_panel
-    }
+    })
     
     api_calls = []
     async def mock_request(self, method, path, **kwargs):
@@ -318,10 +316,10 @@ async def test_two_phase_ips_failure(monkeypatch):
     lxc_panel = SpectrePanelInstance("LXC Panel", "http://127.0.0.1:20530", "lxc-token", "ui", "lxc", "999")
     vps_panel = SpectrePanelInstance("VPS Panel", "http://127.0.0.1:15000", "vps-token", "ui", "vps", "1.1.1.1")
     
-    spectre_manager.panels = {
+    spectre_manager.set_panels({
         "lxc_999": lxc_panel,
         "vps_1.1.1.1": vps_panel
-    }
+    })
     
     api_calls = []
     
@@ -383,11 +381,11 @@ async def test_callback_unban_tunnel(monkeypatch):
     """
     Тестирование callback хэндлера unban_tunnel.
     """
-    from core.handlers.spectre import cb_unban_tunnel
+    from handlers.spectre import cb_unban_tunnel
     from core.spectre_client import spectre_manager, SpectrePanelInstance
     
     panel = SpectrePanelInstance("Panel", "http://127.0.0.1:15000", "token", "ui", "vps", "1.1.1.1")
-    spectre_manager.panels = {"vps_1.1.1.1": panel}
+    spectre_manager.set_panels({"vps_1.1.1.1": panel})
     
     async def mock_request(self, method, path, **kwargs):
         if path == "/api/security/enable-client":
@@ -413,7 +411,7 @@ async def test_spectre_handlers_ban_client(monkeypatch):
     from core.spectre_client import spectre_manager, SpectrePanelInstance
     
     panel = SpectrePanelInstance("Panel", "http://127.0.0.1:15000", "token", "ui", "vps", "1.1.1.1")
-    spectre_manager.panels = {"vps_1.1.1.1": panel}
+    spectre_manager.set_panels({"vps_1.1.1.1": panel})
     
     async def mock_request(self, method, path, **kwargs):
         if path == "/api/security/disable-client":
@@ -442,7 +440,7 @@ async def test_spectre_handlers_unban_client(monkeypatch):
     from core.spectre_client import spectre_manager, SpectrePanelInstance
     
     panel = SpectrePanelInstance("Panel", "http://127.0.0.1:15000", "token", "ui", "vps", "1.1.1.1")
-    spectre_manager.panels = {"vps_1.1.1.1": panel}
+    spectre_manager.set_panels({"vps_1.1.1.1": panel})
     
     async def mock_request(self, method, path, **kwargs):
         if path == "/api/security/enable-client":
@@ -492,11 +490,11 @@ async def test_spectre_panel_get_audit_logs():
 
 @pytest.mark.asyncio
 async def test_spectre_handlers_audit(monkeypatch):
-    from core.handlers.spectre import cmd_audit
+    from handlers.spectre import cmd_audit
     from core.spectre_client import spectre_manager, SpectrePanelInstance
     
     panel = SpectrePanelInstance("Panel", "http://127.0.0.1:15000", "token", "ui", "vps", "1.1.1.1")
-    spectre_manager.panels = {"vps_1.1.1.1": panel}
+    spectre_manager.set_panels({"vps_1.1.1.1": panel})
     
     async def mock_get_audit_logs(self, limit=10, search=""):
         import time
@@ -525,7 +523,7 @@ async def test_spectre_handlers_audit(monkeypatch):
     assert "Выберите категорию логов" in call_text
     
     # 2. Проверяем, что cb_audit_category загружает и выводит логи
-    from core.handlers.spectre.system import cb_audit_category
+    from handlers.spectre.system import cb_audit_category
     mock_callback = AsyncMock()
     mock_callback.data = "spectre_audit_cat:vps_1.1.1.1:login"
     mock_callback.message = AsyncMock()
@@ -545,11 +543,11 @@ async def test_spectre_handlers_audit(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_spectre_handlers_add_slave(monkeypatch):
-    from core.handlers.spectre import cb_add_slave
+    from handlers.spectre import cb_add_slave
     from core.spectre_client import spectre_manager, SpectrePanelInstance
     
     panel = SpectrePanelInstance("Panel", "http://127.0.0.1:15000", "token", "ui", "vps", "1.1.1.1")
-    spectre_manager.panels = {"vps_1.1.1.1": panel}
+    spectre_manager.set_panels({"vps_1.1.1.1": panel})
     
     async def mock_request(self, method, path, **kwargs):
         if path == "/api/nodes/join-code":
@@ -571,7 +569,7 @@ async def test_spectre_handlers_add_slave(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_spectre_handlers_add_master(monkeypatch):
-    from core.handlers.spectre import cb_add_master
+    from handlers.spectre import cb_add_master
     
     mock_callback = AsyncMock()
     mock_callback.data = "spectre_add_master"
@@ -585,7 +583,7 @@ async def test_spectre_handlers_add_master(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_spectre_handlers_setup_slave(monkeypatch):
-    from core.handlers.spectre import cmd_setup_slave
+    from handlers.spectre import cmd_setup_slave
     
     # Mock aiohttp client session post
     mock_response = MagicMock()

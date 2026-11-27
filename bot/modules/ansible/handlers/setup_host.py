@@ -51,7 +51,7 @@ async def setup_ansible_user_on_host(pub_key_content: str) -> bool:
         logging.error("error_configuring_user_ansible_on_proxmox_host", e)
         return False
 
-from core.messages import (
+from core.messages.ansible import (
     get_ansible_setup_host_start_text,
     get_ansible_setup_success_text,
     get_ansible_setup_failed_text,

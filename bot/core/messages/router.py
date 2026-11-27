@@ -145,7 +145,7 @@ def get_router_active_bans_text(
         expire_label = expire.split(".")[0].replace("T", " ") if expire else _("router", "dur_forever")
         text += _("router", "active_ban_ip_item", expire=expire_label)
         
-    for pb in port_bans:
+    for pb in (port_bans or []):
         p = pb.get('port')
         proto = pb.get('protocol')
         expire = pb.get('expire_time')

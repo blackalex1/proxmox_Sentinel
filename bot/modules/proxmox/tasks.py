@@ -3,7 +3,7 @@ import logging
 from core.bot import bot
 from core.config import settings
 from modules.proxmox.api import proxmox
-from core.messages import get_node_offline_alert, get_node_online_alert
+from core.messages.nodes import get_node_offline_alert, get_node_online_alert
 
 # Кэш для мониторинга
 offline_nodes_cache = set()
@@ -12,7 +12,8 @@ async def monitor_nodes():
     """Фоновая задача для алерта о падении нод"""
     while True:
         try:
-            if settings.admin_ids:
+            admin_ids = settings.get_admin_ids()
+            if admin_ids:
                 nodes = proxmox.get_nodes()
                 
                 for node in nodes:
@@ -22,7 +23,7 @@ async def monitor_nodes():
                     if is_offline:
                         if node_name not in offline_nodes_cache:
                             offline_nodes_cache.add(node_name)
-                            for admin_id in settings.admin_ids:
+                            for admin_id in admin_ids:
                                 try:
                                     from modules.proxmox.monitor import send_rich_message
                                     msg = get_node_offline_alert(node_name, node['status'])
@@ -36,7 +37,7 @@ async def monitor_nodes():
                     else:
                         if node_name in offline_nodes_cache:
                             offline_nodes_cache.remove(node_name)
-                            for admin_id in settings.admin_ids:
+                            for admin_id in admin_ids:
                                 try:
                                     from modules.proxmox.monitor import send_rich_message
                                     msg = get_node_online_alert(node_name)

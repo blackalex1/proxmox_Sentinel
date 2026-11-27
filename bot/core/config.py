@@ -151,6 +151,116 @@ class Settings(BaseSettings):
         """Алиас для spectre_panels."""
         return self.spectre_panels
 
+    def get_ansible_playbooks_dir(self) -> str:
+        """Возвращает директорию плейбуков Ansible."""
+        return self.ansible_playbooks_dir or os.path.join(base_dir, 'ansible')
+
+    def get_admin_ids(self) -> List[int]:
+        if isinstance(self.admin_ids, list):
+            return list(self.admin_ids)
+        if isinstance(self.admin_ids, str):
+            return [int(i.strip()) for i in self.admin_ids.split(',') if i.strip().isdigit()]
+        return []
+
+    def has_admins(self) -> bool:
+        return bool(self.get_admin_ids())
+
+    def is_admin(self, user_id: int) -> bool:
+        return user_id in self.get_admin_ids()
+
+    def get_remote_servers(self) -> List[Dict[str, str]]:
+        return list(self.remote_servers or [])
+
+    def find_remote_server(self, ip: str) -> Dict[str, str] | None:
+        return next((s for s in self.get_remote_servers() if s.get('ip') == ip), None)
+
+    def get_remote_server_ips(self) -> List[str]:
+        return [
+            ip for ip in (
+                s.get('ip') if isinstance(s, dict) else getattr(s, 'ip', None)
+                for s in self.get_remote_servers()
+            )
+            if ip
+        ]
+
+    def get_spectre_panels(self) -> List[Dict[str, str]]:
+        return list(self.spectre_panels or [])
+
+    def get_trusted_admin_ips(self) -> List[str]:
+        raw = self.trusted_admin_ips
+        if isinstance(raw, list):
+            return [str(x).strip() for x in raw if str(x).strip()]
+        if isinstance(raw, str):
+            return [x.strip() for x in raw.split(',') if x.strip()]
+        return []
+
+    def is_trusted_admin_ip(self, ip: str) -> bool:
+        return ip in self.get_trusted_admin_ips()
+
+    def get_process_whitelist(self) -> List[str]:
+        return list(self.ips_process_whitelist or [])
+
+    def is_process_whitelisted(self, proc_name: str) -> bool:
+        return proc_name.lower().strip() in self.get_process_whitelist()
+
+    def get_lxc_whitelist(self) -> List[int]:
+        return list(self.ips_lxc_whitelist or [])
+
+    def is_lxc_whitelisted(self, vmid: int) -> bool:
+        return vmid in self.get_lxc_whitelist()
+
+    def get_sensitive_lxc_ports(self) -> List[int]:
+        return list(self.monitor_lxc_ports_sensitive or [])
+
+    def is_sensitive_lxc_port(self, port: int) -> bool:
+        return port in self.get_sensitive_lxc_ports()
+
+    def get_classifier_policy_defaults(self) -> Dict[str, Any]:
+        return {
+            "trusted_admin_ips": self.get_trusted_admin_ips(),
+            "proxmox_host": self.proxmox_host or "",
+            "sensitive_ports": self.get_sensitive_lxc_ports() or [22, 23, 3389, 3306, 5432, 27017, 6379, 8006],
+            "whitelist_ports": list(self.monitor_lxc_ports_whitelist or [80, 443, 53, 123]),
+            "vpn_ports": list(self.monitor_lxc_vpn_ports or [443, 8443, 2083, 2087, 2096]),
+            "lxc_whitelist_vmids": self.get_lxc_whitelist(),
+            "alert_vpn_client_unusual_ports": bool(self.alert_vpn_client_unusual_ports),
+        }
+
+    def get_remote_ignore_ips(self) -> List[str]:
+        raw = self.remote_monitor_ignore_ips
+        if isinstance(raw, list):
+            return list(raw)
+        return [raw] if raw else []
+
+    def get_remote_ignore_keys(self) -> List[str]:
+        raw = self.remote_monitor_ignore_keys
+        if isinstance(raw, list):
+            return list(raw)
+        return [raw] if raw else []
+
+    def should_ignore_remote_ip(self, ip: str) -> bool:
+        return ip in self.get_remote_ignore_ips()
+
+    def should_ignore_remote_key(self, key: str) -> bool:
+        return key in self.get_remote_ignore_keys()
+
+    def override(self, **kwargs):
+        """Контекстный менеджер временной подмены полей настроек (для тестов)."""
+        from contextlib import contextmanager
+
+        @contextmanager
+        def _ctx():
+            prev = {k: getattr(self, k) for k in kwargs}
+            for k, v in kwargs.items():
+                setattr(self, k, v)
+            try:
+                yield
+            finally:
+                for k, v in prev.items():
+                    setattr(self, k, v)
+
+        return _ctx()
+
     # Sentinel Deck Direct API & WebSocket (стриминг логов и алертов на планшет)
     enable_deck_api: bool = Field(default=False, validation_alias=AliasChoices('ENABLE_DECK_API', 'ENABLE_SENTINEL_DECK_API', 'SENTINEL_DECK_ENABLED'))
     deck_api_host: str = Field(default='0.0.0.0', validation_alias='DECK_API_HOST')

@@ -4,6 +4,16 @@
 import html
 from core.messages.i18n import _
 
+
+def get_target_label(server_ip: str) -> str:
+    """Возвращает локализованную метку целевого узла для Центра блокировок."""
+    if server_ip == 'router':
+        return _("whitelist", "router_node")
+    elif server_ip == 'local':
+        return _("whitelist", "pve_node")
+    return _("whitelist", "vps_node", ip=server_ip)
+
+
 def get_ban_center_table(active_bans, banned_keys, banned_login_ips=None, banned_panel_clients=None):
     rows = []
     rows.append('<table bordered striped compact>')
@@ -50,7 +60,6 @@ def get_ban_center_table(active_bans, banned_keys, banned_login_ips=None, banned
             
             for key in banned_keys:
                 short_fp = key['fingerprint'][-12:] if len(key['fingerprint']) > 12 else key['fingerprint']
-                from core.handlers.ban_center import get_target_label
                 target_lbl = get_target_label(key['target'])
                 rows.append('  <tr>')
                 rows.append(f'    <td colspan="2" align="left"><code>{html.escape(key["username"])}</code> (...{html.escape(short_fp)})</td>')

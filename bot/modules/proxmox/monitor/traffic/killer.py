@@ -77,7 +77,7 @@ async def get_and_kill_local_or_lxc_process(vmid, spt):
                         proc_name_lower = proc_name.lower().strip()
                         is_critical = (
                             any(kw in proc_name_lower for kw in ["hysteria", "xray", "sing-box"]) or
-                            proc_name_lower in settings.ips_process_whitelist or
+                            settings.is_process_whitelisted(proc_name) or
                             await is_whitelisted(node, process=proc_name)
                         )
                         if is_critical:
@@ -121,7 +121,7 @@ async def get_and_kill_local_or_lxc_process(vmid, spt):
                         proc_name_lower = proc_name.lower().strip()
                         is_critical = (
                             any(kw in proc_name_lower for kw in ["hysteria", "xray", "sing-box"]) or
-                            proc_name_lower in settings.ips_process_whitelist or
+                            settings.is_process_whitelisted(proc_name) or
                             await is_whitelisted(node, process=proc_name)
                         )
                         if is_critical:

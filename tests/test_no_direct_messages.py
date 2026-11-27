@@ -23,7 +23,7 @@ def test_no_inline_multiline_html_in_handlers():
     Scans all handler and monitor files to ensure no handler defines raw multi-line
     HTML alerts or tables inline instead of delegating to core.messages.
     """
-    handler_files = get_python_files(os.path.join(BASE_DIR, "core", "handlers"))
+    handler_files = get_python_files(os.path.join(BASE_DIR, "handlers"))
     handler_files += get_python_files(os.path.join(BASE_DIR, "modules"))
     
     # Exclude core/messages, locales, test files, and sanitizer utils

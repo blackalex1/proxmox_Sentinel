@@ -6,7 +6,7 @@ from aiogram import types
 from aiogram.fsm.context import FSMContext
 from core.config import settings, base_dir
 from modules.ansible.keyboards import get_ansible_main_keyboard
-from core.messages import (
+from core.messages.ansible import (
     get_ansible_run_start_text,
     get_ansible_run_success_text,
     get_ansible_run_failed_text,
@@ -86,7 +86,7 @@ async def execute_ansible_playbook(message_or_callback, state: FSMContext, limit
     else:
         running_targets = inventory_ips
 
-    from modules.proxmox.monitor.state import active_ansible_targets
+    from core.runtime_state import active_ansible_targets
     active_ansible_targets.update(running_targets)
     
     try:
@@ -174,7 +174,7 @@ async def execute_ansible_playbook(message_or_callback, state: FSMContext, limit
             reply_markup=get_ansible_main_keyboard()
         )
     finally:
-        from modules.proxmox.monitor.state import active_ansible_targets
+        from core.runtime_state import active_ansible_targets
         for ip in running_targets:
             active_ansible_targets.discard(ip)
 
@@ -275,7 +275,7 @@ async def reboot_host_via_ansible(message_or_callback, host_name: str):
                 except Exception:
                     pass
 
-    from modules.proxmox.monitor.state import active_ansible_targets
+    from core.runtime_state import active_ansible_targets
     active_ansible_targets.update(running_targets)
 
     try:
@@ -317,6 +317,6 @@ async def reboot_host_via_ansible(message_or_callback, host_name: str):
         )
 
     finally:
-        from modules.proxmox.monitor.state import active_ansible_targets
+        from core.runtime_state import active_ansible_targets
         for ip in running_targets:
             active_ansible_targets.discard(ip)

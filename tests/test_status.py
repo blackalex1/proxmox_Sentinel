@@ -1,7 +1,7 @@
 import pytest
 import asyncio
 from unittest.mock import AsyncMock, patch, MagicMock
-from core.handlers.status import is_task_running, get_system_status_text, cmd_status, callback_status_check
+from handlers.status import is_task_running, get_system_status_text, cmd_status, callback_status_check
 
 @pytest.mark.asyncio
 async def test_is_task_running():
@@ -29,7 +29,7 @@ async def test_is_task_running():
 @pytest.mark.asyncio
 async def test_get_system_status_text():
     # We will mock the task check and the Proxmox APIs to test text construction
-    with patch("core.handlers.status.is_task_running") as mock_is_running, \
+    with patch("handlers.status.is_task_running") as mock_is_running, \
          patch("modules.proxmox.api.proxmox.proxmox", True), \
          patch("modules.proxmox.api.proxmox.get_nodes") as mock_nodes:
         
@@ -63,8 +63,8 @@ async def test_cmd_status():
 
     mock_send_rich = AsyncMock(return_value=mock_status_msg)
 
-    with patch("core.handlers.status.get_system_status_text", AsyncMock(return_value="Dummy Status Text")), \
-         patch("core.handlers.status.send_rich_message", mock_send_rich):
+    with patch("handlers.status.get_system_status_text", AsyncMock(return_value="Dummy Status Text")), \
+         patch("handlers.status.send_rich_message", mock_send_rich):
         await cmd_status(mock_message)
         
         # Verify send_rich_message was called with final status text
@@ -82,8 +82,8 @@ async def test_callback_status_check():
     mock_callback.message.chat.id = 67890
     mock_callback.message.message_id = 12345
     
-    with patch("core.handlers.status.get_system_status_text", AsyncMock(return_value="Dummy Status Text Callback")), \
-         patch("core.handlers.status.edit_rich_message", AsyncMock()) as mock_edit_rich:
+    with patch("handlers.status.get_system_status_text", AsyncMock(return_value="Dummy Status Text Callback")), \
+         patch("handlers.status.edit_rich_message", AsyncMock()) as mock_edit_rich:
         await callback_status_check(mock_callback)
         
         # Verify edit_rich_message was called with final status text

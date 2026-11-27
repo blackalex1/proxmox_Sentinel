@@ -46,7 +46,7 @@ async def check_vps_ansible_status(server: dict, pub_key_content: str) -> bool:
     """Checks if user 'ansible' is configured on remote VPS."""
     if not pub_key_content:
         return False
-    from modules.proxmox.monitor.remote.ssh import run_remote_ssh_cmd
+    from core.remote_ssh import run_remote_ssh_cmd
     try:
         parts = pub_key_content.strip().split()
         key_body = parts[1] if len(parts) >= 2 else pub_key_content.strip()
@@ -89,7 +89,7 @@ async def check_host_ansible_status(pub_key_content: str) -> bool:
         logging.error(f"Error checking ansible status on Proxmox Host: {e}")
         return False
 
-from core.messages import get_ansible_setup_loading_text, get_ansible_setup_menu_text
+from core.messages.ansible import get_ansible_setup_loading_text, get_ansible_setup_menu_text
 
 @router.callback_query(F.data.in_({"ansible_setup_menu", "ansible_setup_env"}))
 async def process_ansible_setup_menu(callback: CallbackQuery):
@@ -144,7 +144,7 @@ async def process_ansible_setup_menu(callback: CallbackQuery):
             logging.error(f"Error fetching PVE resources for status check: {e}")
             
     # Получаем список VPS
-    vps_hosts = settings.remote_servers or []
+    vps_hosts = settings.get_remote_servers()
     
     # Опрашиваем хосты в параллели
     lxc_results = []

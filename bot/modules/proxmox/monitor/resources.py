@@ -8,7 +8,12 @@ from modules.proxmox.api import proxmox
 from .state import lxc_name_cache, lxc_state_cache, lxc_alert_throttle
 from .utils import send_alert_to_admins
 from .firewall import setup_vpn_container_rules
-from core.messages import get_lxc_state_alert, get_lxc_cpu_alert, get_lxc_ram_alert, get_lxc_disk_alert
+from core.messages.resources import (
+    get_lxc_state_alert,
+    get_lxc_cpu_alert,
+    get_lxc_ram_alert,
+    get_lxc_disk_alert,
+)
 
 # Период повторной отправки алертов о нагрузке по ресурсам (10 минут)
 ALERT_THROTTLE_INTERVAL = 600
@@ -55,7 +60,7 @@ async def monitor_lxc_resources():
                         await send_alert_to_admins(msg, parse_mode="markdown")
                         
                         # Если это запуск доверенного VPN-контейнера, заново инициализируем внутренние правила
-                        from .traffic.parser import is_vpn_vmid
+                        from .trusted_vmids import is_vpn_vmid
                         if is_vpn_vmid(vmid) and state == "running":
                             setup_vpn_container_rules()
                     elif prev_state is None:

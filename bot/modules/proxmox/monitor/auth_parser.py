@@ -1,11 +1,11 @@
 from typing import Tuple, Optional, Dict, Any
-from core.messages import (
+from core.messages.auth import (
     get_pve_web_login_alert,
     get_pve_web_fail_alert,
     get_ssh_login_alert,
     get_ssh_fail_alert,
     get_sudo_alert,
-    get_ssh_close_alert
+    get_ssh_close_alert,
 )
 from core import sentinel_core_bridge
 from .utils import get_geoip_info

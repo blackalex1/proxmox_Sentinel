@@ -50,7 +50,7 @@ from core.bot import bot, dp
 from core.config import settings
 from core.middlewares import AdminFilter
 
-from core.handlers import router as core_router
+from handlers import router as core_router
 from modules.proxmox.handlers import router as proxmox_router
 from modules.proxmox.tasks import monitor_nodes as proxmox_monitor
 from modules.ansible.handlers.playbooks import router as ansible_router
@@ -74,9 +74,8 @@ async def main():
 
     # Автоматическая проверка и генерация SSH-ключей ED25519 для Ansible
     try:
-        from modules.ansible.keyboards import ANSIBLE_PLAYBOOKS_DIR
         from modules.ansible.keys import check_and_generate_ansible_keys
-        check_and_generate_ansible_keys(ANSIBLE_PLAYBOOKS_DIR)
+        check_and_generate_ansible_keys(settings.get_ansible_playbooks_dir())
 
     except Exception as e:
         logging.error("failed_to_verify_generate_ansible_ssh_keys", e)
@@ -170,19 +169,32 @@ async def main():
     
     # Инициализация кэша доверенных VPN/транзитных контейнеров
     try:
-        from modules.proxmox.monitor.traffic.parser import init_trusted_vpn_vmids_cache
+        from modules.proxmox.monitor.trusted_vmids import init_trusted_vpn_vmids_cache
         await init_trusted_vpn_vmids_cache()
     except Exception as e:
         logging.error("failed_to_init_trusted_vpn_vmids_cache", e)
 
-    # Запускаем фоновые задачи (Proxmox Alert System)
-    if settings.admin_ids:
+    # Настройка зависимостей SpectreClientManager (Proxmox LXC и постобработка IP)
+    from core.spectre_client import spectre_manager
+    from modules.proxmox.api import proxmox
+    from services.panel_sync import sync_approved_ips_to_panels
+    spectre_manager.configure(
+        lxc_provider=proxmox,
+        on_panels_discovered=sync_approved_ips_to_panels,
+    )
+
+    # Запускаем фоновые задачи (Proxmox Alert System и Router Monitor)
+    if settings.has_admins():
         asyncio.create_task(proxmox_monitor(), name="monitor_nodes")
         try:
             from modules.proxmox.monitor import start_all_lxc_monitors
             await start_all_lxc_monitors()
         except Exception as e:
             logging.error("failed_to_start_lxc_monitoring_services", e)
+        if settings.router_monitor_enable:
+            from modules.router.monitor.core import monitor_router_connections
+            asyncio.create_task(monitor_router_connections(), name="monitor_router_connections")
+            logging.info("router_monitoring_started_mode", settings.router_monitor_mode)
     else:
         logging.warning("warning_admin_ids_not_set_the_bot_will")
         
@@ -199,12 +211,13 @@ async def main():
     asyncio.create_task(outbox_sender_loop(bot), name="outbox_sender_loop")
         
     # Синхронизация одобренных IP базы бота с панелями Spectre Panel
-    from core.db import sync_approved_ips_to_panels
     asyncio.create_task(sync_approved_ips_to_panels(), name="sync_approved_ips_to_panels")
 
     # Прямой API/WebSocket сервер для Sentinel Deck (запускается ТОЛЬКО если enable_deck_api=True в .env)
     if getattr(settings, 'enable_deck_api', False):
-        from modules.deck_api import start_deck_api_server
+        from core.sender import register_alert_broadcaster
+        from modules.deck_api import deck_broadcaster, start_deck_api_server
+        register_alert_broadcaster(deck_broadcaster.broadcast_alert)
         asyncio.create_task(start_deck_api_server(), name="deck_api_server")
 
     # Запуск пулинга с авто-восстановлением при сетевых сбоях и мгновенной реакцией на SIGTERM

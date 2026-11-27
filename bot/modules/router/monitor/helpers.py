@@ -1,170 +1,14 @@
-import asyncio
-import re
-import os
-import socket
 import logging
-import platform
+
 from core.config import settings
-
-async def is_local_bot_process(sport, dst_ip=None):
-    """
-    Проверяет, принадлежит ли порт sport самому процессу бота или его потомкам/белому списку на хосте Proxmox.
-    """
-    logging.debug("is_local_bot_process_input_sport_dst_ip", sport, dst_ip)
-    try:
-        from modules.proxmox.monitor.state import recent_bot_ports
-        if sport in recent_bot_ports:
-            logging.debug("is_local_bot_process_sport_found_recent_bot_ports_exiting_true", sport)
-            return True
-    except Exception as e:
-        logging.error("is_local_bot_process_error_checking_recent_bot_ports", e)
-
-    # 0. Если передан dst_ip, пробуем сверхнадежный и быстрый поиск по procfs дочерних SSH-процессов бота
-    if dst_ip:
-        try:
-            my_pid = os.getpid()
-            from modules.proxmox.monitor.remote.helpers import get_child_pids, parse_tcp_file, get_process_socket_inodes
-            child_pids = get_child_pids(my_pid)
-            all_pids = [my_pid] + child_pids
-            
-            for pid in all_pids:
-                try:
-                    comm_path = f"/proc/{pid}/comm"
-                    if os.path.exists(comm_path):
-                        with open(comm_path, 'r') as f:
-                            comm = f.read().strip()
-                        if comm != 'ssh':
-                            continue
-                    else:
-                        continue
-                    
-                    process_inodes = get_process_socket_inodes(pid)
-                    if not process_inodes:
-                        continue
-                    
-                    for tcp_file in [f"/proc/{pid}/net/tcp", f"/proc/{pid}/net/tcp6"]:
-                        conns = parse_tcp_file(tcp_file)
-                        for local_port, remote_ip, remote_port, inode in conns:
-                            if local_port == sport and remote_ip == dst_ip and inode in process_inodes:
-                                return True
-                except Exception:
-                    pass
-        except Exception:
-            pass
-
-    if platform.system() != 'Linux':
-        return False
-
-    try:
-        cmd = ["ss", "-atnup"]
-        proc = await asyncio.create_subprocess_exec(
-            *cmd,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.DEVNULL
-        )
-        stdout_bytes, _ = await proc.communicate()
-        stdout = stdout_bytes.decode('utf-8', errors='ignore')
-        
-        for line in stdout.splitlines():
-            if f":{sport}" in line:
-                match = re.search(r'users:\(\("([^"]+)",(?:pid=)?(\d+)', line)
-                if match:
-                    proc_name, pid = match.groups()
-                    target_pid = int(pid)
-                    
-                    # 1. Проверяем предков процесса вплоть до PID бота
-                    curr_pid = target_pid
-                    is_bot_ancestor = False
-                    pids_checked = []
-                    for _ in range(5):  # Максимум 5 уровней вверх
-                        pids_checked.append(curr_pid)
-                        if curr_pid == os.getpid():
-                            is_bot_ancestor = True
-                            break
-                        # Проверяем временный белый список командной строки
-                        if curr_pid == target_pid and getattr(settings, 'ips_temp_whitelist_cmdline', None):
-                            cmdline_path = f"/proc/{curr_pid}/cmdline"
-                            if os.path.exists(cmdline_path):
-                                try:
-                                    with open(cmdline_path, "r") as f:
-                                        cmdline = f.read()
-                                    if settings.ips_temp_whitelist_cmdline in cmdline:
-                                        logging.debug("is_local_bot_process_sport_target_pid_matched_temporary_cmdline_whitelist", sport, target_pid)
-                                        return True
-                                except Exception:
-                                    pass
-                        status_path = f"/proc/{curr_pid}/status"
-                        if not os.path.exists(status_path):
-                            break
-                        next_ppid = None
-                        with open(status_path, "r") as f:
-                            for status_line in f:
-                                if status_line.startswith("PPid:"):
-                                    next_ppid = int(status_line.split()[1])
-                                    break
-                        if next_ppid is None or next_ppid <= 1:
-                            break
-                        curr_pid = next_ppid
-                        
-                    logging.debug(f"[is_local_bot_process] sport={sport}, target_pid={target_pid}, checked_pids={pids_checked}, bot_pid={os.getpid()}, is_bot_ancestor={is_bot_ancestor}")
-                    if is_bot_ancestor:
-                        return True
-                        
-                    # 2. Проверяем белый список процессов IPS
-                    in_whitelist = proc_name.lower().strip() in settings.ips_process_whitelist
-                    logging.debug(f"[is_local_bot_process] sport={sport}, proc_name={proc_name}, in_whitelist={in_whitelist}, whitelist={settings.ips_process_whitelist}")
-                    if in_whitelist:
-                        return True
-    except Exception as e:
-        logging.error("error_checking_local_bot_process", e)
-    return False
-
-_host_local_ips_cache = set()
-_host_local_ips_last_check = 0.0
-
-def get_host_local_ips() -> set:
-    """Возвращает набор локальных IP-адресов текущего хоста."""
-    global _host_local_ips_cache, _host_local_ips_last_check
-    import time
-    if not _host_local_ips_cache or (time.time() - _host_local_ips_last_check >= 300):
-        ips = {"127.0.0.1", "::1", "localhost"}
-        try:
-            import socket
-            hostname = socket.gethostname()
-            for ip in socket.gethostbyname_ex(hostname)[2]:
-                ips.add(ip)
-        except Exception:
-            pass
-
-        if platform.system() == 'Linux':
-            try:
-                import subprocess
-                out = subprocess.check_output(["hostname", "-I"], timeout=1, stderr=subprocess.DEVNULL).decode('utf-8', errors='ignore')
-                for part in out.split():
-                    if part.strip():
-                        ips.add(part.strip())
-            except Exception:
-                pass
-        _host_local_ips_cache = ips
-        _host_local_ips_last_check = time.time()
-
-    res = set(_host_local_ips_cache)
-    if getattr(settings, 'proxmox_host', None):
-        h = settings.proxmox_host
-        if '://' in h:
-            h = h.split('://', 1)[1]
-        if ':' in h:
-            h = h.split(':', 1)[0]
-        if h:
-            res.add(h.strip())
-    return res
+from core.runtime_state import active_proxy_checks, is_proxy_selection_in_progress
+import core.sys_utils as _sys_utils
+from core.sys_utils import get_host_local_ips, is_local_bot_process
 
 
 async def check_is_bot_or_admin(src_ip, src_port, dst_host=None, dst_port=None):
     """Проверяет, является ли отправитель доверенным (администратором или легитимным процессом бота на хосте)."""
-    # 0. Проверяем временное окно активного подбора прокси ботом (Failover / проверка нод)
     try:
-        from modules.proxmox.monitor.state import is_proxy_selection_in_progress
         if is_proxy_selection_in_progress():
             host_ips = get_host_local_ips()
             if src_ip in host_ips:
@@ -173,55 +17,42 @@ async def check_is_bot_or_admin(src_ip, src_port, dst_host=None, dst_port=None):
     except Exception as e:
         logging.error("check_is_bot_or_admin_error_checking_proxy_selection", e)
 
-    # 1. Проверяем, является ли это активной проверкой прокси ботом
     if dst_host and dst_port:
         try:
-            from modules.proxmox.monitor.state import active_proxy_checks
             if active_proxy_checks.get((dst_host, dst_port), 0) > 0:
                 logging.debug("check_is_bot_or_admin_match_found_in_active_proxy_checks_for", dst_host, dst_port)
                 return True
         except Exception as e:
             logging.error("check_is_bot_or_admin_error_checking_active_proxy_checks", e)
 
-    # 2. Проверяем белый список администраторов из настроек
-    if hasattr(settings, 'trusted_admin_ips'):
-        trusted_ips = settings.trusted_admin_ips
-        if isinstance(trusted_ips, str):
-            trusted_ips = [x.strip() for x in trusted_ips.split(',') if x.strip()]
-        if src_ip in trusted_ips:
-            return True
-            
-    # 3. Игнорируем IP самого роутера
+    if settings.is_trusted_admin_ip(src_ip):
+        return True
+
     if src_ip == settings.router_ssh_host:
         return True
-        
-    # 4. Игнорируем собственный публичный IP-адрес бота (для предотвращения блокировки его NAT-сессий)
+
     try:
-        from modules.proxmox.monitor.remote.helpers import get_bot_public_ip
-        bot_pub_ip = await get_bot_public_ip()
+        bot_pub_ip = await _sys_utils.get_bot_public_ip()
         if bot_pub_ip and src_ip == bot_pub_ip:
             return True
     except Exception:
         pass
 
-    # 5. Превентивный обход для собственных SSH-подключений бота к роутеру или удаленным VPS!
     if dst_host and dst_port:
         host_ips = get_host_local_ips()
-        is_bot_source = (src_ip in host_ips or src_ip in ("127.0.0.1", "::1") or (settings.proxmox_host and src_ip in settings.proxmox_host))
+        is_bot_source = (
+            src_ip in host_ips
+            or src_ip in ("127.0.0.1", "::1")
+            or (settings.proxmox_host and src_ip in settings.proxmox_host)
+        )
         if is_bot_source:
             if dst_host == settings.router_ssh_host and dst_port == settings.router_ssh_port:
                 return True
-            remote_ips = []
-            if hasattr(settings, 'remote_servers') and settings.remote_servers:
-                remote_ips = [s.get('ip') if isinstance(s, dict) else getattr(s, 'ip', None) for s in settings.remote_servers]
-                remote_ips = [ip for ip in remote_ips if ip]
+            remote_ips = settings.get_remote_server_ips()
             if dst_host in remote_ips and dst_port == 22:
                 return True
 
-    # 6. Проверяем локальные процессы бота по порту
     if src_port and await is_local_bot_process(src_port):
         return True
-            
+
     return False
-
-

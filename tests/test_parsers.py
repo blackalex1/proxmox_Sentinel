@@ -29,10 +29,7 @@ def test_classify_connection_lxc_whitelist():
     from core.config import settings
     
     # Мокаем ips_lxc_whitelist, добавив туда контейнер 100
-    original_whitelist = settings.ips_lxc_whitelist
-    settings.ips_lxc_whitelist = [100]
-    
-    try:
+    with settings.override(ips_lxc_whitelist=[100]):
         # 1. Исходящее соединение от обычного контейнера (не в белом списке) на sensitive порт
         event_normal = {
             'vmid': 102,
@@ -60,8 +57,6 @@ def test_classify_connection_lxc_whitelist():
         risk_level_trusted, label_trusted, desc_trusted = classify_connection(event_trusted)
         assert risk_level_trusted == 'INFO'
         assert 'Доверенный исходящий трафик' in label_trusted
-    finally:
-        settings.ips_lxc_whitelist = original_whitelist
 
 
 def test_generate_ansible_hosts_ini(tmp_path):
@@ -94,10 +89,7 @@ ansible_ssh_private_key_file=/path/to/key
     assert global_vars["ansible_ssh_private_key_file"] == "/path/to/key"
     
     # Мокаем remote_servers в settings
-    original_remote = settings.remote_servers
-    settings.remote_servers = [{"ip": "198.51.100.42", "user": "root", "key": "dummy"}]
-    
-    try:
+    with settings.override(remote_servers=[{"ip": "198.51.100.42", "user": "root", "key": "dummy"}]):
         # Генерируем новый hosts.ini
         # Для чистоты теста мокаем proxmox клиента, чтобы он не делал сетевых запросов
         from modules.proxmox.api import proxmox
@@ -127,8 +119,6 @@ ansible_ssh_private_key_file=/path/to/key
             assert "ansible_user=my_test_user" in new_content
         finally:
             proxmox.proxmox = original_pve
-    finally:
-        settings.remote_servers = original_remote
 
 
 
@@ -204,7 +194,7 @@ async def test_watcher_lxc_inbound_ssh_verification():
         # A) Simulate legitimate connection by the bot / child process (e.g. Ansible):
         # is_local_bot_process returns True
         with patch("modules.proxmox.monitor.traffic.watcher.send_alert_to_admins", AsyncMock()) as mock_alert, \
-             patch("modules.router.monitor.helpers.is_local_bot_process", AsyncMock(return_value=True)):
+             patch("core.sys_utils.is_local_bot_process", AsyncMock(return_value=True)):
             
             await handle_traffic_log_line(log_line)
             # Should be classified as INFO, no alerts sent
@@ -218,7 +208,7 @@ async def test_watcher_lxc_inbound_ssh_verification():
         lxc_traffic_history[109].clear()
 
         with patch("modules.proxmox.monitor.traffic.watcher.send_alert_to_admins", AsyncMock()) as mock_alert, \
-             patch("modules.router.monitor.helpers.is_local_bot_process", AsyncMock(return_value=False)), \
+             patch("core.sys_utils.is_local_bot_process", AsyncMock(return_value=False)), \
              patch("modules.proxmox.monitor.traffic.watcher.get_and_kill_local_or_lxc_process", AsyncMock(return_value=(None, None))):
             
             await handle_traffic_log_line(log_line)

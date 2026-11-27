@@ -1,7 +1,8 @@
 import pytest
 import asyncio
 from unittest.mock import AsyncMock, patch, MagicMock, ANY
-from core.handlers.ssh_alerts import process_terminate_ssh, process_ban_ssh_key, get_kill_tree_cmd, get_ban_key_tree_cmd
+from core.config import settings
+from handlers.ssh_alerts import process_terminate_ssh, process_ban_ssh_key, get_kill_tree_cmd, get_ban_key_tree_cmd
 
 @pytest.mark.asyncio
 async def test_process_terminate_ssh_local_success():
@@ -88,8 +89,8 @@ async def test_process_terminate_ssh_remote_vps():
     # Mock settings.remote_servers
     mock_server = {'ip': '198.51.100.42', 'user': 'root', 'key': 'config/id_rsa_remote'}
     
-    with patch("core.config.settings.remote_servers", [mock_server]), \
-         patch("modules.proxmox.monitor.remote.ssh.run_remote_ssh_cmd", AsyncMock(return_value=(True, "", ""))) as mock_remote_ssh:
+    with settings.override(remote_servers=[mock_server]), \
+         patch("core.remote_ssh.run_remote_ssh_cmd", AsyncMock(return_value=(True, "", ""))) as mock_remote_ssh:
          
         await process_terminate_ssh(mock_callback)
         
@@ -165,8 +166,8 @@ async def test_process_ban_ssh_key_remote_vps():
     mock_server = {'ip': '198.51.100.42', 'user': 'root', 'key': 'config/id_rsa_remote'}
     
     with patch("core.db.get_state", AsyncMock(return_value=mock_db_cache)), \
-         patch("core.config.settings.remote_servers", [mock_server]), \
-         patch("modules.proxmox.monitor.remote.ssh.run_remote_ssh_cmd") as mock_remote_ssh:
+         settings.override(remote_servers=[mock_server]), \
+         patch("core.remote_ssh.run_remote_ssh_cmd") as mock_remote_ssh:
          
         mock_remote_ssh.side_effect = [
             (True, "", ""),  # Result of kill

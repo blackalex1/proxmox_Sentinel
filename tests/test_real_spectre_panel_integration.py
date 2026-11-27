@@ -18,7 +18,7 @@ if PANEL_DIR.exists() and str(PANEL_DIR) not in sys.path:
     sys.path.insert(0, str(PANEL_DIR))
 
 from core.spectre_client import SpectrePanelInstance, SpectreClientManager, spectre_manager
-from core.handlers.spectre.clients import cmd_ban_client, cmd_unban_client
+from handlers.spectre.clients import cmd_ban_client, cmd_unban_client
 
 
 def find_free_port() -> int:
@@ -148,7 +148,7 @@ async def test_real_panel_client_search(live_spectre_panel):
         source_type="lxc",
         identifier="104"
     )
-    manager.panels = {"lxc_104": panel_instance}
+    manager.set_panels({"lxc_104": panel_instance})
 
     clients = await manager.search_client_all("attacker@spectre.com")
     assert len(clients) == 1
@@ -176,7 +176,7 @@ async def test_real_panel_disable_and_enable_client(live_spectre_panel):
         source_type="vps",
         identifier="198.51.100.14"
     )
-    manager.panels = {"vps_198.51.100.14": panel_instance}
+    manager.set_panels({"vps_198.51.100.14": panel_instance})
 
     # 1. Запрос на блокировку вредоносного клиента
     results_ban = await manager.disable_client_everywhere("attacker@spectre.com")
@@ -242,7 +242,7 @@ async def test_real_panel_bot_ban_commands_e2e(live_spectre_panel):
         source_type="lxc",
         identifier="104"
     )
-    spectre_manager.panels = {"live_panel": panel_instance}
+    spectre_manager.set_panels({"live_panel": panel_instance})
 
     # Имитируем сообщение Телеграм от админа для блокировки
     mock_status_msg = AsyncMock()

@@ -147,7 +147,7 @@ def generate_ansible_hosts_ini(directory: str) -> bool:
             logging.error(f"Error fetching PVE resources for inventory: {e}")
             
     # 5. Добавляем удаленные VPS
-    for server in settings.remote_servers:
+    for server in settings.get_remote_servers():
         ip = server.get('ip')
         if ip:
             # Проверим, не добавили ли мы его уже как LXC (вдруг совпали IP)

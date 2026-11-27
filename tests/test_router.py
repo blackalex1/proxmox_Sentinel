@@ -286,15 +286,11 @@ async def test_check_is_bot_or_admin():
     from modules.router.monitor.helpers import check_is_bot_or_admin
     from core.config import settings
     
-    original_trusted = settings.trusted_admin_ips
-    original_router = settings.router_ssh_host
-    original_proxmox = settings.proxmox_host
-    
-    settings.trusted_admin_ips = "192.168.1.92, 192.168.1.93"
-    settings.router_ssh_host = "192.168.1.1"
-    settings.proxmox_host = "192.168.1.120:8006"
-    
-    try:
+    with settings.override(
+        trusted_admin_ips="192.168.1.92, 192.168.1.93",
+        router_ssh_host="192.168.1.1",
+        proxmox_host="192.168.1.120:8006",
+    ):
         # Whitelisted admin IPs
         assert await check_is_bot_or_admin("192.168.1.92", 12345) is True
         assert await check_is_bot_or_admin("192.168.1.93", 12345) is True
@@ -312,10 +308,7 @@ async def test_check_is_bot_or_admin():
             mock_local.assert_called_once_with(47278)
             
         # Proactive SSH connection bypass check
-        settings.router_ssh_port = 22
-        original_remote_servers = settings.remote_servers
-        settings.remote_servers = [{"ip": "198.51.100.42", "user": "root", "key": "key"}]
-        try:
+        with settings.override(router_ssh_port=22, remote_servers=[{"ip": "198.51.100.42", "user": "root", "key": "key"}]):
             # Proxmox host connecting to router SSH port (192.168.1.1:22)
             assert await check_is_bot_or_admin("192.168.1.120", 47278, "192.168.1.1", 22) is True
             # Proxmox host connecting to remote VPS SSH port (198.51.100.42:22)
@@ -323,19 +316,13 @@ async def test_check_is_bot_or_admin():
             # Proxmox host connecting to some random IP on port 22 (should fall back to is_local_bot_process, returning False)
             with patch("modules.router.monitor.helpers.is_local_bot_process", AsyncMock(return_value=False)):
                 assert await check_is_bot_or_admin("192.168.1.120", 47278, "198.51.100.1", 22) is False
-        finally:
-            settings.remote_servers = original_remote_servers
 
         # Bot's own public IP bypass check
-        with patch("modules.proxmox.monitor.remote.helpers.get_bot_public_ip", AsyncMock(return_value="198.51.100.4")):
+        with patch("core.sys_utils.get_bot_public_ip", AsyncMock(return_value="198.51.100.4")):
             assert await check_is_bot_or_admin("198.51.100.4", 12345) is True
 
         # Normal client IP
         assert await check_is_bot_or_admin("192.168.1.50", 12345) is False
-    finally:
-        settings.trusted_admin_ips = original_trusted
-        settings.router_ssh_host = original_router
-        settings.proxmox_host = original_proxmox
 
 
 @pytest.mark.asyncio
@@ -408,12 +395,7 @@ async def test_reconcile_router_bans():
     )
     
     # Mock settings
-    original_ssh_host = settings.router_ssh_host
-    original_trusted = settings.trusted_admin_ips
-    settings.router_ssh_host = "192.168.1.1"
-    settings.trusted_admin_ips = ["192.168.1.50"]
-    
-    try:
+    with settings.override(router_ssh_host="192.168.1.1", trusted_admin_ips=["192.168.1.50"]):
         with patch("modules.proxmox.monitor.traffic.garbage.run_router_ssh_cmd", AsyncMock(return_value=(True, simulated_stdout, ""))) as mock_run:
             # Mock unban_router_ip and send_alert_to_admins
             with patch("modules.proxmox.monitor.traffic.garbage.unban_router_ip", AsyncMock(return_value=(True, "OK"))) as mock_unban, \
@@ -439,9 +421,6 @@ async def test_reconcile_router_bans():
                 # Verify the trusted rescue alert triggered correctly
                 assert any("КРИТИЧЕСКАЯ УГРОЗА: Восстановлен доступ для доверенного узла!" in txt for txt in alert_texts)
                 assert any("192.168.1.50" in txt for txt in alert_texts)
-    finally:
-        settings.router_ssh_host = original_ssh_host
-        settings.trusted_admin_ips = original_trusted
 
 
 @pytest.mark.asyncio

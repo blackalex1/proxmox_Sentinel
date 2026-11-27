@@ -17,7 +17,7 @@ from .router import (
 )
 from core.db import execute_read_all, execute_read_one, get_router_allowed_ports
 from core.messages.i18n import _
-from core.messages import (
+from core.messages.router import (
     get_router_clients_list_text,
     get_router_client_details_card,
     get_router_ban_all_menu_text,
@@ -26,7 +26,7 @@ from core.messages import (
     get_router_custom_port_prompt_text,
     get_router_allow_port_menu_text,
     get_router_custom_allow_port_prompt_text,
-    get_router_active_bans_text
+    get_router_active_bans_text,
 )
 from core.sender import edit_rich_message, send_rich_message, safe_callback_answer
 

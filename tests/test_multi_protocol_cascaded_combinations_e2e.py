@@ -216,10 +216,10 @@ async def test_cascaded_protocol_combinations_matrix(
     )
     p2_instance.request = p2_request
 
-    spectre_manager.panels = {
+    spectre_manager.set_panels({
         "lxc_104": p1_instance,
         "vps_198.51.100.14": p2_instance
-    }
+    })
 
     telegram_alerts = []
     monkeypatch.setattr("modules.proxmox.monitor.remote.traffic.send_alert_to_admins", AsyncMock(side_effect=lambda text, **kw: telegram_alerts.append(text)))

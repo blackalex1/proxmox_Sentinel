@@ -78,7 +78,7 @@ async def test_trusted_lxc_traffic_classification():
 
 @pytest.mark.asyncio
 async def test_alert_callbacks():
-    from core.handlers.whitelist import cb_trust_lxc, cb_untrust_lxc, cb_quick_block_ip, cb_copy_ip
+    from handlers.whitelist import cb_trust_lxc, cb_untrust_lxc, cb_quick_block_ip, cb_copy_ip
     
     # Тест trust_lxc
     cb_mock = MagicMock()

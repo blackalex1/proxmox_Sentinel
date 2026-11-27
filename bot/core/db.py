@@ -460,27 +460,14 @@ async def is_ip_approved(username: str, ip: str) -> bool:
 
 
 async def approve_ip(username: str, ip: str) -> bool:
-    """Добавляет IP в список одобренных для пользователя и синхронизирует ТОЛЬКО с теми панелями, где заведен данный клиент."""
+    """Добавляет IP в список одобренных для пользователя в базе данных."""
     if not is_valid_ip_or_cidr(ip):
         logging.warning(f"Invalid IP '{ip}' passed to approve_ip for {username}")
         return False
-    res = await execute_write(
+    return await execute_write(
         "INSERT OR IGNORE INTO approved_ips (username, ip) VALUES (?, ?)",
         (username, ip)
     )
-    try:
-        from core.spectre_client import spectre_manager
-        found_clients = await spectre_manager.search_client_all(username)
-        target_panel_names = {c.get("panel_name") for c in found_clients if c.get("panel_name")}
-        
-        # Если клиент найден конкретно на определенных панелях — берем только их, иначе синхронизируем на все
-        target_panels = [p for p in spectre_manager.panels.values() if not target_panel_names or p.name in target_panel_names]
-        
-        for panel in target_panels:
-            await panel.request("POST", "/api/security/allow-ip", json={"ip": ip, "email": username})
-    except Exception as e:
-        logging.error(f"Error syncing allow-ip to panel: {e}")
-    return res
 
 
 async def cleanup_orphaned_approved_ips(active_emails: set) -> int:
@@ -500,77 +487,6 @@ async def cleanup_orphaned_approved_ips(active_emails: set) -> int:
             deleted_count += 1
             logging.info(f"[Cleanup] Removed orphaned approved_ips for deleted user: {username}")
     return deleted_count
-
-
-async def sync_approved_ips_to_panels():
-    """Синхронизирует одобренные IP с панелями (двусторонняя синхронизация) и очищает мусор."""
-    try:
-        from core.spectre_client import spectre_manager
-        if not spectre_manager.panels:
-            return
-
-        # 1. Получаем список всех существующих клиентов со всех панелей с привязкой к панели
-        all_clients = await spectre_manager.search_client_all("")
-        client_panels_map = {}
-        active_emails = set()
-        reachable_panels = set()
-        
-        for c in all_clients:
-            c_info = c.get("client") or {}
-            email = c.get("email") or c_info.get("email")
-            p_name = c.get("panel_name")
-            if p_name:
-                reachable_panels.add(p_name)
-            if email:
-                active_emails.add(email)
-                if p_name:
-                    for p in spectre_manager.panels.values():
-                        if p.name == p_name:
-                            client_panels_map.setdefault(email.lower(), set()).add(p)
-                
-                # Импортируем allowed_ips с панели в локальную базу бота
-                allowed_ips_str = c_info.get("allowed_ips") or c_info.get("allowedIps") or ""
-                if allowed_ips_str:
-                    for panel_ip in allowed_ips_str.split(","):
-                        panel_ip = panel_ip.strip()
-                        if panel_ip and is_valid_ip_or_cidr(panel_ip):
-                            await execute_write(
-                                "INSERT OR IGNORE INTO approved_ips (username, ip) VALUES (?, ?)",
-                                (email, panel_ip)
-                            )
-
-        # 2. Очищаем устаревший мусор ТОЛЬКО если ВСЕ зарегистрированные панели ответили без ошибок!
-        total_configured_panels = len(spectre_manager.panels)
-        if active_emails and len(reachable_panels) >= total_configured_panels:
-            await cleanup_orphaned_approved_ips(active_emails)
-
-        # 3. Синхронизируем оставшиеся одобренные IP ТОЛЬКО на те панели, где этот клиент реально заведен!
-        rows = await execute_read_all("SELECT username, ip FROM approved_ips")
-        if not rows:
-            return
-
-        synced_count = 0
-        for r in rows:
-            username = r.get("username") if isinstance(r, dict) else r[0]
-            ip = r.get("ip") if isinstance(r, dict) else r[1]
-            if not username or not ip or not is_valid_ip_or_cidr(ip):
-                continue
-            target_panels = client_panels_map.get(username.lower(), set())
-            # Если карту привязок еще не составили или панель не определена, перестраховываемся
-            if not target_panels:
-                target_panels = set(spectre_manager.panels.values())
-
-            for panel in target_panels:
-                try:
-                    res_ok, res = await panel.request("POST", "/api/security/allow-ip", json={"ip": ip, "email": username})
-                    if res_ok and isinstance(res, dict) and res.get("success"):
-                        synced_count += 1
-                except Exception as e:
-                    logging.error(f"Error syncing approved IP {ip} for {username} to panel {panel.name}: {e}")
-        if synced_count > 0:
-            logging.info(f"[IP Sync] Successfully synced {synced_count} approved IP addresses to target panels.")
-    except Exception as e:
-        logging.error(f"Error in sync_approved_ips_to_panels: {e}")
 
 
 async def save_vpn_connect(username: str, ip: str, connect_time_str: str, tx: int, rx: int) -> str:

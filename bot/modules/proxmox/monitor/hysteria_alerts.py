@@ -5,7 +5,11 @@ import datetime
 import asyncio
 from core.bot import bot
 from core.config import settings
-from core.messages import get_session_activity_card, get_new_ip_alert, get_client_disconnected_alert
+from core.messages.spectre import (
+    get_session_activity_card,
+    get_new_ip_alert,
+    get_client_disconnected_alert,
+)
 from core.messages.i18n import _
 
 # In-memory cards state: (panel_name, username, protocol) -> card dict
@@ -178,11 +182,7 @@ async def check_and_send_card_delayed(key, session_id):
             
         if not card.get('pending_send', True):
             from core.spectre_client import spectre_manager
-            panel = None
-            for p in spectre_manager.panels.values():
-                if p.name == panel_name:
-                    panel = p
-                    break
+            panel = spectre_manager.get_panel_by_name(panel_name)
             tx, rx = await get_traffic_from_api(panel, username)
             msg_text = format_card_msg(panel_name, username, protocol, [l['text'] for l in card['lines']], tx, rx)
             await trigger_card_edit(card, msg_text)
@@ -191,17 +191,13 @@ async def check_and_send_card_delayed(key, session_id):
             card['pending_send'] = False
             
             from core.spectre_client import spectre_manager
-            panel = None
-            for p in spectre_manager.panels.values():
-                if p.name == panel_name:
-                    panel = p
-                    break
+            panel = spectre_manager.get_panel_by_name(panel_name)
             tx, rx = await get_traffic_from_api(panel, username)
             msg_text = format_card_msg(panel_name, username, protocol, [l['text'] for l in card['lines']], tx, rx)
             
             admin_messages = []
             from .utils import send_rich_message
-            for admin_id in settings.admin_ids:
+            for admin_id in settings.get_admin_ids():
                 try:
                     m = await send_rich_message(admin_id, msg_text, parse_mode="HTML")
                     if m:
@@ -434,11 +430,7 @@ async def update_controller_active_cards_traffic():
             continue
             
         from core.spectre_client import spectre_manager
-        panel = None
-        for p in spectre_manager.panels.values():
-            if p.name == panel_name:
-                panel = p
-                break
+        panel = spectre_manager.get_panel_by_name(panel_name)
         if not panel:
             continue
             

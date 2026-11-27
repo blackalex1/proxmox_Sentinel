@@ -120,20 +120,103 @@ class SpectreClientManager:
     Менеджер для автоматического поиска и управления панелями Spectre Panel.
     """
     def __init__(self):
-        self.panels: Dict[str, SpectrePanelInstance] = {}
+        self._panels: Dict[str, SpectrePanelInstance] = {}
         self._lock = asyncio.Lock()
+        self._lxc_provider = None
+        self._ssh_runner = None
+        self._on_panels_discovered = None
+
+    def has_panels(self) -> bool:
+        return bool(self._panels)
+
+    def panel_count(self) -> int:
+        return len(self._panels)
+
+    def get_panel(self, key: str) -> Optional[SpectrePanelInstance]:
+        return self._panels.get(key)
+
+    def first_panel(self) -> Optional[SpectrePanelInstance]:
+        return next(iter(self._panels.values()), None)
+
+    def iter_panels(self) -> List[SpectrePanelInstance]:
+        return list(self._panels.values())
+
+    def iter_panel_items(self) -> List[Tuple[str, SpectrePanelInstance]]:
+        return list(self._panels.items())
+
+    def iter_panel_keys(self) -> List[str]:
+        return list(self._panels.keys())
+
+    def get_lxc_panels(self) -> List[SpectrePanelInstance]:
+        return [p for p in self._panels.values() if p.source_type == 'lxc']
+
+    def find_panel_by_prefix(self, raw: str) -> Tuple[Optional[str], str]:
+        """Ищет ключ панели по префиксу `<panel_key>:` в callback-данных и возвращает (key, remainder)."""
+        for k in self._panels.keys():
+            if raw.startswith(f"{k}:"):
+                return k, raw[len(k) + 1:]
+        return None, raw
+
+    def set_panels(self, panels: Dict[str, SpectrePanelInstance]) -> None:
+        self._panels = dict(panels)
+
+    def set_panel(self, key: str, panel: SpectrePanelInstance) -> None:
+        self._panels[key] = panel
+
+    def remove_panel(self, key: str) -> Optional[SpectrePanelInstance]:
+        return self._panels.pop(key, None)
+
+    def clear_panels(self) -> None:
+        self._panels.clear()
+
+    def override_panels(self, panels: Dict[str, SpectrePanelInstance]):
+        """Контекстный менеджер временной подмены панелей (для тестов)."""
+        from contextlib import contextmanager
+
+        @contextmanager
+        def _ctx():
+            prev = dict(self._panels)
+            self._panels = dict(panels)
+            try:
+                yield
+            finally:
+                self._panels = prev
+
+        return _ctx()
+
+    def configure(self, *, lxc_provider=None, ssh_runner=None, on_panels_discovered=None) -> None:
+        """Настраивает внешние адаптеры (Proxmox API, SSH-раннер, хук после обнаружения панелей)."""
+        if lxc_provider is not None:
+            self._lxc_provider = lxc_provider
+        if ssh_runner is not None:
+            self._ssh_runner = ssh_runner
+        if on_panels_discovered is not None:
+            self._on_panels_discovered = on_panels_discovered
+
+    def _get_ssh_runner(self):
+        if self._ssh_runner is not None:
+            return self._ssh_runner
+        from core.remote_ssh import run_remote_ssh_cmd
+        return run_remote_ssh_cmd
         
     def get_panel_by_vmid(self, vmid: int) -> Optional[SpectrePanelInstance]:
         """Возвращает панель, запущенную в LXC с указанным VMID."""
-        for p in self.panels.values():
+        for p in self._panels.values():
             if p.source_type == 'lxc' and str(p.identifier) == str(vmid):
                 return p
         return None
         
     def get_panel_by_vps_ip(self, ip: str) -> Optional[SpectrePanelInstance]:
         """Возвращает панель, запущенную на удаленном VPS с указанным IP."""
-        for p in self.panels.values():
+        for p in self._panels.values():
             if p.source_type == 'vps' and str(p.identifier) == str(ip):
+                return p
+        return None
+
+    def get_panel_by_name(self, name: str) -> Optional[SpectrePanelInstance]:
+        """Возвращает панель по её отображаемому имени."""
+        for p in self._panels.values():
+            if p.name == name:
                 return p
         return None
 
@@ -173,8 +256,9 @@ class SpectreClientManager:
                     stdout, _ = await proc.communicate()
                     return proc.returncode == 0, stdout.decode('utf-8', errors='ignore')
 
-                from modules.proxmox.api import proxmox
-                ip = proxmox.get_lxc_ip(node_name, vmid)
+                if self._lxc_provider is None:
+                    return
+                ip = self._lxc_provider.get_lxc_ip(node_name, vmid)
                 res = await _discover_panel_config(run_lxc_cmd, candidate_paths, ip=ip)
                 if res:
                     config, path = res
@@ -213,9 +297,9 @@ class SpectreClientManager:
         async def discover_vps_panel(server):
             vps_ip = server['ip']
             try:
-                from modules.proxmox.monitor.remote.ssh import run_remote_ssh_cmd
+                ssh_runner = self._get_ssh_runner()
                 async def run_vps_cmd(cmd: List[str]) -> Tuple[bool, str]:
-                    success, stdout, _ = await run_remote_ssh_cmd(server, cmd)
+                    success, stdout, _ = await ssh_runner(server, cmd)
                     return success, stdout
 
                 res = await _discover_panel_config(run_vps_cmd, candidate_paths, ip=vps_ip)
@@ -257,13 +341,12 @@ class SpectreClientManager:
         tasks = []
 
         # 1. Поиск на локальных LXC-контейнерах
-        if settings.proxmox_host:
+        if settings.proxmox_host and self._lxc_provider is not None:
             try:
-                from modules.proxmox.api import proxmox
-                nodes = proxmox.get_nodes()
+                nodes = self._lxc_provider.get_nodes()
                 for node in nodes:
                     node_name = node['node']
-                    vms = proxmox.get_vms(node_name)
+                    vms = self._lxc_provider.get_vms(node_name)
                     for vm in vms:
                         if vm.get('type') == 'lxc' and vm.get('status') == 'running':
                             tasks.append(discover_lxc_panel(node_name, vm))
@@ -271,8 +354,9 @@ class SpectreClientManager:
                 logging.error("spectre_discovery_error_searching_in_proxmox", e)
 
         # 2. Поиск на удаленных серверах VPS
-        if settings.remote_monitor_enable and settings.remote_servers:
-            for server in settings.remote_servers:
+        remote_servers = settings.get_remote_servers()
+        if settings.remote_monitor_enable and remote_servers:
+            for server in remote_servers:
                 tasks.append(discover_vps_panel(server))
 
         # Запускаем все задачи автообнаружения параллельно
@@ -280,8 +364,9 @@ class SpectreClientManager:
             await asyncio.gather(*tasks)
 
         # 3. Добавление панелей, настроенных вручную в .env
-        if settings.spectre_panels:
-            for idx, p in enumerate(settings.spectre_panels):
+        manual_panels = settings.get_spectre_panels()
+        if manual_panels:
+            for idx, p in enumerate(manual_panels):
                 url = p.get("url")
                 token = p.get("token")
                 if url and token:
@@ -322,14 +407,13 @@ class SpectreClientManager:
                         logging.info("spectre_discovery_manual_panel_added", name, url)
 
         async with self._lock:
-            self.panels = new_panels
-        logging.info("spectre_discovery_autodiscovery_completed_found_panels", len(self.panels))
-        if self.panels:
+            self._panels = new_panels
+        logging.info("spectre_discovery_autodiscovery_completed_found_panels", len(self._panels))
+        if self._panels and self._on_panels_discovered is not None:
             try:
-                from core.db import sync_approved_ips_to_panels
-                asyncio.create_task(sync_approved_ips_to_panels())
+                asyncio.create_task(self._on_panels_discovered())
             except Exception as e:
-                logging.error(f"Error triggering sync_approved_ips_to_panels after discovery: {e}")
+                logging.error(f"Error triggering on_panels_discovered hook: {e}")
         
     async def start_discovery_loop(self):
         """Фоновый периодический запуск поиска новых панелей раз в 5 минут."""
@@ -391,21 +475,21 @@ class SpectreClientManager:
                         logging.debug(f"Journalctl fallback failed for LXC {panel.name} ({service_unit}): {e}")
 
         elif panel.source_type == 'vps':
-            server = next((s for s in settings.remote_servers if s.get('ip') == panel.identifier), None)
+            server = settings.find_remote_server(panel.identifier)
             if server:
                 try:
-                    from modules.proxmox.monitor.remote.ssh import run_remote_ssh_cmd
-                    success, stdout, _ = await run_remote_ssh_cmd(server, ["tail", "-n", "5000", log_path])
+                    ssh_runner = self._get_ssh_runner()
+                    success, stdout, _ = await ssh_runner(server, ["tail", "-n", "5000", log_path])
                     if success and stdout:
                         lines = stdout.splitlines()
                     else:
-                        d_success, d_stdout, _ = await run_remote_ssh_cmd(server, [f"docker exec sentinel-panel tail -n 5000 {log_path} 2>/dev/null || docker exec spectre-panel tail -n 5000 {log_path}"])
+                        d_success, d_stdout, _ = await ssh_runner(server, [f"docker exec sentinel-panel tail -n 5000 {log_path} 2>/dev/null || docker exec spectre-panel tail -n 5000 {log_path}"])
                         if d_success and d_stdout:
                             lines = d_stdout.splitlines()
                         else:
                             service_unit = "hysteria" if "hysteria" in log_path.lower() else ("xray" if "xray" in log_path.lower() else None)
                             if service_unit:
-                                j_success, j_stdout, _ = await run_remote_ssh_cmd(server, [f"journalctl -u {service_unit} -n 5000 --no-pager"])
+                                j_success, j_stdout, _ = await ssh_runner(server, [f"journalctl -u {service_unit} -n 5000 --no-pager"])
                                 if j_success and j_stdout:
                                     lines = j_stdout.splitlines()
                 except Exception as e:
@@ -502,7 +586,7 @@ class SpectreClientManager:
             return None
 
         # 2. Резервный поиск (Fallback): опрашиваем все остальные панели.
-        for p in self.panels.values():
+        for p in self._panels.values():
             if panel and p.name == panel.name:
                 continue
             res = await self._get_client_from_panel_logs(p, client_ip, dst_ip, port)
@@ -519,7 +603,7 @@ class SpectreClientManager:
         Возвращает список результатов: (имя_панели, успешно_ли, сообщение)
         """
         results = []
-        for p in self.panels.values():
+        for p in self._panels.values():
             success, res = await p.request("POST", "/api/security/disable-client", data={"email": email})
             msg = res.get("msg", "OK" if success else "Ошибка соединения")
             results.append((p.name, success and res.get("success", False), msg))
@@ -531,7 +615,7 @@ class SpectreClientManager:
         Возвращает список результатов: (имя_панели, успешно_ли, сообщение)
         """
         results = []
-        for p in self.panels.values():
+        for p in self._panels.values():
             success, res = await p.request("POST", "/api/security/enable-client", data={"email": email})
             msg = res.get("msg", "OK" if success else "Ошибка соединения")
             results.append((p.name, success and res.get("success", False), msg))
@@ -542,7 +626,7 @@ class SpectreClientManager:
         Ищет клиента на всех панелях.
         """
         results = []
-        for p in self.panels.values():
+        for p in self._panels.values():
             success, res = await p.request("GET", "/api/security/search-client", params={"key": key})
             if success and res.get("success"):
                 for item in res.get("clients", []):
@@ -559,7 +643,7 @@ class SpectreClientManager:
         Панели без node_config.json (не слейвы) вернут reported=false и будут пропущены.
         Первая панель-слейв, успешно отправившая отчёт, прерывает цикл.
         """
-        for p in self.panels.values():
+        for p in self._panels.values():
             try:
                 success, res = await p.request("POST", "/api/security/report-to-master", json={
                     "action": action,

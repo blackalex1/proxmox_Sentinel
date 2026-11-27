@@ -41,7 +41,7 @@ async def run_router_ssh_cmd(command, timeout=15):
                 if sock:
                     sockname = sock.getsockname()
                     if sockname and isinstance(sockname, tuple):
-                        from modules.proxmox.monitor.state import recent_bot_ports
+                        from core.runtime_state import recent_bot_ports
                         recent_bot_ports.append(sockname[1])
             except Exception:
                 pass

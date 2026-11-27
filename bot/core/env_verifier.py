@@ -93,7 +93,7 @@ def verify_env_configuration():
             missing.append(_("logs", "env_verifier_bot_token"))
             
         # 2. Администраторы для получения алертов
-        if not settings.admin_ids:
+        if not settings.has_admins():
             missing.append(_("logs", "env_verifier_admin_ids"))
             
         # 3. Мониторинг Proxmox
@@ -162,7 +162,7 @@ def verify_env_configuration():
                                     echo_lang("Токен вашего Telegram-бота (BOT_TOKEN)", "Your Telegram Bot Token (BOT_TOKEN)"),
                                     bot_token_placeholder)
                 # 2. ADMIN_IDS
-                if not settings.admin_ids:
+                if not settings.has_admins():
                     prompt_variable("ADMIN_IDS", 
                                     echo_lang("Telegram ID администраторов через запятую (ADMIN_IDS)", "Telegram IDs of administrators, comma-separated (ADMIN_IDS)"))
                 # 3. Proxmox

@@ -68,8 +68,8 @@ async def main():
         f"Detected Proxmox host IP address: {host_ip}"
     ))
     print_info(echo_lang(
-        f"Активный IPS_PROCESS_WHITELIST из конфигурации: {settings.ips_process_whitelist}",
-        f"Active IPS_PROCESS_WHITELIST from configuration: {settings.ips_process_whitelist}"
+        f"Активный IPS_PROCESS_WHITELIST из конфигурации: {settings.get_process_whitelist()}",
+        f"Active IPS_PROCESS_WHITELIST from configuration: {settings.get_process_whitelist()}"
     ))
     
     # 1. Вносим хост и временное имя скрипта в белый список, затем перезапускаем бота
@@ -134,7 +134,7 @@ async def main():
         # 2. Test LXC Containers
         running_lxcs = await get_running_containers()
         for vmid, name in running_lxcs:
-            if vmid in settings.ips_lxc_whitelist:
+            if settings.is_lxc_whitelisted(vmid):
                 print_info(echo_lang(
                     f"LXC {vmid} находится в белом списке (IPS Whitelist). Пропускаем тест.",
                     f"LXC {vmid} is whitelisted (IPS Whitelist). Skipping test."
@@ -160,9 +160,10 @@ async def main():
             ))
             
         # 4. Test Remote Servers
-        if settings.remote_servers:
+        remote_servers = settings.get_remote_servers()
+        if remote_servers:
             print_header(echo_lang("Тестирование удаленных VPS серверов", "Testing Remote VPS Servers"))
-            for server in settings.remote_servers:
+            for server in remote_servers:
                 vps_ok = await test_remote_vps(server)
                 results[f"VPS {server['ip']}"] = vps_ok
                 

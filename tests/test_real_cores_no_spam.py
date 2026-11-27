@@ -65,8 +65,9 @@ async def test_singbox_client_burst_connections_single_card():
     now = time.time()
     mock_session_row = {"connect_time": "2026-06-15 12:00:00", "disconnect_time": None, "download_bytes": 0, "upload_bytes": 0}
 
+    from core.config import settings
     with patch("asyncio.sleep", AsyncMock()), \
-         patch("core.config.settings.admin_ids", [123456789]), \
+         settings.override(admin_ids=[123456789]), \
          patch("core.db.execute_read_one", AsyncMock(return_value=mock_session_row)), \
          patch("core.db.save_vpn_connect", AsyncMock(return_value="sess_test_001")), \
          patch("modules.proxmox.monitor.hysteria_alerts.check_new_ip_and_get_history", AsyncMock(return_value=(False, []))), \
@@ -121,8 +122,9 @@ async def test_cores_under_telegram_flood_wait_outbox_deduplication():
     now = time.time()
     mock_session_row = {"connect_time": "2026-06-15 12:00:00", "disconnect_time": None, "download_bytes": 0, "upload_bytes": 0}
 
+    from core.config import settings
     with patch("asyncio.sleep", AsyncMock()), \
-         patch("core.config.settings.admin_ids", [123456789]), \
+         settings.override(admin_ids=[123456789]), \
          patch("core.db.execute_read_one", AsyncMock(return_value=mock_session_row)), \
          patch("core.db.save_vpn_connect", AsyncMock(side_effect=lambda u, ip, *a, **k: f"sess_{u}_{ip}")), \
          patch("modules.proxmox.monitor.hysteria_alerts.check_new_ip_and_get_history", AsyncMock(return_value=(False, []))), \
@@ -159,10 +161,10 @@ async def test_cores_under_telegram_flood_wait_outbox_deduplication():
             assert card.get("in_outbox") is True
 
         # ПРОВЕРКА 2: В очереди Outbox строго 3 сообщения (по 1 на каждого клиента), а не 60!
-        assert len(outbox.queue) == 3
+        assert outbox.pending_count() == 3
 
         # ПРОВЕРКА 3: Проверяем, что в очереди лежат сообщения именно для наших 3 тестовых пользователей
-        queued_texts = [msg["text"] for msg in outbox.queue]
+        queued_texts = [msg["text"] for msg in outbox.get_pending_snapshot()]
         assert any("<code>test_client_a</code>" in t for t in queued_texts)
         assert any("<code>test_client_b</code>" in t for t in queued_texts)
         assert any("<code>test_client_c</code>" in t for t in queued_texts)
@@ -179,7 +181,7 @@ async def test_cores_under_telegram_flood_wait_outbox_deduplication():
 
         # Доставлено ровно 3 сообщения, очередь полностью очищена
         assert len(delivered_messages) == 3
-        assert len(outbox.queue) == 0
+        assert outbox.pending_count() == 0
 
 
 @pytest.mark.asyncio
@@ -194,8 +196,9 @@ async def test_noise_disconnect_filtered_no_card_spam():
     now = time.time()
     noise_res = ("sess_noise", 2, 0, 0)
 
+    from core.config import settings
     with patch("asyncio.sleep", AsyncMock()), \
-         patch("core.config.settings.admin_ids", [123456789]), \
+         settings.override(admin_ids=[123456789]), \
          patch("core.db.save_vpn_disconnect", AsyncMock(return_value=noise_res)), \
          patch("modules.proxmox.monitor.utils.send_rich_message", AsyncMock()) as mock_send:
 

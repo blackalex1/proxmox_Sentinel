@@ -8,7 +8,8 @@ async def setup_router_logging_rules():
         logging.warning("router_ips_router_monitoring_is_disabled_in")
         return False
         
-    ports_str = ",".join(str(p) for p in settings.monitor_lxc_ports_sensitive)
+    sensitive_ports = settings.get_sensitive_lxc_ports()
+    ports_str = ",".join(str(p) for p in sensitive_ports)
     if not ports_str:
         return False
         
@@ -47,7 +48,7 @@ async def setup_router_logging_rules():
 
     # 3. Резервный вариант: добавляем правила индивидуально для каждого порта (без multiport)
     success_all = True
-    for port in settings.monitor_lxc_ports_sensitive:
+    for port in sensitive_ports:
         ipt_single_cmd = (
             f"{path_prefix}iptables -I FORWARD -p tcp --dport {port} -j LOG --log-prefix \"ROUTER-IPS: \" && "
             f"{path_prefix}iptables -I INPUT -p tcp --dport {port} -j LOG --log-prefix \"ROUTER-IPS: \""
@@ -69,7 +70,8 @@ async def remove_router_logging_rules():
     if not settings.router_monitor_enable:
         return
         
-    ports_str = ",".join(str(p) for p in settings.monitor_lxc_ports_sensitive)
+    sensitive_ports = settings.get_sensitive_lxc_ports()
+    ports_str = ",".join(str(p) for p in sensitive_ports)
     if not ports_str:
         return
         
@@ -96,7 +98,7 @@ async def remove_router_logging_rules():
         await run_router_ssh_cmd(ipt_del_i)
         
     # 2. Удаляем индивидуальные правила для каждого порта (на случай, если сработал резервный вариант)
-    for port in settings.monitor_lxc_ports_sensitive:
+    for port in sensitive_ports:
         ipt_single_del = (
             f"{path_prefix}iptables -D FORWARD -p tcp --dport {port} -j LOG --log-prefix \"ROUTER-IPS: \" && "
             f"{path_prefix}iptables -D INPUT -p tcp --dport {port} -j LOG --log-prefix \"ROUTER-IPS: \""

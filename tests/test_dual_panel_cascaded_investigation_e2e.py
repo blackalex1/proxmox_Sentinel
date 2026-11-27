@@ -177,10 +177,10 @@ def dual_panels_environment(tmp_path, monkeypatch):
     )
     panel2.request = p2_request
 
-    spectre_manager.panels = {
+    spectre_manager.set_panels({
         "lxc_104": panel1,
         "vps_198.51.100.14": panel2
-    }
+    })
 
     return {
         "p1": panel1,

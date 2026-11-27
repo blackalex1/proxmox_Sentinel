@@ -213,6 +213,15 @@ async def send_rich_message_draft(
     return False
 
 
+_alert_broadcaster = None
+
+
+def register_alert_broadcaster(broadcaster_fn) -> None:
+    """Регистрирует внешний обработчик широковещательной рассылки алертов (например, Sentinel Deck)."""
+    global _alert_broadcaster
+    _alert_broadcaster = broadcaster_fn
+
+
 async def send_alert_to_admins(
     text: Any,
     parse_mode: str = "HTML",
@@ -221,21 +230,15 @@ async def send_alert_to_admins(
     """
     Отправка алертов всем администраторам с поддержкой Rich Message.
     """
-    # Мгновенная прямая трансляция в подключенные планшеты Sentinel Deck
-    try:
-        from modules.deck_api import deck_broadcaster
-        await deck_broadcaster.broadcast_alert(text, parse_mode)
-    except Exception as e:
-        logging.debug(f"Deck broadcast skipped: {e}")
+    if _alert_broadcaster is not None:
+        try:
+            await _alert_broadcaster(text, parse_mode)
+        except Exception as e:
+            logging.debug(f"Deck broadcast skipped: {e}")
 
-    if not settings.admin_ids:
+    admin_ids = settings.get_admin_ids()
+    if not admin_ids:
         return
-        
-    admin_ids = []
-    if isinstance(settings.admin_ids, list):
-        admin_ids = settings.admin_ids
-    elif isinstance(settings.admin_ids, str):
-        admin_ids = [int(i.strip()) for i in settings.admin_ids.split(",") if i.strip().isdigit()]
         
     for admin_id in admin_ids:
         try:

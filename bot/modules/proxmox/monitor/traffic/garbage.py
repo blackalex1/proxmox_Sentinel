@@ -7,7 +7,7 @@ from core.db import execute_read_all, execute_write
 from modules.proxmox.monitor.remote.ssh import run_remote_ssh_cmd
 from modules.router.router import run_router_ssh_cmd, unban_router_ip
 from modules.proxmox.monitor.utils import send_alert_to_admins
-from core.messages import get_router_recovery_alert, get_router_unknown_block_alert
+from core.messages.router import get_router_recovery_alert, get_router_unknown_block_alert
 
 async def reconcile_router_bans():
     """
@@ -82,11 +82,8 @@ async def reconcile_router_bans():
                 is_trusted_node = False
                 if settings.proxmox_host and ip == settings.proxmox_host.split(':')[0]:
                     is_trusted_node = True
-                if settings.trusted_admin_ips:
-                    if isinstance(settings.trusted_admin_ips, list) and ip in settings.trusted_admin_ips:
-                        is_trusted_node = True
-                    elif str(settings.trusted_admin_ips) == ip:
-                        is_trusted_node = True
+                if settings.is_trusted_admin_ip(ip):
+                    is_trusted_node = True
 
                 if is_trusted_node:
                     alert_text = get_router_recovery_alert(ip, rules_str)
@@ -148,7 +145,7 @@ async def monitor_expired_bans():
                 else:
                     # Снимаем удаленную блокировку
                     # Ищем настройки нужного сервера
-                    server = next((s for s in settings.remote_servers if s['ip'] == server_ip), None)
+                    server = settings.find_remote_server(server_ip)
                     if server:
                         from modules.proxmox.monitor.remote.traffic.firewall import unban_remote_ip
                         success, desc = await unban_remote_ip(server, dst_ip)

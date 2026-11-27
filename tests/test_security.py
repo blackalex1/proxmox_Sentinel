@@ -9,10 +9,7 @@ from modules.proxmox.monitor.traffic.firewall import block_local_ip
 async def test_get_and_kill_local_process():
     # Временно очищаем белый список процессов для теста
     from core.config import settings
-    original_whitelist = settings.ips_process_whitelist
-    settings.ips_process_whitelist = []
-    
-    try:
+    with settings.override(ips_process_whitelist=[]):
         # Сценарий 1: Локальный процесс на хосте (vmid == 0)
         mock_proc = AsyncMock()
         mock_proc.communicate.return_value = (b'tcp ESTAB 0 0 127.0.0.1:22 192.0.2.42:22 users:(("sshd",pid=12345,fd=3))', b"")
@@ -25,17 +22,12 @@ async def test_get_and_kill_local_process():
             # Проверяем, что был выполнен ss и соответствующий kill -9
             mock_exec.assert_any_call("ss", "-atnup", stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL)
             mock_exec.assert_any_call("kill", "-9", "12345", stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL)
-    finally:
-        settings.ips_process_whitelist = original_whitelist
         
 @pytest.mark.asyncio
 async def test_get_and_kill_lxc_process():
     # Временно очищаем белый список процессов для теста
     from core.config import settings
-    original_whitelist = settings.ips_process_whitelist
-    settings.ips_process_whitelist = []
-    
-    try:
+    with settings.override(ips_process_whitelist=[]):
         # Сценарий 2: Процесс внутри LXC контейнера (vmid == 101)
         mock_proc = AsyncMock()
         mock_proc.communicate.return_value = (b'tcp ESTAB 0 0 127.0.0.1:80 192.0.2.42:80 users:(("nginx",pid=9876,fd=4))', b"")
@@ -48,8 +40,6 @@ async def test_get_and_kill_lxc_process():
             # Проверяем pct exec для получения сокетов и pct exec для kill -9
             mock_exec.assert_any_call("pct", "exec", "101", "--", "ss", "-atnup", stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL)
             mock_exec.assert_any_call("pct", "exec", "101", "--", "kill", "-9", "9876", stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL)
-    finally:
-        settings.ips_process_whitelist = original_whitelist
 
 @pytest.mark.asyncio
 async def test_get_and_kill_whitelisted_process():
@@ -58,11 +48,8 @@ async def test_get_and_kill_whitelisted_process():
     mock_proc.communicate.return_value = (b'tcp ESTAB 0 0 127.0.0.1:22 192.0.2.42:22 users:(("systemd",pid=1,fd=5))', b"")
     
     from core.config import settings
-    original_whitelist = settings.ips_process_whitelist
     # Временно добавляем systemd в белый список
-    settings.ips_process_whitelist = ["systemd"]
-    
-    try:
+    with settings.override(ips_process_whitelist=["systemd"]):
         with patch("asyncio.create_subprocess_exec", return_value=mock_proc) as mock_exec:
             proc_name, pid = await get_and_kill_local_or_lxc_process(vmid=0, spt=22)
             assert proc_name == "systemd"
@@ -73,8 +60,6 @@ async def test_get_and_kill_whitelisted_process():
             # Убеждаемся, что kill не вызывался
             for call in mock_exec.call_args_list:
                 assert call[0][0] != "kill"
-    finally:
-        settings.ips_process_whitelist = original_whitelist
 
 @pytest.mark.asyncio
 async def test_block_local_ip():
@@ -109,10 +94,7 @@ async def test_get_and_kill_self_defense_bot_itself():
     
     # Временно очищаем белый список процессов
     from core.config import settings
-    original_whitelist = settings.ips_process_whitelist
-    settings.ips_process_whitelist = []
-    
-    try:
+    with settings.override(ips_process_whitelist=[]):
         with patch("asyncio.create_subprocess_exec", return_value=mock_proc) as mock_exec:
             proc_name, pid = await get_and_kill_local_or_lxc_process(vmid=0, spt=22)
             
@@ -124,8 +106,6 @@ async def test_get_and_kill_self_defense_bot_itself():
             mock_exec.assert_any_call("ss", "-atnup", stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL)
             for call in mock_exec.call_args_list:
                 assert call[0][0] != "kill"
-    finally:
-        settings.ips_process_whitelist = original_whitelist
 
 @pytest.mark.asyncio
 async def test_get_and_kill_self_defense_child_process():
@@ -139,15 +119,13 @@ async def test_get_and_kill_self_defense_child_process():
     
     # Временно очищаем белый список процессов
     from core.config import settings
-    original_whitelist = settings.ips_process_whitelist
-    settings.ips_process_whitelist = []
     
     # Мокаем проверку PPid в файле /proc/99999/status с правильной поддержкой контекстного менеджера с-команды
     mock_open = patch("builtins.open", MagicMock(side_effect=lambda path, *args, **kwargs: 
         MagicMock(__enter__=lambda s: s, __exit__=lambda s, *a: None, __iter__=lambda s: iter([f"Name: python3\n", f"PPid: {my_pid}\n"])) if "99999" in str(path) else open(path, *args, **kwargs)
     ))
     
-    try:
+    with settings.override(ips_process_whitelist=[]):
         with patch("asyncio.create_subprocess_exec", return_value=mock_proc) as mock_exec, \
              patch("os.path.exists", return_value=True), \
              mock_open:
@@ -161,17 +139,15 @@ async def test_get_and_kill_self_defense_child_process():
             # Проверяем, что kill -9 НЕ вызывался
             for call in mock_exec.call_args_list:
                 assert call[0][0] != "kill"
-    finally:
-        settings.ips_process_whitelist = original_whitelist
 
 
 @pytest.mark.asyncio
 async def test_get_bot_public_ip():
     from modules.proxmox.monitor.remote.helpers import get_bot_public_ip
-    import modules.proxmox.monitor.remote.helpers as remote_helpers
+    import core.sys_utils as sys_utils
     
     # Сбросим кэш перед тестом
-    remote_helpers.bot_public_ip = None
+    sys_utils.bot_public_ip = None
     
     # Мокаем aiohttp.ClientSession
     mock_response = AsyncMock()
@@ -196,9 +172,9 @@ async def test_get_bot_public_ip():
 @pytest.mark.asyncio
 async def test_get_bot_public_ip_fallback():
     from modules.proxmox.monitor.remote.helpers import get_bot_public_ip
-    import modules.proxmox.monitor.remote.helpers as remote_helpers
+    import core.sys_utils as sys_utils
     
-    remote_helpers.bot_public_ip = None
+    sys_utils.bot_public_ip = None
     
     # Первая попытка фейлится, вторая проходит
     mock_response_ok = AsyncMock()
@@ -273,17 +249,12 @@ async def test_handle_remote_ssh_auth_line_trusted_bot():
         'key': 'config/dummy_key'
     }
     
-    original_keys = settings.remote_monitor_ignore_keys
-    original_ips = settings.remote_monitor_ignore_ips
-    settings.remote_monitor_ignore_keys = ["bot@bot"]
-    settings.remote_monitor_ignore_ips = ["203.0.113.88"]
-    
     line = "May 27 21:00:00 server sshd[123]: Accepted publickey for root from 203.0.113.88 port 43210 ssh2: RSA SHA256:fingerprint_xyz"
     
-    try:
+    with settings.override(remote_monitor_ignore_keys=["bot@bot"], remote_monitor_ignore_ips=["203.0.113.88"]):
         remote_auth.remote_key_caches[server['ip']] = {"SHA256:fingerprint_xyz": "bot@bot"}
-        import modules.proxmox.monitor.remote.helpers as remote_helpers
-        remote_helpers.bot_public_ip = "203.0.113.88"
+        import core.sys_utils as sys_utils
+        sys_utils.bot_public_ip = "203.0.113.88"
         
         with patch("modules.proxmox.monitor.remote.auth.get_active_ssh_ports_for_vps", return_value=[43210]), \
              patch("modules.proxmox.monitor.remote.auth.refresh_remote_key_cache", AsyncMock()) as mock_refresh, \
@@ -291,9 +262,6 @@ async def test_handle_remote_ssh_auth_line_trusted_bot():
             await handle_remote_ssh_auth_line(line, server=server)
             mock_send.assert_not_called()
             mock_refresh.assert_not_called()
-    finally:
-        settings.remote_monitor_ignore_keys = original_keys
-        settings.remote_monitor_ignore_ips = original_ips
 
 
 @pytest.mark.asyncio
@@ -308,17 +276,12 @@ async def test_handle_remote_ssh_auth_line_unauthorized_ip():
         'key': 'config/dummy_key'
     }
     
-    original_keys = settings.remote_monitor_ignore_keys
-    original_ips = settings.remote_monitor_ignore_ips
-    settings.remote_monitor_ignore_keys = ["bot@bot"]
-    settings.remote_monitor_ignore_ips = ["203.0.113.88"]
-    
     line = "May 27 21:00:00 server sshd[123]: Accepted publickey for root from 99.99.99.99 port 54321 ssh2: RSA SHA256:fingerprint_xyz"
     
-    try:
+    with settings.override(remote_monitor_ignore_keys=["bot@bot"], remote_monitor_ignore_ips=["203.0.113.88"]):
         remote_auth.remote_key_caches[server['ip']] = {"SHA256:fingerprint_xyz": "bot@bot"}
-        import modules.proxmox.monitor.remote.helpers as remote_helpers
-        remote_helpers.bot_public_ip = "203.0.113.88"
+        import core.sys_utils as sys_utils
+        sys_utils.bot_public_ip = "203.0.113.88"
         
         with patch("modules.proxmox.monitor.remote.auth.get_active_ssh_ports_for_vps", return_value=[]), \
              patch("modules.proxmox.monitor.remote.auth.refresh_remote_key_cache", AsyncMock()) as mock_refresh, \
@@ -330,9 +293,6 @@ async def test_handle_remote_ssh_auth_line_unauthorized_ip():
             assert "КРИТИЧЕСКАЯ УГРОЗА" in alert_text
             assert "Возможна утечка приватного ключа" in alert_text
             mock_refresh.assert_not_called()
-    finally:
-        settings.remote_monitor_ignore_keys = original_keys
-        settings.remote_monitor_ignore_ips = original_ips
 
 
 @pytest.mark.asyncio
@@ -347,17 +307,12 @@ async def test_handle_remote_ssh_auth_line_compromised_container():
         'key': 'config/dummy_key'
     }
     
-    original_keys = settings.remote_monitor_ignore_keys
-    original_ips = settings.remote_monitor_ignore_ips
-    settings.remote_monitor_ignore_keys = ["bot@bot"]
-    settings.remote_monitor_ignore_ips = ["203.0.113.88"]
-    
     line = "May 27 21:00:00 server sshd[123]: Accepted publickey for root from 203.0.113.88 port 9999 ssh2: RSA SHA256:fingerprint_xyz"
     
-    try:
+    with settings.override(remote_monitor_ignore_keys=["bot@bot"], remote_monitor_ignore_ips=["203.0.113.88"]):
         remote_auth.remote_key_caches[server['ip']] = {"SHA256:fingerprint_xyz": "bot@bot"}
-        import modules.proxmox.monitor.remote.helpers as remote_helpers
-        remote_helpers.bot_public_ip = "203.0.113.88"
+        import core.sys_utils as sys_utils
+        sys_utils.bot_public_ip = "203.0.113.88"
         
         with patch("modules.proxmox.monitor.remote.auth.get_active_ssh_ports_for_vps", return_value=[43210]), \
              patch("modules.proxmox.monitor.remote.auth.refresh_remote_key_cache", AsyncMock()) as mock_refresh, \
@@ -369,9 +324,6 @@ async def test_handle_remote_ssh_auth_line_compromised_container():
             assert "КРИТИЧЕСКАЯ УГРОЗА" in alert_text
             assert "Высокий риск компрометации хоста/контейнера" in alert_text
             mock_refresh.assert_not_called()
-    finally:
-        settings.remote_monitor_ignore_keys = original_keys
-        settings.remote_monitor_ignore_ips = original_ips
 
 
 

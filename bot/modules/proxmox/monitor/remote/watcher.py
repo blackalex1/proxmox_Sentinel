@@ -2,7 +2,7 @@ import asyncio
 import logging
 from core.config import settings
 from modules.proxmox.monitor.utils import LogTailer
-from core.messages import get_vps_offline_alert, get_vps_online_alert
+from core.messages.nodes import get_vps_offline_alert, get_vps_online_alert
 from .ssh import get_ssh_base_cmd
 from .auth import handle_remote_ssh_auth_line
 from .traffic import handle_remote_traffic_line, cleanup_remote_blocks_on_startup
@@ -96,14 +96,15 @@ async def monitor_remote_task(server, service_name, command_args, callback):
 
 async def monitor_remote_server():
     """Запуск всех задач отслеживания для всех удаленных VPS в фоновом режиме."""
-    if not settings.remote_servers:
+    remote_servers = settings.get_remote_servers()
+    if not remote_servers:
         logging.warning("remote_monitor_remote_servers_remote_servers_list_is")
         return
         
-    logging.info("remote_monitor_initializing_monitoring_remote_servers", len(settings.remote_servers))
+    logging.info("remote_monitor_initializing_monitoring_remote_servers", len(remote_servers))
     
     tasks = []
-    for server in settings.remote_servers:
+    for server in remote_servers:
         logging.info("remote_monitor_starting_background_tasks_for_vps", server['ip'])
         
         # Очищаем временные блокировки iptables от прошлых запусков бота

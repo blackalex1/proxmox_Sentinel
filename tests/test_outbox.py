@@ -35,26 +35,26 @@ def test_outbox_save_load_disk(clean_outbox):
     outbox = clean_outbox
     
     # Изначально очередь пуста
-    assert len(outbox.queue) == 0
+    assert outbox.pending_count() == 0
     
     # Добавляем сообщения через блокирующий лок в синхронном стиле для теста
-    outbox.queue.append({
+    outbox.enqueue_raw({
         "chat_id": 12345,
         "text": "Тестовое сообщение 1",
         "kwargs": {"parse_mode": "HTML"},
         "timestamp": 123456789.0
-    })
-    outbox.save_to_disk()
+    }, persist=True)
     
     # Файл должен существовать
     assert os.path.exists(OUTBOX_FILE)
     
     # Инициализируем новый инстанс outbox и проверяем, загрузились ли данные
     new_outbox = ResilientOutbox()
-    assert len(new_outbox.queue) == 1
-    assert new_outbox.queue[0]["chat_id"] == 12345
-    assert new_outbox.queue[0]["text"] == "Тестовое сообщение 1"
-    assert new_outbox.queue[0]["kwargs"] == {"parse_mode": "HTML"}
+    assert new_outbox.pending_count() == 1
+    snap = new_outbox.get_pending_snapshot()
+    assert snap[0]["chat_id"] == 12345
+    assert snap[0]["text"] == "Тестовое сообщение 1"
+    assert snap[0]["kwargs"] == {"parse_mode": "HTML"}
 
 def test_outbox_save_load_disk_with_keyboard(clean_outbox):
     """
@@ -68,21 +68,20 @@ def test_outbox_save_load_disk_with_keyboard(clean_outbox):
         [InlineKeyboardButton(text="Кнопка 1", callback_data="btn1")]
     ])
     
-    outbox.queue.append({
+    outbox.enqueue_raw({
         "chat_id": 54321,
         "text": "Сообщение с кнопкой",
         "kwargs": {"reply_markup": keyboard},
         "timestamp": 123456789.0
-    })
-    outbox.save_to_disk()
+    }, persist=True)
     
     # Файл должен успешно сохраниться, несмотря на наличие клавиатуры
     assert os.path.exists(OUTBOX_FILE)
     
     # Загружаем обратно и проверяем
     new_outbox = ResilientOutbox()
-    assert len(new_outbox.queue) == 1
-    loaded_markup = new_outbox.queue[0]["kwargs"]["reply_markup"]
+    assert new_outbox.pending_count() == 1
+    loaded_markup = new_outbox.get_pending_snapshot()[0]["kwargs"]["reply_markup"]
     
     assert isinstance(loaded_markup, InlineKeyboardMarkup)
     assert len(loaded_markup.inline_keyboard) == 1
@@ -117,10 +116,11 @@ async def test_bot_patching_and_fallback(clean_outbox):
     assert result is None
     
     # Сообщение должно оказаться в очереди outbox
-    assert len(outbox.queue) == 1
-    assert outbox.queue[0]["chat_id"] == 99999
-    assert outbox.queue[0]["text"] == "Сбойный алерт"
-    assert outbox.queue[0]["kwargs"] == {"parse_mode": "HTML"}
+    assert outbox.pending_count() == 1
+    snap = outbox.get_pending_snapshot()
+    assert snap[0]["chat_id"] == 99999
+    assert snap[0]["text"] == "Сбойный алерт"
+    assert snap[0]["kwargs"] == {"parse_mode": "HTML"}
 
 @pytest.mark.asyncio
 async def test_outbox_flush_success(clean_outbox):
@@ -131,12 +131,11 @@ async def test_outbox_flush_success(clean_outbox):
     outbox = clean_outbox
     
     # Заполняем очередь
-    outbox.queue.append({
+    outbox.enqueue_raw({
         "chat_id": 55555,
         "text": "Ура, сеть есть!",
         "kwargs": {}
-    })
-    outbox.save_to_disk()
+    }, persist=True)
     
     # Мокаем бота с успешной отправкой
     bot = MagicMock(spec=Bot)
@@ -149,7 +148,7 @@ async def test_outbox_flush_success(clean_outbox):
     bot._original_send_message.assert_called_once_with(55555, "Ура, сеть есть!\n\n[Отложенное сообщение 1/1]", parse_mode="HTML")
     
     # Очередь должна полностью очиститься
-    assert len(outbox.queue) == 0
+    assert outbox.pending_count() == 0
     
     # Файл очереди на диске тоже должен обновиться до пустого массива
     with open(OUTBOX_FILE, 'r', encoding='utf-8') as f:
@@ -166,9 +165,8 @@ async def test_outbox_flood_control(clean_outbox):
     outbox = clean_outbox
     
     # Добавляем 2 сообщения в очередь
-    outbox.queue.append({"chat_id": 111, "text": "Msg 1", "kwargs": {}})
-    outbox.queue.append({"chat_id": 222, "text": "Msg 2", "kwargs": {}})
-    outbox.save_to_disk()
+    outbox.enqueue_raw({"chat_id": 111, "text": "Msg 1", "kwargs": {}})
+    outbox.enqueue_raw({"chat_id": 222, "text": "Msg 2", "kwargs": {}}, persist=True)
     
     # Мокаем бота так, чтобы первый вызов падал с ошибкой TelegramRetryAfter(retry_after=5)
     bot = MagicMock(spec=Bot)
@@ -192,7 +190,7 @@ async def test_outbox_flood_control(clean_outbox):
         bot._original_send_message.assert_called_once_with(111, "Msg 1\n\n[Отложенное сообщение 1/2]", parse_mode="HTML")
         
         # Обе отправки должны остаться в очереди (т.к. первая провалилась и выбросила прерывание)
-        assert len(outbox.queue) == 2
+        assert outbox.pending_count() == 2
 
 
 @pytest.mark.asyncio
@@ -215,11 +213,12 @@ async def test_bot_patching_and_edit_fallback(clean_outbox):
     result = await bot.edit_message_text(chat_id=99999, message_id=123, text="Новое содержимое", parse_mode="HTML")
     
     assert result is None
-    assert len(outbox.queue) == 1
-    assert outbox.queue[0]["chat_id"] == 99999
-    assert outbox.queue[0]["message_id"] == 123
-    assert outbox.queue[0]["text"] == "Новое содержимое"
-    assert outbox.queue[0]["is_edit"] is True
+    assert outbox.pending_count() == 1
+    snap = outbox.get_pending_snapshot()
+    assert snap[0]["chat_id"] == 99999
+    assert snap[0]["message_id"] == 123
+    assert snap[0]["text"] == "Новое содержимое"
+    assert snap[0]["is_edit"] is True
 
 @pytest.mark.asyncio
 async def test_outbox_flush_edit_success(clean_outbox):
@@ -230,14 +229,13 @@ async def test_outbox_flush_edit_success(clean_outbox):
     outbox = clean_outbox
     
     # Заполняем очередь редактированием
-    outbox.queue.append({
+    outbox.enqueue_raw({
         "chat_id": 55555,
         "message_id": 123,
         "text": "Сеть починилась, отредактировано!",
         "is_edit": True,
         "kwargs": {}
-    })
-    outbox.save_to_disk()
+    }, persist=True)
     
     bot = MagicMock(spec=Bot)
     bot._original_edit_message_text = AsyncMock()
@@ -251,7 +249,7 @@ async def test_outbox_flush_edit_success(clean_outbox):
         parse_mode="HTML"
     )
     
-    assert len(outbox.queue) == 0
+    assert outbox.pending_count() == 0
 
 
 def test_clean_mixed_html_to_markdown_formatting():
@@ -344,8 +342,7 @@ async def test_outbox_flush_rate_limited(clean_outbox):
     
     # Имитируем активный лимит флуда
     outbox.rate_limit_until = time.time() + 100
-    outbox.queue.append({"chat_id": 111, "text": "Msg 1", "kwargs": {}})
-    outbox.save_to_disk()
+    outbox.enqueue_raw({"chat_id": 111, "text": "Msg 1", "kwargs": {}}, persist=True)
     
     bot = MagicMock(spec=Bot)
     bot._original_send_message = AsyncMock()
@@ -354,7 +351,7 @@ async def test_outbox_flush_rate_limited(clean_outbox):
     
     # Отправка не должна случиться
     bot._original_send_message.assert_not_called()
-    assert len(outbox.queue) == 1
+    assert outbox.pending_count() == 1
 
 
 @pytest.mark.asyncio
@@ -388,14 +385,14 @@ def test_clean_html_for_telegram_tg_thinking():
 @pytest.mark.asyncio
 async def test_outbox_clear_queue(clean_outbox):
     outbox = clean_outbox
-    outbox.queue.append({"chat_id": 111, "text": "Msg 1", "kwargs": {}})
-    outbox.queue.append({"chat_id": 222, "text": "Msg 2", "kwargs": {}})
-    outbox.save_to_disk()
-    assert len(outbox.queue) == 2
+    outbox.enqueue_raw({"chat_id": 111, "text": "Msg 1", "kwargs": {}})
+    outbox.enqueue_raw({"chat_id": 222, "text": "Msg 2", "kwargs": {}}, persist=True)
+    assert outbox.pending_count() == 2
     assert os.path.exists(OUTBOX_FILE)
 
-    outbox.clear_queue()
-    assert len(outbox.queue) == 0
+    dropped = outbox.clear_queue()
+    assert dropped == 2
+    assert outbox.pending_count() == 0
     assert outbox._drop_requested is True
 
     # Проверяем, что на диске тоже пусто

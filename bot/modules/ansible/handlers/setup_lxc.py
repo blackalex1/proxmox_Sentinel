@@ -59,7 +59,7 @@ async def setup_ansible_user_in_lxc(vmid: int, pub_key_content: str) -> bool:
         logging.error("error_configuring_user_ansible_in_lxc", vmid, e)
         return False
 
-from core.messages import (
+from core.messages.ansible import (
     get_ansible_setup_lxc_start_text,
     get_ansible_setup_success_text,
     get_ansible_setup_failed_text,
